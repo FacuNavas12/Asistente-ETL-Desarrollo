@@ -1,0 +1,28 @@
+# Node / React
+node_modules/
+dist/
+build/
+.next/
+.env
+.env.local
+
+# Java / Spring Boot
+target/
+*.log
+*.class
+*.jar
+*.war
+*.iml
+
+# VSCode / IDEs
+.vscode/
+.idea/
+
+# Python (por si IA usa Python)
+__pycache__/
+*.pyc
+.venv/
+
+# Sistemas operativos
+Thumbs.db
+.DS_Store
