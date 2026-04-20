@@ -1,17 +1,23 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import UserInfo from "../components/UserInfo";
-import LogoutButton from "../components/LogoutButton";
+import { useNavigate } from "react-router-dom";
+import UserOptions from "../components/UserOptions";
 import "../css/home.css";
 
 export default function Home() {
-  const { user, isAuthenticated } = useAuth0();
-  console.log("HOME:", { isAuthenticated, user });
+  const { user } = useAuth0();
+  const navigate = useNavigate();
 
   return (
     <div className="home-container">
-      <div className="profile-box">
-        <UserInfo />
-        <LogoutButton />
+      <div className="home-header">
+        <UserOptions />
+      </div>
+      <div className="home-content">
+        <h1 className="home-title">Bienvenido, {user?.given_name || user?.name}</h1>
+        <p className="home-subtitle">¿Qué querés hacer hoy?</p>
+        <button className="etl-create-btn" onClick={() => navigate("/etl-create")}>
+          + ETL Create
+        </button>
       </div>
     </div>
   );

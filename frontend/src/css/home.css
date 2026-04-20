@@ -1,68 +1,106 @@
-/* Centrar todo en la pantalla */
 .home-container {
-  height: 100vh;
+  min-height: 100vh;
+  width: 100%;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  background: #f2f2f2;
+  background: var(--bg);
+  transition: background 0.3s;
+}
+
+.home-header {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  padding: 20px 32px;
+  box-sizing: border-box;
+}
+
+.home-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 20px;
+  gap: 12px;
 }
 
-/* Caja principal */
-.profile-box {
-  background: white;
-  width: 450px;
-  max-width: 90%;
-  padding: 30px;
+.home-title {
+  font-size: 32px !important;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0 !important;
+  letter-spacing: -0.5px;
+}
+
+.home-subtitle {
+  font-size: 16px;
+  color: var(--text);
+  margin: 0 0 24px;
+}
+
+.etl-create-btn {
+  padding: 14px 36px;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  background: linear-gradient(135deg, #7c3aed, #aa3bff);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(170, 59, 255, 0.35);
+  transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+
+.etl-create-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(170, 59, 255, 0.5);
+}
+
+.etl-create-btn:active {
+  transform: scale(0.97);
+}
+
+/* profile-box se mantiene para compatibilidad */
+.profile-box {
+  background: var(--surface);
+  width: 100%;
+  max-width: 560px;
+  padding: 36px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
   text-align: center;
+  transition: background 0.3s, border-color 0.3s;
 }
 
-/* Títulos */
-.profile-box h1 {
-  margin-bottom: 10px;
-  font-size: 28px;
-  color: #333;
-}
-
-.profile-box h2 {
-  margin-top: 20px;
-  font-size: 20px;
-  color: #555;
-}
-
-/* JSON de usuario */
 .user-data {
   text-align: left;
-  background: #fafafa;
-  padding: 15px;
+  background: var(--bg);
+  padding: 14px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
   overflow-x: auto;
   max-height: 200px;
   margin-top: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
+  color: var(--text);
 }
 
-/* Botón de logout */
 .logout-btn {
-  margin-top: 25px;
-  padding: 14px 30px;
-  font-size: 18px;
+  margin-top: 24px;
+  padding: 13px 30px;
+  font-size: 15px;
   border: none;
   border-radius: 8px;
-  background: #d9534f; /* Rojo */
-  color: white;
+  background: #c0392b;
+  color: #fff;
   cursor: pointer;
   width: 100%;
-  transition: 0.2s;
+  transition: background 0.2s, transform 0.1s;
 }
 
-.logout-btn:hover {
-  background: #c9302c;
-}
-
-.logout-btn:active {
-  transform: scale(0.98);
-}
+.logout-btn:hover { background: #a93226; }
+.logout-btn:active { transform: scale(0.98); }

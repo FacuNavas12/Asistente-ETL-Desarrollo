@@ -1,0 +1,35 @@
+.app-dark,
+.app-light {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  transition: background 0.3s, color 0.3s;
+}
+
+.app-dark {
+  --bg: #0d0d14;
+  --surface: #16171f;
+  --border: #2a2a3a;
+  --text: #9ca3af;
+  --text-h: #f0eeff;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.12);
+  --accent-border: rgba(170, 59, 255, 0.45);
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-light {
+  --bg: #f0f2f8;
+  --surface: #ffffff;
+  --border: #e0e0f0;
+  --text: #6b6880;
+  --text-h: #1a1a2e;
+  --accent: #7c3aed;
+  --accent-bg: rgba(124, 58, 237, 0.08);
+  --accent-border: rgba(124, 58, 237, 0.35);
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  background: var(--bg);
+  color: var(--text);
+}
