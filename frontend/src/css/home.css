@@ -1,0 +1,68 @@
+/* Centrar todo en la pantalla */
+.home-container {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #f2f2f2;
+  padding: 20px;
+}
+
+/* Caja principal */
+.profile-box {
+  background: white;
+  width: 450px;
+  max-width: 90%;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  text-align: center;
+}
+
+/* Títulos */
+.profile-box h1 {
+  margin-bottom: 10px;
+  font-size: 28px;
+  color: #333;
+}
+
+.profile-box h2 {
+  margin-top: 20px;
+  font-size: 20px;
+  color: #555;
+}
+
+/* JSON de usuario */
+.user-data {
+  text-align: left;
+  background: #fafafa;
+  padding: 15px;
+  border-radius: 8px;
+  font-size: 14px;
+  overflow-x: auto;
+  max-height: 200px;
+  margin-top: 10px;
+  border: 1px solid #ddd;
+}
+
+/* Botón de logout */
+.logout-btn {
+  margin-top: 25px;
+  padding: 14px 30px;
+  font-size: 18px;
+  border: none;
+  border-radius: 8px;
+  background: #d9534f; /* Rojo */
+  color: white;
+  cursor: pointer;
+  width: 100%;
+  transition: 0.2s;
+}
+
+.logout-btn:hover {
+  background: #c9302c;
+}
+
+.logout-btn:active {
+  transform: scale(0.98);
+}
