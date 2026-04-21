@@ -3,7 +3,7 @@ import Login from "../views/Login";
 import Register from "../views/Register";
 import Home from "../views/Home";
 import Profile from "../views/Profile";
-import EtlCreate from "../views/EtlCreate";
+import EtlCreate from "../views/CreateETL";
 import PrivateRoute from "../auth0/PrivateRoute";
 
 export default function AppRouter() {

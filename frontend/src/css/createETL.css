@@ -1,0 +1,15 @@
+/* src/styles/CrearETLPage.css */
+.crear-etl-container {
+  padding: 20px;
+}
+
+.input-section {
+  width: 100%;
+}
+
+.btn-crear-etl {
+  margin-top: 20px;
+  padding: 12px 18px;
+  font-size: 16px;
+  cursor: pointer;
+}

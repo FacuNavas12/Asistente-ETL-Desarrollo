@@ -1,0 +1,48 @@
+.form-section {
+  margin-bottom: 26px;
+}
+
+.form-section__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-h);
+  margin-bottom: 12px;
+}
+
+.dropzone {
+  border: 2px dashed var(--accent-border);
+  border-radius: 14px;
+  padding: 28px;
+  text-align: center;
+  background: var(--accent-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.form-field input,
+.form-field select {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
