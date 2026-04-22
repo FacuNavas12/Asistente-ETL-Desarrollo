@@ -1,6 +1,6 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useNavigate } from "react-router-dom";
-import UserOptions from "../components/UserOptions";
+import Layout from "../components/Layout";
 import "../css/home.css";
 
 export default function Home() {
@@ -8,10 +8,7 @@ export default function Home() {
   const navigate = useNavigate();
 
   return (
-    <div className="home-container">
-      <div className="home-header">
-        <UserOptions />
-      </div>
+    <Layout>
       <div className="home-content">
         <h1 className="home-title">Bienvenido, {user?.given_name || user?.name}</h1>
         <p className="home-subtitle">¿Qué querés hacer hoy?</p>
@@ -19,6 +16,6 @@ export default function Home() {
           + ETL Create
         </button>
       </div>
-    </div>
+    </Layout>
   );
 }

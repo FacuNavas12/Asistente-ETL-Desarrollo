@@ -1,69 +1,61 @@
 import { useState } from "react";
-import UserOptions from "../components/UserOptions";
+import Layout from "../components/Layout";
 import StagingForm from "../components/etl/StagingForm";
 import OrigenInput from "../components/etl/OrigenInput";
 import EtlChecks from "../components/etl/EtlChecks";
 import ChartPanel from "../components/etl/ChartPanel";
 import ExplanationPanel from "../components/etl/ExplanationPanel";
-
 import "../css/createETL.css";
 
-export default function EtlCreate() {
-  const [step, setStep] = useState("form"); // form → processing → result
+export default function CreateETL() {
+  const [step, setStep] = useState("form"); // form | processing | result
   const [responseData, setResponseData] = useState(null);
 
   const handleCreate = () => {
     setStep("processing");
-
-    // Simular delay de backend
     setTimeout(() => {
-      // Simulación de respuesta
       setResponseData({
         chartData: [12, 19, 3, 5, 2, 3],
-        explanation: "Los datos fueron limpiados y transformados correctamente."
+        explanation: "Los datos fueron limpiados y transformados correctamente.",
       });
       setStep("result");
     }, 2000);
   };
 
   return (
-    <div className="etl-container">
-      <div className="etl-header">
-        <UserOptions />
+    <Layout>
+      <div className="etl-page">
+        <h1 className="etl-title">Crear ETL</h1>
+
+        {step === "processing" && (
+          <div className="etl-processing">
+            <EtlChecks />
+          </div>
+        )}
+
+        {(step === "form" || step === "result") && (
+          <div className={`etl-body ${step === "result" ? "split" : ""}`}>
+
+            {/* IZQUIERDA: formulario siempre visible */}
+            <div className="etl-form-side">
+              <OrigenInput />
+              <StagingForm />
+              {step === "form" && (
+                <button className="etl-submit-btn" onClick={handleCreate}>
+                  Crear ETL
+                </button>
+              )}
+            </div>
+
+            {/* DERECHA: aparece al hacer submit */}
+            <div className="etl-right-side">
+              <ChartPanel data={responseData?.chartData} />
+              <ExplanationPanel text={responseData?.explanation} />
+            </div>
+
+          </div>
+        )}
       </div>
-
-      <h1 className="etl-title">Crear ETL</h1>
-
-      {/* FORMULARIO COMPLETO */}
-      {step === "form" && (
-        <div className="etl-block etl-form-block">
-          <OrigenInput />
-          <StagingForm />
-          <button className="etl-submit-btn" onClick={handleCreate}>
-            Crear ETL
-          </button>
-        </div>
-      )}
-
-      {/* ANIMACIÓN DE PROCESAMIENTO */}
-      {step === "processing" && (
-        <div className="etl-processing">
-          <EtlChecks />
-        </div>
-      )}
-
-      {/* RESULTADO: GRÁFICA + EXPLICACIÓN */}
-      {step === "result" && (
-        <div className="etl-result-layout">
-          <div className="etl-left">
-            <EtlChecks done />
-          </div>
-          <div className="etl-right">
-            <ChartPanel data={responseData.chartData} />
-            <ExplanationPanel text={responseData.explanation} />
-          </div>
-        </div>
-      )}
-    </div>
+    </Layout>
   );
 }
