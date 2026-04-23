@@ -3,6 +3,8 @@ import Layout from "../components/Layout";
 import StagingForm from "../components/etl/StagingForm";
 import OrigenInput from "../components/etl/OrigenInput";
 import EtlChecks from "../components/etl/EtlChecks";
+import ReglasNegocio from "../components/etl/ReglasNegocio";
+import DwhModel from "../components/etl/DwhModel";
 import ChartPanel from "../components/etl/ChartPanel";
 import ExplanationPanel from "../components/etl/ExplanationPanel";
 import "../css/createETL.css";
@@ -10,6 +12,10 @@ import "../css/createETL.css";
 export default function CreateETL() {
   const [step, setStep] = useState("form"); // form | processing | result
   const [responseData, setResponseData] = useState(null);
+  const [origenText, setOrigenText] = useState("");
+  const [stagingDef, setStagingDef] = useState({ tableName: "", columns: [] });
+  const [reglasNegocio, setReglasNegocio] = useState("");
+  const [dwhModel, setDwhModel] = useState({ tables: [] });
 
   const handleCreate = () => {
     setStep("processing");
@@ -38,8 +44,10 @@ export default function CreateETL() {
 
             {/* IZQUIERDA: formulario siempre visible */}
             <div className="etl-form-side">
-              <OrigenInput />
-              <StagingForm />
+              <OrigenInput value={origenText} onChange={setOrigenText} />
+              <StagingForm value={stagingDef} onChange={setStagingDef} />
+              <DwhModel value={dwhModel} onChange={setDwhModel} />
+              <ReglasNegocio value={reglasNegocio} onChange={setReglasNegocio} />
               {step === "form" && (
                 <button className="etl-submit-btn" onClick={handleCreate}>
                   Crear ETL
