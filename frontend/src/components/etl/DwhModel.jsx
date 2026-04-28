@@ -1,6 +1,13 @@
 import { useState } from "react";
 import "../../css/etlForm.css";
 
+import {
+  formatTableName,
+  cleanColumnText,
+  applySKPrefix,
+  removeSKPrefix
+} from "../../validation/stringCleaners";
+
 const EMPTY_TABLE = { tipo: "Dimension", nombre: "", columnas: [] };
 const EMPTY_COL = { nombre: "", tipo: "Texto", esSurrogateKey: false };
 
@@ -10,34 +17,72 @@ export default function DwhModel({ value, onChange }) {
 
   const tables = value?.tables ?? [];
 
+  // ================================
+  //  ⭐ AUTOCORRECCIÓN DE COLUMNAS
+  // ================================
+  const handleColumnNameInput = (value) => {
+    let cleaned = cleanColumnText(value);
+
+    if (currentCol.esSurrogateKey) {
+      cleaned = applySKPrefix(cleaned);
+    } else {
+      cleaned = removeSKPrefix(cleaned);
+    }
+
+    setCurrentCol({ ...currentCol, nombre: cleaned });
+  };
+
   const handleAddColumn = () => {
     if (!currentCol.nombre.trim()) return;
-    setCurrentTable((t) => ({ ...t, columnas: [...t.columnas, currentCol] }));
+
+    setCurrentTable((t) => ({
+      ...t,
+      columnas: [...t.columnas, currentCol],
+    }));
+
     setCurrentCol(EMPTY_COL);
   };
 
   const handleRemoveColumn = (i) => {
-    setCurrentTable((t) => ({ ...t, columnas: t.columnas.filter((_, idx) => idx !== i) }));
+    setCurrentTable((t) => ({
+      ...t,
+      columnas: t.columnas.filter((_, idx) => idx !== i),
+    }));
+  };
+
+  // ================================
+  //  ⭐ AUTOCORRECCIÓN DE TABLAS
+  // ================================
+  const handleTableNameInput = (value) => {
+    const formatted = formatTableName(value);
+    setCurrentTable({ ...currentTable, nombre: formatted });
   };
 
   const handleAddTable = () => {
-    if (!currentTable.nombre.trim() || currentTable.columnas.length === 0) return;
+    if (!currentTable.nombre.trim() || currentTable.columnas.length === 0)
+      return;
+
     onChange({ ...value, tables: [...tables, currentTable] });
+
     setCurrentTable(EMPTY_TABLE);
     setCurrentCol(EMPTY_COL);
   };
 
   const handleRemoveTable = (i) => {
-    onChange({ ...value, tables: tables.filter((_, idx) => idx !== i) });
+    onChange({
+      ...value,
+      tables: tables.filter((_, idx) => idx !== i),
+    });
   };
 
-  const canAddTable = currentTable.nombre.trim() && currentTable.columnas.length > 0;
+  const canAddTable =
+    currentTable.nombre.trim() && currentTable.columnas.length > 0;
 
   return (
     <div className="form-section">
       <h2 className="form-section__title">Modelo de DWH</h2>
 
-      {/* Panel definición de nueva tabla */}
+      {/* Nueva tabla */}
       <div className="dwh-table-panel">
         <p className="dwh-panel-label">Nueva tabla</p>
 
@@ -46,7 +91,9 @@ export default function DwhModel({ value, onChange }) {
             <label>Tipo</label>
             <select
               value={currentTable.tipo}
-              onChange={(e) => setCurrentTable({ ...currentTable, tipo: e.target.value })}
+              onChange={(e) =>
+                setCurrentTable({ ...currentTable, tipo: e.target.value })
+              }
             >
               <option>Dimension</option>
               <option>Fact</option>
@@ -55,24 +102,28 @@ export default function DwhModel({ value, onChange }) {
 
           <div className="form-field" style={{ flex: "2 1 200px" }}>
             <label>Nombre de tabla</label>
+
+            {/* ⭐ Ahora autocorrige al escribir */}
             <input
               type="text"
               placeholder="Ej: DIM_CLIENTE"
               value={currentTable.nombre}
-              onChange={(e) => setCurrentTable({ ...currentTable, nombre: e.target.value })}
+              onChange={(e) => handleTableNameInput(e.target.value)}
             />
           </div>
         </div>
 
-        {/* Agregar columna a la tabla en curso */}
+        {/* Nueva columna */}
         <div className="staging-add-row">
           <div className="form-field">
             <label>Nombre de columna</label>
+
+            {/* ⭐ Ahora autocorrige al escribir */}
             <input
               type="text"
               placeholder="Ej: SK_CLIENTE"
               value={currentCol.nombre}
-              onChange={(e) => setCurrentCol({ ...currentCol, nombre: e.target.value })}
+              onChange={(e) => handleColumnNameInput(e.target.value)}
             />
           </div>
 
@@ -80,7 +131,9 @@ export default function DwhModel({ value, onChange }) {
             <label>Tipo de dato</label>
             <select
               value={currentCol.tipo}
-              onChange={(e) => setCurrentCol({ ...currentCol, tipo: e.target.value })}
+              onChange={(e) =>
+                setCurrentCol({ ...currentCol, tipo: e.target.value })
+              }
             >
               <option>Texto</option>
               <option>Entero</option>
@@ -96,7 +149,20 @@ export default function DwhModel({ value, onChange }) {
               <input
                 type="checkbox"
                 checked={currentCol.esSurrogateKey}
-                onChange={(e) => setCurrentCol({ ...currentCol, esSurrogateKey: e.target.checked })}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  let newName = cleanColumnText(currentCol.nombre);
+
+                  newName = checked
+                    ? applySKPrefix(newName)
+                    : removeSKPrefix(newName);
+
+                  setCurrentCol({
+                    ...currentCol,
+                    esSurrogateKey: checked,
+                    nombre: newName
+                  });
+                }}
               />
               Sí
             </label>
@@ -111,7 +177,7 @@ export default function DwhModel({ value, onChange }) {
           </button>
         </div>
 
-        {/* Columnas de la tabla en curso */}
+        {/* Columnas de la tabla actual */}
         {currentTable.columnas.length > 0 && (
           <div className="staging-table-wrapper dwh-col-preview">
             <table className="staging-table">
@@ -130,7 +196,12 @@ export default function DwhModel({ value, onChange }) {
                     <td>{col.tipo}</td>
                     <td>{col.esSurrogateKey ? "✔" : "—"}</td>
                     <td>
-                      <button className="staging-remove-btn" onClick={() => handleRemoveColumn(i)}>✕</button>
+                      <button
+                        className="staging-remove-btn"
+                        onClick={() => handleRemoveColumn(i)}
+                      >
+                        ✕
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -148,16 +219,26 @@ export default function DwhModel({ value, onChange }) {
         </button>
       </div>
 
-      {/* Tablas definidas */}
+      {/* Tablas ya agregadas */}
       {tables.length > 0 && (
         <div className="dwh-tables-list">
           {tables.map((table, i) => (
             <div key={i} className="dwh-table-card">
               <div className="dwh-table-card__header">
-                <span className={`dwh-badge dwh-badge--${table.tipo.toLowerCase()}`}>{table.tipo}</span>
+                <span
+                  className={`dwh-badge dwh-badge--${table.tipo.toLowerCase()}`}
+                >
+                  {table.tipo}
+                </span>
                 <span className="dwh-table-card__name">{table.nombre}</span>
-                <button className="staging-remove-btn" onClick={() => handleRemoveTable(i)}>✕</button>
+                <button
+                  className="staging-remove-btn"
+                  onClick={() => handleRemoveTable(i)}
+                >
+                  ✕
+                </button>
               </div>
+
               <div className="staging-table-wrapper">
                 <table className="staging-table">
                   <thead>

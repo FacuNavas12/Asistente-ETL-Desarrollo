@@ -8,6 +8,8 @@ import DwhModel from "../components/etl/DwhModel";
 import ChartPanel from "../components/etl/ChartPanel";
 import ExplanationPanel from "../components/etl/ExplanationPanel";
 import "../css/createETL.css";
+import "../css/etl-error.css";
+import validateForm from "../validation/etlform";
 
 export default function CreateETL() {
   const [step, setStep] = useState("form"); // form | processing | result
@@ -17,8 +19,27 @@ export default function CreateETL() {
   const [reglasNegocio, setReglasNegocio] = useState("");
   const [dwhModel, setDwhModel] = useState({ tables: [] });
 
+  const [errors, setErrors] = useState([]);
+
   const handleCreate = () => {
+    console.log("CLICK FUNCIONA");
+
+    const result = validateForm({
+      origenText,
+      stagingDef,
+      reglasNegocio,
+      dwhModel,
+    });
+
+    if (!result.isValid) {
+      setErrors(result.errors);
+      return;
+    }
+
+    setErrors([]);
+
     setStep("processing");
+
     setTimeout(() => {
       setResponseData({
         chartData: [12, 19, 3, 5, 2, 3],
@@ -44,16 +65,29 @@ export default function CreateETL() {
 
             {/* IZQUIERDA: formulario siempre visible */}
             <div className="etl-form-side">
-              <OrigenInput value={origenText} onChange={setOrigenText} />
-              <StagingForm value={stagingDef} onChange={setStagingDef} />
-              <DwhModel value={dwhModel} onChange={setDwhModel} />
-              <ReglasNegocio value={reglasNegocio} onChange={setReglasNegocio} />
-              {step === "form" && (
+            <OrigenInput value={origenText} onChange={setOrigenText} />
+            <StagingForm value={stagingDef} onChange={setStagingDef} />
+            <DwhModel value={dwhModel} onChange={setDwhModel} />
+            <ReglasNegocio value={reglasNegocio} onChange={setReglasNegocio} />
+
+            {step === "form" && (
+              <>
                 <button className="etl-submit-btn" onClick={handleCreate}>
                   Crear ETL
                 </button>
-              )}
-            </div>
+
+                {errors.length > 0 && (
+                  <div className="etl-errors-box">
+                    <ul>
+                      {errors.map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
             {/* DERECHA: aparece al hacer submit */}
             <div className="etl-right-side">
