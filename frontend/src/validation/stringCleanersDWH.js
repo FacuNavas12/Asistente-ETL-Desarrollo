@@ -7,10 +7,12 @@ export const toUpperNoSpaces = (str) => {
 };
 
 // 👉 Para tablas sigue igual
-export const formatTableName = (name) => {
+export const formatTableName = (name, tipo) => {
   const clean = toUpperNoSpaces(name);
-  if (clean.startsWith("DIM_")) return clean;
-  return `DIM_${clean}`;
+
+  if(tipo === "Dimension" && !clean.startsWith("DIM_")) return `DIM_${clean}`;
+  if(tipo === "Fact" && !clean.startsWith("FACT_")) return `FACT_${clean}`;
+  return clean;
 };
 
 // 👉 Para columnas YA NO AGREGAMOS SK_ por defecto

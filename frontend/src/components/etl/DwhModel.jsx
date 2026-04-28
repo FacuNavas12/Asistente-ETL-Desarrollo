@@ -6,7 +6,7 @@ import {
   cleanColumnText,
   applySKPrefix,
   removeSKPrefix
-} from "../../validation/stringCleaners";
+} from "../../validation/stringCleanersDWH";
 
 const EMPTY_TABLE = { tipo: "Dimension", nombre: "", columnas: [] };
 const EMPTY_COL = { nombre: "", tipo: "Texto", esSurrogateKey: false };
@@ -14,6 +14,9 @@ const EMPTY_COL = { nombre: "", tipo: "Texto", esSurrogateKey: false };
 export default function DwhModel({ value, onChange }) {
   const [currentTable, setCurrentTable] = useState(EMPTY_TABLE);
   const [currentCol, setCurrentCol] = useState(EMPTY_COL);
+  
+  //estado para saber si estas editando una tabla o columna, para mostrar el formulario correspondiente
+  const [editingIndex, setEditingIndex] = useState(null);
 
   const tables = value?.tables ?? [];
 
@@ -53,19 +56,39 @@ export default function DwhModel({ value, onChange }) {
   // ================================
   //  ⭐ AUTOCORRECCIÓN DE TABLAS
   // ================================
-  const handleTableNameInput = (value) => {
-    const formatted = formatTableName(value);
-    setCurrentTable({ ...currentTable, nombre: formatted });
-  };
-
-  const handleAddTable = () => {
-    if (!currentTable.nombre.trim() || currentTable.columnas.length === 0)
+  const handleSaveTable = () => {
+    if (!currentTable.nombre.trim() || currentTable.columnas.length === 0) {
       return;
+    }
 
-    onChange({ ...value, tables: [...tables, currentTable] });
+    const formattedName = formatTableName(
+      currentTable.nombre,
+      currentTable.tipo
+    );
 
+    const newTable = {
+      ...currentTable,
+      nombre: formattedName,
+    };
+
+    let newTables;
+
+    if (editingIndex !== null) {
+      // ⭐ Modo Edición → Reemplaza la tabla existente
+      newTables = tables.map((t, idx) =>
+        idx === editingIndex ? newTable : t
+      );
+    } else {
+      // ⭐ Modo Crear → Agrega nueva tabla
+      newTables = [...tables, newTable];
+    }
+
+    onChange({ ...value, tables: newTables });
+
+    // Reset
     setCurrentTable(EMPTY_TABLE);
     setCurrentCol(EMPTY_COL);
+    setEditingIndex(null);
   };
 
   const handleRemoveTable = (i) => {
@@ -74,6 +97,19 @@ export default function DwhModel({ value, onChange }) {
       tables: tables.filter((_, idx) => idx !== i),
     });
   };
+
+  // ================================
+  //  ⭐ EDITAR TABLA
+  // ================================
+  const handleEditTable = (i) => {
+    // Clonar para evitar mutación accidental
+    const tableToEdit = JSON.parse(JSON.stringify(tables[i]));
+
+    setCurrentTable(tableToEdit);
+    setCurrentCol(EMPTY_COL);   // No queremos sobrescribir la columna que se va agregando
+    setEditingIndex(i);
+  };
+
 
   const canAddTable =
     currentTable.nombre.trim() && currentTable.columnas.length > 0;
@@ -106,9 +142,14 @@ export default function DwhModel({ value, onChange }) {
             {/* ⭐ Ahora autocorrige al escribir */}
             <input
               type="text"
-              placeholder="Ej: DIM_CLIENTE"
+              placeholder="Ej: cliente"
               value={currentTable.nombre}
-              onChange={(e) => handleTableNameInput(e.target.value)}
+              onChange={(e) =>
+                setCurrentTable({
+                  ...currentTable,
+                  nombre: e.target.value
+                })
+              }
             />
           </div>
         </div>
@@ -118,7 +159,7 @@ export default function DwhModel({ value, onChange }) {
           <div className="form-field">
             <label>Nombre de columna</label>
 
-            {/* ⭐ Ahora autocorrige al escribir */}
+
             <input
               type="text"
               placeholder="Ej: SK_CLIENTE"
@@ -212,10 +253,10 @@ export default function DwhModel({ value, onChange }) {
 
         <button
           className="dwh-add-table-btn"
-          onClick={handleAddTable}
+          onClick={handleSaveTable}
           disabled={!canAddTable}
         >
-          + Agregar tabla
+          {editingIndex !== null ? "Guardar cambios" : "+ Agregar tabla"}
         </button>
       </div>
 
@@ -231,6 +272,14 @@ export default function DwhModel({ value, onChange }) {
                   {table.tipo}
                 </span>
                 <span className="dwh-table-card__name">{table.nombre}</span>
+
+                <button
+                  className="staging-edit-btn"
+                  onClick={() => handleEditTable(i)}
+                >
+                  ✎
+                </button>
+
                 <button
                   className="staging-remove-btn"
                   onClick={() => handleRemoveTable(i)}
