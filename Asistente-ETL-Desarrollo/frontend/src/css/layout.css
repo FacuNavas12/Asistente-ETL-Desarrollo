@@ -1,0 +1,15 @@
+.layout {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  position: relative;
+}
+
+.layout-user-options {
+  position: fixed;
+  top: 16px;
+  right: 24px;
+  z-index: 1000;
+}
