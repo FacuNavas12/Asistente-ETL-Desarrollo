@@ -1,12 +1,10 @@
-import UserOptions from "./UserOptions";
+import Navbar from "./Navbar";
 import "../css/layout.css";
 
-export default function Layout({ children, onProfilePage = false }) {
+export default function Layout({ children, onHomeClick }) {
   return (
     <div className="layout">
-      <div className="layout-user-options">
-        <UserOptions onProfilePage={onProfilePage} />
-      </div>
+      <Navbar onHomeClick={onHomeClick} />
       {children}
     </div>
   );

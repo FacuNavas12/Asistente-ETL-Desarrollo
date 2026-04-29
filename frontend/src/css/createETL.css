@@ -2,18 +2,31 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 32px;
-  padding-top: 80px;
+  padding: 80px 32px 40px;
   box-sizing: border-box;
   min-height: 100vh;
+}
+
+/* ── Header row: title + limpiar btn ── */
+.etl-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
 }
 
 .etl-title {
   font-size: 28px !important;
   font-weight: 700;
   color: var(--text-h);
-  margin: 0 0 28px !important;
+  margin: 0 !important;
   letter-spacing: -0.5px;
+}
+
+/* Limpiar button inside the form header */
+.etl-page__header .etl-clear-btn {
+  width: auto;
+  padding: 9px 18px;
 }
 
 /* ── Contenedor principal ── */
@@ -27,29 +40,8 @@
 /* ── Lado izquierdo (formulario) ── */
 .etl-form-side {
   width: 100%;
-  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-.etl-body.split .etl-form-side {
-  width: 50%;
-}
-
-/* ── Lado derecho (paneles resultado) ── */
-.etl-right-side {
-  width: 0;
-  overflow: hidden;
-  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  flex-shrink: 0;
-}
-
-.etl-body.split .etl-right-side {
-  width: 50%;
 }
 
 /* ── Botón submit ── */
@@ -85,4 +77,28 @@
   justify-content: center;
   align-items: center;
   min-height: 300px;
+}
+
+/* ── Limpiar button (shared) ── */
+.etl-clear-btn {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.etl-clear-btn:hover:not(:disabled) {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
+.etl-clear-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
 }
