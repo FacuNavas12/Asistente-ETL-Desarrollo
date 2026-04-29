@@ -11,9 +11,10 @@ export default function Navbar({ onHomeClick }) {
   const location = useLocation();
   const [dropOpen, setDropOpen] = useState(false);
 
-  const showHomeIcon =
-    location.pathname === "/etl-create" ||
-    location.pathname.startsWith("/etl/");
+
+  //boton home en cualquier lado que no sea home
+  const showHomeIcon = location.pathname !== "/home";
+
 
   const handleLogout = () =>
     logout({ logoutParams: { returnTo: window.location.origin } });
