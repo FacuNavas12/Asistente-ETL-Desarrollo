@@ -13,7 +13,7 @@ export default function Home() {
         <h1 className="home-title">Bienvenido, {user?.given_name || user?.name}</h1>
         <p className="home-subtitle">¿Qué querés hacer hoy?</p>
         <button className="etl-create-btn" onClick={() => navigate("/etl-create")}>
-          + ETL Create
+          + Crear ETL
         </button>
       </div>
     </Layout>

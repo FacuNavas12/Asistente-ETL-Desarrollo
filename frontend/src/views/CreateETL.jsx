@@ -22,7 +22,6 @@ export default function CreateETL() {
   const [errors, setErrors] = useState([]);
 
   const handleCreate = () => {
-    console.log("CLICK FUNCIONA");
 
     const result = validateForm({
       origenText,
