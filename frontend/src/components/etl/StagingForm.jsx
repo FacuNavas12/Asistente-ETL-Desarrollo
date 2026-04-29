@@ -44,6 +44,16 @@ export default function StagingForm({ value, onChange }) {
         />
       </div>
 
+      <div className="form-field">
+        <label>Tabla / fuente de origen vinculada</label>
+        <input
+          type="text"
+          placeholder="Ej: tabla_clientes del sistema CRM"
+          value={value?.origenVinculado ?? ""}
+          onChange={(e) => onChange({ ...value, origenVinculado: e.target.value })}
+        />
+      </div>
+
       <div className="staging-add-row">
         <div className="form-field">
           <label>Nombre del campo</label>
