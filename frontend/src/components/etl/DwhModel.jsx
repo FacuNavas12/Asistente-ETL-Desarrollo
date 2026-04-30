@@ -8,7 +8,7 @@ import {
   removeSKPrefix
 } from "../../validation/stringCleanersDWH";
 
-const EMPTY_TABLE = { tipo: "Dimension", nombre: "", columnas: [] };
+const EMPTY_TABLE = { tipo: "Dimension", nombre: "", origenVinculado: "", columnas: [] };
 const EMPTY_COL = { nombre: "", tipo: "Texto", esSurrogateKey: false };
 
 export default function DwhModel({ value, onChange }) {
@@ -138,20 +138,27 @@ export default function DwhModel({ value, onChange }) {
 
           <div className="form-field" style={{ flex: "2 1 200px" }}>
             <label>Nombre de tabla</label>
-
-            {/* ⭐ Ahora autocorrige al escribir */}
             <input
               type="text"
               placeholder="Ej: cliente"
               value={currentTable.nombre}
               onChange={(e) =>
-                setCurrentTable({
-                  ...currentTable,
-                  nombre: e.target.value
-                })
+                setCurrentTable({ ...currentTable, nombre: e.target.value })
               }
             />
           </div>
+        </div>
+
+        <div className="form-field">
+          <label>Tabla / fuente de origen vinculada</label>
+          <input
+            type="text"
+            placeholder="Ej: STG_CLIENTES o tabla_ventas del ERP"
+            value={currentTable.origenVinculado}
+            onChange={(e) =>
+              setCurrentTable({ ...currentTable, origenVinculado: e.target.value })
+            }
+          />
         </div>
 
         {/* Nueva columna */}
@@ -266,12 +273,13 @@ export default function DwhModel({ value, onChange }) {
           {tables.map((table, i) => (
             <div key={i} className="dwh-table-card">
               <div className="dwh-table-card__header">
-                <span
-                  className={`dwh-badge dwh-badge--${table.tipo.toLowerCase()}`}
-                >
+                <span className={`dwh-badge dwh-badge--${table.tipo.toLowerCase()}`}>
                   {table.tipo}
                 </span>
                 <span className="dwh-table-card__name">{table.nombre}</span>
+                {table.origenVinculado && (
+                  <span className="dwh-table-card__origen">← {table.origenVinculado}</span>
+                )}
 
                 <button
                   className="staging-edit-btn"

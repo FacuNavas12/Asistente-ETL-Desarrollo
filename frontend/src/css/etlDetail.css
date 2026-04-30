@@ -1,0 +1,92 @@
+.etl-detail {
+  flex: 1;
+  padding: 80px 40px 60px;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.etl-detail__header {
+  margin-bottom: 36px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.etl-detail__title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.etl-detail__date {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.etl-detail__body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.etl-detail__chart-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 32px;
+  box-shadow: var(--shadow);
+}
+
+.etl-detail__chart-box h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 24px;
+  letter-spacing: -0.2px;
+}
+
+.bar-chart {
+  width: 100%;
+  max-width: 400px;
+  display: block;
+}
+
+.etl-detail__explanation {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 32px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.etl-detail__explanation p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.etl-detail-notfound {
+  padding: 100px 32px;
+  color: var(--text);
+  font-size: 16px;
+  text-align: center;
+}
+
+.etl-detail-notfound button {
+  margin-left: 8px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 16px;
+}
