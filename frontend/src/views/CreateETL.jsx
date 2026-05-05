@@ -15,9 +15,9 @@ import "../css/etl-error.css";
 const EMPTY_STAGING = { tableName: "", columns: [] };
 const EMPTY_DWH = { tables: [] };
 
-function isDirty(origenText, stagingDef, reglasNegocio, dwhModel) {
+function isDirty(origenTables, stagingDef, reglasNegocio, dwhModel) {
   return (
-    origenText.trim().length > 0 ||
+    origenTables.length > 0 ||
     stagingDef.tableName.length > 0 ||
     stagingDef.columns.length > 0 ||
     reglasNegocio.trim().length > 0 ||
@@ -32,20 +32,20 @@ export default function CreateETL() {
   const [step, setStep] = useState("form");
   const [showModal, setShowModal] = useState(false);
 
-  const [origenText, setOrigenText] = useState(draft?.origenText ?? "");
+  const [origenTables, setOrigenTables] = useState(draft?.origenTables ?? []);
   const [stagingDef, setStagingDef] = useState(draft?.stagingDef ?? EMPTY_STAGING);
   const [reglasNegocio, setReglasNegocio] = useState(draft?.reglasNegocio ?? "");
   const [dwhModel, setDwhModel] = useState(draft?.dwhModel ?? EMPTY_DWH);
   const [errors, setErrors] = useState([]);
 
   useEffect(() => {
-    saveDraft({ origenText, stagingDef, reglasNegocio, dwhModel });
-  }, [origenText, stagingDef, reglasNegocio, dwhModel]);
+    saveDraft({ origenTables, stagingDef, reglasNegocio, dwhModel });
+  }, [origenTables, stagingDef, reglasNegocio, dwhModel]);
 
-  const dirty = isDirty(origenText, stagingDef, reglasNegocio, dwhModel);
+  const dirty = isDirty(origenTables, stagingDef, reglasNegocio, dwhModel);
 
   const handleLimpiar = () => {
-    setOrigenText("");
+    setOrigenTables([]);
     setStagingDef(EMPTY_STAGING);
     setReglasNegocio("");
     setDwhModel(EMPTY_DWH);
@@ -54,12 +54,12 @@ export default function CreateETL() {
   };
 
   const handleCreate = () => {
-    const result = validateForm({ origenText, stagingDef, reglasNegocio, dwhModel });
+    const result = validateForm({ origenTables, stagingDef, reglasNegocio, dwhModel });
     if (!result.isValid) { setErrors(result.errors); return; }
     setErrors([]);
     setStep("processing");
     setTimeout(() => {
-      const id = addEtl({ origenText, stagingDef, reglasNegocio, dwhModel });
+      const id = addEtl({ origenTables, stagingDef, reglasNegocio, dwhModel });
       navigate(`/etl/${id}`);
     }, 2000);
   };
@@ -90,7 +90,7 @@ export default function CreateETL() {
         {step === "form" && (
           <div className="etl-body">
             <div className="etl-form-side">
-              <OrigenInput value={origenText} onChange={setOrigenText} />
+              <OrigenInput value={origenTables} onChange={setOrigenTables} />
               <StagingForm value={stagingDef} onChange={setStagingDef} />
               <DwhModel value={dwhModel} onChange={setDwhModel} />
               <ReglasNegocio value={reglasNegocio} onChange={setReglasNegocio} />

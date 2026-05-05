@@ -1,34 +1,30 @@
 import { useState } from "react";
 import "../../css/etlForm.css";
+import { ColumnTable } from "./tableUtils";
 
 const EMPTY_COLUMN = { nombre: "", tipo: "Texto", regla: "MAYÚSCULAS", datoNoValido: "Reemplazar por NULL" };
+
+const STG_COL_DEFS = [
+  { key: "nombre",       label: "Campo" },
+  { key: "tipo",         label: "Tipo" },
+  { key: "regla",        label: "Regla" },
+  { key: "datoNoValido", label: "Dato no válido" },
+];
 
 export default function StagingForm({ value, onChange }) {
   const [current, setCurrent] = useState(EMPTY_COLUMN);
 
+  const columns = value?.columns ?? [];
+
   const handleAdd = () => {
     if (!current.nombre.trim()) return;
-    const updated = {
-      ...value,
-      columns: [...(value?.columns ?? []), current],
-    };
-    onChange(updated);
+    onChange({ ...value, columns: [...columns, current] });
     setCurrent(EMPTY_COLUMN);
   };
 
-  const handleRemove = (index) => {
-    const updated = {
-      ...value,
-      columns: value.columns.filter((_, i) => i !== index),
-    };
-    onChange(updated);
+  const handleRemove = (i) => {
+    onChange({ ...value, columns: columns.filter((_, idx) => idx !== i) });
   };
-
-  const handleTableName = (tableName) => {
-    onChange({ ...value, tableName });
-  };
-
-  const columns = value?.columns ?? [];
 
   return (
     <div className="form-section">
@@ -40,7 +36,7 @@ export default function StagingForm({ value, onChange }) {
           type="text"
           placeholder="Ej: STG_ESTUDIANTES"
           value={value?.tableName ?? ""}
-          onChange={(e) => handleTableName(e.target.value)}
+          onChange={(e) => onChange({ ...value, tableName: e.target.value })}
         />
       </div>
 
@@ -106,34 +102,7 @@ export default function StagingForm({ value, onChange }) {
         </button>
       </div>
 
-      {columns.length > 0 && (
-        <div className="staging-table-wrapper">
-          <table className="staging-table">
-            <thead>
-              <tr>
-                <th>Campo</th>
-                <th>Tipo</th>
-                <th>Regla</th>
-                <th>Dato no válido</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {columns.map((col, i) => (
-                <tr key={i}>
-                  <td>{col.nombre}</td>
-                  <td>{col.tipo}</td>
-                  <td>{col.regla}</td>
-                  <td>{col.datoNoValido}</td>
-                  <td>
-                    <button className="staging-remove-btn" onClick={() => handleRemove(i)}>✕</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ColumnTable columns={columns} columnDefs={STG_COL_DEFS} onRemove={handleRemove} />
     </div>
   );
 }

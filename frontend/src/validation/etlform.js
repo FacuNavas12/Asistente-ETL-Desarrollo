@@ -1,9 +1,18 @@
-const validateForm = ({ origenText, stagingDef, reglasNegocio, dwhModel }) => {
+const validateForm = ({ origenTables, stagingDef, reglasNegocio, dwhModel }) => {
   const errors = [];
 
   // ORIGEN
-  if (!origenText.trim()) {
-    errors.push("La descripción de origen está vacía.");
+  if (!origenTables || origenTables.length === 0) {
+    errors.push("Debe agregar al menos una tabla de origen.");
+  } else {
+    origenTables.forEach((t, idx) => {
+      if (!t.tableName?.trim()) {
+        errors.push(`La tabla ${idx + 1} de origen no tiene nombre.`);
+      }
+      if (!t.columns || t.columns.length === 0) {
+        errors.push(`La tabla "${t.tableName || `sin nombre ${idx + 1}`}" no tiene columnas.`);
+      }
+    });
   }
 
   // STAGING
