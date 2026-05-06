@@ -16,12 +16,17 @@ const validateForm = ({ origenTables, stagingDef, reglasNegocio, dwhModel }) => 
   }
 
   // STAGING
-  if (!stagingDef.tableName.trim()) {
-    errors.push("El nombre de la tabla de Staging está vacío.");
-  }
-
-  if (!stagingDef.columns || stagingDef.columns.length === 0) {
-    errors.push("Debe agregar al menos una columna en Staging.");
+  if (!stagingDef || stagingDef.length === 0) {
+    errors.push("Debe agregar al menos una tabla de Staging.");
+  } else {
+    stagingDef.forEach((t, idx) => {
+      if (!t.tableName?.trim()) {
+        errors.push(`La tabla ${idx + 1} de Staging no tiene nombre.`);
+      }
+      if (!t.columns || t.columns.length === 0) {
+        errors.push(`La tabla Staging "${t.tableName || `sin nombre ${idx + 1}`}" no tiene columnas.`);
+      }
+    });
   }
 
   // DWH

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import "../../css/etlForm.css";
 import { useTableEditor, ColumnTable } from "./tableUtils";
 import {
@@ -10,13 +11,15 @@ import {
 const EMPTY_TABLE = { tipo: "Dimension", nombre: "", origenVinculado: "", columnas: [] };
 const EMPTY_COL   = { nombre: "", tipo: "Texto", esSurrogateKey: false };
 
+const STG_DWH_TYPE_MAP = { Texto: "Texto", Número: "Entero", Fecha: "Fecha", Booleano: "Booleano" };
+
 const DWH_COL_DEFS = [
   { key: "nombre",         label: "Columna" },
   { key: "tipo",           label: "Tipo" },
   { key: "esSurrogateKey", label: "SK", render: (col) => col.esSurrogateKey ? "✔" : "—" },
 ];
 
-export default function DwhModel({ value, onChange }) {
+export default function DwhModel({ value, onChange, stagingTables = [] }) {
   const tables    = value?.tables ?? [];
   const setTables = (newTables) => onChange({ ...value, tables: newTables });
 
@@ -28,20 +31,27 @@ export default function DwhModel({ value, onChange }) {
     columnsKey: "columnas",
   });
 
-  const handleColumnNameInput = (val) => {
-    let cleaned = cleanColumnText(val);
-    cleaned = ed.currentCol.esSurrogateKey ? applySKPrefix(cleaned) : removeSKPrefix(cleaned);
-    ed.setCurrentCol({ ...ed.currentCol, nombre: cleaned });
-  };
+  const [selectedStgColName, setSelectedStgColName] = useState("");
+
+  const stagingCols = stagingTables
+    .find(t => t.tableName === ed.currentTable.origenVinculado)
+    ?.columns ?? [];
 
   const handleAddColumn = () => {
     if (!ed.currentCol.nombre.trim()) return;
     ed.addColumn(ed.currentCol);
+    setSelectedStgColName("");
   };
 
   const handleSaveTable = () => {
     if (!ed.currentTable.nombre.trim() || ed.currentTable.columnas.length === 0) return;
     ed.saveTable(t => ({ ...t, nombre: formatTableName(t.nombre, t.tipo) }));
+    setSelectedStgColName("");
+  };
+
+  const handleEditTable = (i) => {
+    setSelectedStgColName("");
+    ed.editTable(i);
   };
 
   const canAddTable = ed.currentTable.nombre.trim() && ed.currentTable.columnas.length > 0;
@@ -79,24 +89,43 @@ export default function DwhModel({ value, onChange }) {
 
         <div className="form-field">
           <label>Tabla / fuente de origen vinculada</label>
-          <input
-            type="text"
-            placeholder="Ej: STG_CLIENTES o tabla_ventas del ERP"
+          <select
             value={ed.currentTable.origenVinculado}
-            onChange={(e) => ed.setCurrentTable({ ...ed.currentTable, origenVinculado: e.target.value })}
-          />
+            onChange={(e) => {
+              ed.setCurrentTable({ ...ed.currentTable, origenVinculado: e.target.value });
+              setSelectedStgColName("");
+              ed.setCurrentCol({ ...EMPTY_COL });
+            }}
+          >
+            <option value="">— Seleccionar —</option>
+            {stagingTables.map(t => (
+              <option key={t.tableName} value={t.tableName}>{t.tableName}</option>
+            ))}
+          </select>
         </div>
 
         {/* Nueva columna */}
         <div className="staging-add-row">
           <div className="form-field">
             <label>Nombre de columna</label>
-            <input
-              type="text"
-              placeholder="Ej: SK_CLIENTE"
-              value={ed.currentCol.nombre}
-              onChange={(e) => handleColumnNameInput(e.target.value)}
-            />
+            <select
+              value={selectedStgColName}
+              onChange={(e) => {
+                const rawName = e.target.value;
+                setSelectedStgColName(rawName);
+                const stgCol = stagingCols.find(c => c.nombre === rawName);
+                let cleaned = rawName ? cleanColumnText(rawName) : "";
+                cleaned = ed.currentCol.esSurrogateKey ? applySKPrefix(cleaned) : removeSKPrefix(cleaned);
+                const tipo = stgCol ? (STG_DWH_TYPE_MAP[stgCol.tipo] ?? "Texto") : "Texto";
+                ed.setCurrentCol({ ...ed.currentCol, nombre: cleaned, tipo });
+              }}
+              disabled={!ed.currentTable.origenVinculado}
+            >
+              <option value="">— Seleccionar —</option>
+              {stagingCols.map(c => (
+                <option key={c.nombre} value={c.nombre}>{c.nombre}</option>
+              ))}
+            </select>
           </div>
 
           <div className="form-field">
@@ -164,7 +193,7 @@ export default function DwhModel({ value, onChange }) {
                 {table.origenVinculado && (
                   <span className="dwh-table-card__origen">← {table.origenVinculado}</span>
                 )}
-                <button className="staging-edit-btn" onClick={() => ed.editTable(i)}>✎</button>
+                <button className="staging-edit-btn" onClick={() => handleEditTable(i)}>✎</button>
                 <button className="staging-remove-btn" onClick={() => ed.removeAt(i)}>✕</button>
               </div>
 

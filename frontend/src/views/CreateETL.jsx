@@ -12,14 +12,12 @@ import validateForm from "../validation/etlform";
 import "../css/createETL.css";
 import "../css/etl-error.css";
 
-const EMPTY_STAGING = { tableName: "", columns: [] };
 const EMPTY_DWH = { tables: [] };
 
 function isDirty(origenTables, stagingDef, reglasNegocio, dwhModel) {
   return (
     origenTables.length > 0 ||
-    stagingDef.tableName.length > 0 ||
-    stagingDef.columns.length > 0 ||
+    stagingDef.length > 0 ||
     reglasNegocio.trim().length > 0 ||
     dwhModel.tables.length > 0
   );
@@ -33,7 +31,7 @@ export default function CreateETL() {
   const [showModal, setShowModal] = useState(false);
 
   const [origenTables, setOrigenTables] = useState(draft?.origenTables ?? []);
-  const [stagingDef, setStagingDef] = useState(draft?.stagingDef ?? EMPTY_STAGING);
+  const [stagingDef, setStagingDef] = useState(Array.isArray(draft?.stagingDef) ? draft.stagingDef : []);
   const [reglasNegocio, setReglasNegocio] = useState(draft?.reglasNegocio ?? "");
   const [dwhModel, setDwhModel] = useState(draft?.dwhModel ?? EMPTY_DWH);
   const [errors, setErrors] = useState([]);
@@ -46,22 +44,35 @@ export default function CreateETL() {
 
   const handleLimpiar = () => {
     setOrigenTables([]);
-    setStagingDef(EMPTY_STAGING);
+    setStagingDef([]);
     setReglasNegocio("");
     setDwhModel(EMPTY_DWH);
     clearDraft();
     setErrors([]);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const result = validateForm({ origenTables, stagingDef, reglasNegocio, dwhModel });
     if (!result.isValid) { setErrors(result.errors); return; }
     setErrors([]);
     setStep("processing");
-    setTimeout(() => {
+
+    try {
+      const res = await fetch("http://localhost:8000/api/ai/etl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ origenTables, stagingDef, dwhModel, reglasNegocio }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+        throw new Error(err.detail ?? `HTTP ${res.status}`);
+      }
       const id = addEtl({ origenTables, stagingDef, reglasNegocio, dwhModel });
       navigate(`/etl/${id}`);
-    }, 2000);
+    } catch (err) {
+      setStep("form");
+      setErrors([`Error al enviar al servidor: ${err.message}`]);
+    }
   };
 
   return (
@@ -91,8 +102,8 @@ export default function CreateETL() {
           <div className="etl-body">
             <div className="etl-form-side">
               <OrigenInput value={origenTables} onChange={setOrigenTables} />
-              <StagingForm value={stagingDef} onChange={setStagingDef} />
-              <DwhModel value={dwhModel} onChange={setDwhModel} />
+              <StagingForm value={stagingDef} onChange={setStagingDef} origenTables={origenTables} />
+              <DwhModel value={dwhModel} onChange={setDwhModel} stagingTables={stagingDef} />
               <ReglasNegocio value={reglasNegocio} onChange={setReglasNegocio} />
 
               <button className="etl-submit-btn" onClick={handleCreate}>
