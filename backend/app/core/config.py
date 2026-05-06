@@ -1,14 +1,25 @@
 from pydantic_settings import BaseSettings
 from pathlib import Path
 
-# Sube dos niveles desde app/core/ hasta backend/
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
+
 class Settings(BaseSettings):
-    anthropic_api_key: str
-    model: str = "claude-haiku-4-5-20251001"
+    google_api_key: str
+
+    # Gemini 2.5 Flash para ambos roles de momento.
+    # Cambiar GOOGLE_MODEL_MAIN a gemini-2.5-pro cuando se inicie la comparativa.
+    google_model_main: str = "gemini-2.5-flash"
+    google_model_secondary: str = "gemini-2.5-flash"
+
+    # Parámetros de generación
+    main_temperature: float = 0.1    # RNF10 — reproducibilidad
+    main_max_tokens: int = 4096
+    secondary_temperature: float = 0.0  # determinismo total para validaciones
+    secondary_max_tokens: int = 2048
 
     class Config:
         env_file = str(ENV_PATH)
+
 
 settings = Settings()
