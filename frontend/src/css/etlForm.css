@@ -121,7 +121,8 @@
   border-bottom: none;
 }
 
-.staging-remove-btn {
+.staging-remove-btn,
+.staging-edit-btn {
   background: none;
   border: none;
   color: var(--text);
@@ -133,7 +134,8 @@
   transition: opacity 0.2s;
 }
 
-.staging-remove-btn:hover {
+.staging-remove-btn:hover,
+.staging-edit-btn:hover {
   opacity: 1;
 }
 
@@ -259,3 +261,169 @@
   color: #38bdf8;
   border: 1px solid #0ea5e944;
 }
+
+/* Origen — column definition form */
+.origen-col-form {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin-top: 6px;
+}
+
+.origen-col-form__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-h);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+/* Datos section */
+.origen-dato-section {
+  margin-bottom: 12px;
+}
+
+.origen-dato-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 6px;
+}
+
+.origen-dato-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.origen-dato-input-row input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.origen-dato-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.origen-dato-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.origen-dato-remove {
+  background: none;
+  border: none;
+  color: var(--text);
+  opacity: 0.5;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  line-height: 1;
+  transition: opacity 0.15s;
+}
+
+.origen-dato-remove:hover {
+  opacity: 1;
+}
+
+/* Collapsible column rows */
+.origen-cols-preview {
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.origen-col-collapse {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.origen-col-collapse__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+}
+
+.origen-col-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--text);
+  opacity: 0.6;
+  padding: 2px 4px;
+  width: 20px;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.origen-col-toggle:hover {
+  opacity: 1;
+}
+
+.origen-col-toggle--placeholder {
+  width: 20px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.origen-col-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-h);
+}
+
+.origen-col-meta {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.7;
+  flex: 1;
+}
+
+.origen-col-count {
+  font-size: 11px;
+  color: var(--text);
+  background: var(--accent-bg);
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.origen-col-collapse__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--accent-bg);
+}
+
+/* Saved table card — column list */
+.origen-saved-cols {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
