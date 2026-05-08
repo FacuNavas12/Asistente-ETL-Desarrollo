@@ -9,7 +9,7 @@ const ROLES    = ["PK", "FK", "clave natural", "atributo"];
 const EMPTY_TABLE = { tableName: "", columns: [] };
 const EMPTY_COL   = { name: "", dataType: "string", dataFormat: "", role: "atributo", data: [] };
 
-function CollapseRow({ col, onRemove }) {
+function CollapseRow({ col, onRemove, onEdit }) {
   const [open, setOpen] = useState(false);
   const hasData = col.data.length > 0;
 
@@ -27,6 +27,7 @@ function CollapseRow({ col, onRemove }) {
         {hasData && (
           <span className="origen-col-count">{col.data.length} dato{col.data.length !== 1 ? "s" : ""}</span>
         )}
+        {onEdit   && <button className="staging-edit-btn"   onClick={onEdit}>✎</button>}
         {onRemove && <button className="staging-remove-btn" onClick={onRemove}>✕</button>}
       </div>
 
@@ -41,7 +42,8 @@ function CollapseRow({ col, onRemove }) {
 
 export default function OrigenInput({ value, onChange }) {
   const tables = Array.isArray(value) ? value : [];
-  const [currentDato, setCurrentDato] = useState("");
+  const [currentDato,   setCurrentDato]   = useState("");
+  const [editingColIdx, setEditingColIdx] = useState(null);
 
   const ed = useTableEditor({
     emptyTable: EMPTY_TABLE,
@@ -62,30 +64,55 @@ export default function OrigenInput({ value, onChange }) {
 
   const handleAddColumn = () => {
     if (!ed.currentCol.name.trim()) return;
-    ed.addColumn(ed.currentCol);
+    if (editingColIdx !== null) {
+      ed.setCurrentTable(t => ({
+        ...t,
+        columns: t.columns.map((c, idx) => idx === editingColIdx ? ed.currentCol : c),
+      }));
+      setEditingColIdx(null);
+    } else {
+      ed.addColumn(ed.currentCol);
+    }
+    setCurrentDato("");
+  };
+
+  const handleCancelColEdit = () => {
+    setEditingColIdx(null);
+    ed.setCurrentCol(EMPTY_COL);
+    setCurrentDato("");
+  };
+
+  const handleEditColumn = (i) => {
+    ed.setCurrentCol({ ...ed.currentTable.columns[i] });
+    setEditingColIdx(i);
     setCurrentDato("");
   };
 
   const handleEditTable = (i) => {
     ed.editTable(i);
+    setEditingColIdx(null);
     setCurrentDato("");
   };
 
   const handleSaveTable = () => {
     if (!ed.currentTable.tableName.trim() || ed.currentTable.columns.length === 0) return;
     ed.saveTable();
+    setEditingColIdx(null);
     setCurrentDato("");
   };
 
-  const canAddTable = ed.currentTable.tableName.trim() && ed.currentTable.columns.length > 0;
+  const canAddTable  = ed.currentTable.tableName.trim() && ed.currentTable.columns.length > 0;
+  const isEditingCol = editingColIdx !== null;
 
   return (
     <div className="form-section">
       <h2 className="form-section__title">Datos de origen</h2>
 
-      {/* ── Panel nueva tabla ── */}
+      {/* ── Panel nueva / editar tabla ── */}
       <div className="dwh-table-panel">
-        <p className="dwh-panel-label">Nueva tabla</p>
+        <p className="dwh-panel-label">
+          {ed.editingIndex !== null ? "Editar tabla" : "Nueva tabla"}
+        </p>
 
         <div className="staging-add-row">
           <div className="form-field" style={{ flex: "2 1 200px" }}>
@@ -101,7 +128,7 @@ export default function OrigenInput({ value, onChange }) {
 
         {/* ── Definición de columna ── */}
         <div className="origen-col-form">
-          <p className="origen-col-form__label">Nueva columna</p>
+          <p className="origen-col-form__label">{isEditingCol ? "Editar columna" : "Nueva columna"}</p>
 
           <div className="staging-add-row">
             <div className="form-field">
@@ -169,16 +196,28 @@ export default function OrigenInput({ value, onChange }) {
             )}
           </div>
 
-          <button className="staging-add-btn" onClick={handleAddColumn} disabled={!ed.currentCol.name.trim()}>
-            + Columna
-          </button>
+          <div className="staging-add-row" style={{ marginBottom: 0 }}>
+            <button className="staging-add-btn" onClick={handleAddColumn} disabled={!ed.currentCol.name.trim()}>
+              {isEditingCol ? "Actualizar columna" : "+ Columna"}
+            </button>
+            {isEditingCol && (
+              <button className="staging-remove-btn origen-cancel-btn" onClick={handleCancelColEdit}>
+                Cancelar
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* ── Preview de columnas agregadas ── */}
+        {/* ── Preview de columnas de la tabla actual ── */}
         {ed.currentTable.columns.length > 0 && (
           <div className="origen-cols-preview">
             {ed.currentTable.columns.map((col, i) => (
-              <CollapseRow key={i} col={col} onRemove={() => ed.removeColumn(i)} />
+              <CollapseRow
+                key={i}
+                col={col}
+                onEdit={() => handleEditColumn(i)}
+                onRemove={editingColIdx === i ? undefined : () => ed.removeColumn(i)}
+              />
             ))}
           </div>
         )}

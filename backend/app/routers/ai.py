@@ -40,7 +40,7 @@ async def chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/etlVer", response_model=EtlCreateResponse)
+@router.post("/etl", response_model=EtlCreateResponse)
 async def create_etl(request: EtlCreateRequest):
     try:
         logger.info("ETL recibido:\n%s", json.dumps(request.model_dump(), indent=2, ensure_ascii=False))
