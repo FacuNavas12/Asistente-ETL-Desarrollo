@@ -1,6 +1,6 @@
 import { useState } from "react";
 import "../../css/etlForm.css";
-import { useTableEditor, ColumnTable } from "./tableUtils";
+import { useTableEditor, ColumnTable, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "./tableUtils";
 import {
   formatTableName,
   cleanColumnText,
@@ -60,9 +60,7 @@ export default function DwhModel({ value, onChange, stagingTables = [] }) {
     <div className="form-section">
       <h2 className="form-section__title">Modelo de DWH</h2>
 
-      {/* ── Panel nueva tabla ── */}
-      <div className="dwh-table-panel">
-        <p className="dwh-panel-label">Nueva tabla</p>
+      <TablePanel editingIndex={ed.editingIndex}>
 
         <div className="staging-add-row">
           <div className="form-field">
@@ -175,33 +173,29 @@ export default function DwhModel({ value, onChange, stagingTables = [] }) {
           wrapperClass="dwh-col-preview"
         />
 
-        <button className="dwh-add-table-btn" onClick={handleSaveTable} disabled={!canAddTable}>
-          {ed.editingIndex !== null ? "Guardar cambios" : "+ Agregar tabla"}
-        </button>
-      </div>
+        <SaveTableButton
+          editingIndex={ed.editingIndex}
+          onClick={handleSaveTable}
+          disabled={!canAddTable}
+        />
+      </TablePanel>
 
       {/* ── Tablas guardadas ── */}
-      {tables.length > 0 && (
-        <div className="dwh-tables-list">
-          {tables.map((table, i) => (
-            <div key={i} className="dwh-table-card">
-              <div className="dwh-table-card__header">
-                <span className={`dwh-badge dwh-badge--${table.tipo.toLowerCase()}`}>
-                  {table.tipo}
-                </span>
-                <span className="dwh-table-card__name">{table.nombre}</span>
-                {table.origenVinculado && (
-                  <span className="dwh-table-card__origen">← {table.origenVinculado}</span>
-                )}
-                <button className="staging-edit-btn" onClick={() => handleEditTable(i)}>✎</button>
-                <button className="staging-remove-btn" onClick={() => ed.removeAt(i)}>✕</button>
-              </div>
-
-              <ColumnTable columns={table.columnas} columnDefs={DWH_COL_DEFS} />
-            </div>
-          ))}
-        </div>
-      )}
+      <SavedTablesList
+        tables={tables}
+        renderCard={(table, i) => (
+          <>
+            <TableCardHeader
+              prefix={<span className={`dwh-badge dwh-badge--${table.tipo.toLowerCase()}`}>{table.tipo}</span>}
+              name={table.nombre}
+              origen={table.origenVinculado}
+              onEdit={() => handleEditTable(i)}
+              onRemove={() => ed.removeAt(i)}
+            />
+            <ColumnTable columns={table.columnas} columnDefs={DWH_COL_DEFS} />
+          </>
+        )}
+      />
     </div>
   );
 }

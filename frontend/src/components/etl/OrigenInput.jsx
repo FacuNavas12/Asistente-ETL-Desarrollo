@@ -1,6 +1,7 @@
 import { useState } from "react";
 import "../../css/etlForm.css";
-import { useTableEditor } from "./tableUtils";
+import { useTableEditor, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "./tableUtils";
+import { formatInputName } from "../../validation/stringCleanersDWH";
 
 const TIPOS    = ["string", "int", "float", "bool", "date"];
 const FORMATOS = ["", "dd/MM/yyyy", "ISO8601", "decimal(10,2)"];
@@ -96,7 +97,7 @@ export default function OrigenInput({ value, onChange }) {
 
   const handleSaveTable = () => {
     if (!ed.currentTable.tableName.trim() || ed.currentTable.columns.length === 0) return;
-    ed.saveTable();
+    ed.saveTable(t => ({ ...t, tableName: formatInputName(t.tableName) }));
     setEditingColIdx(null);
     setCurrentDato("");
   };
@@ -108,11 +109,7 @@ export default function OrigenInput({ value, onChange }) {
     <div className="form-section">
       <h2 className="form-section__title">Datos de origen</h2>
 
-      {/* ── Panel nueva / editar tabla ── */}
-      <div className="dwh-table-panel">
-        <p className="dwh-panel-label">
-          {ed.editingIndex !== null ? "Editar tabla" : "Nueva tabla"}
-        </p>
+      <TablePanel editingIndex={ed.editingIndex}>
 
         <div className="staging-add-row">
           <div className="form-field" style={{ flex: "2 1 200px" }}>
@@ -222,30 +219,31 @@ export default function OrigenInput({ value, onChange }) {
           </div>
         )}
 
-        <button className="dwh-add-table-btn" onClick={handleSaveTable} disabled={!canAddTable}>
-          {ed.editingIndex !== null ? "Guardar cambios" : "+ Agregar tabla"}
-        </button>
-      </div>
+        <SaveTableButton
+          editingIndex={ed.editingIndex}
+          onClick={handleSaveTable}
+          disabled={!canAddTable}
+        />
+      </TablePanel>
 
       {/* ── Tablas guardadas ── */}
-      {tables.length > 0 && (
-        <div className="dwh-tables-list">
-          {tables.map((table, i) => (
-            <div key={i} className="dwh-table-card">
-              <div className="dwh-table-card__header">
-                <span className="dwh-table-card__name">{table.tableName}</span>
-                <button className="staging-edit-btn" onClick={() => handleEditTable(i)}>✎</button>
-                <button className="staging-remove-btn" onClick={() => ed.removeAt(i)}>✕</button>
-              </div>
-              <div className="origen-saved-cols">
-                {table.columns.map((col, j) => (
-                  <CollapseRow key={j} col={col} />
-                ))}
-              </div>
+      <SavedTablesList
+        tables={tables}
+        renderCard={(table, i) => (
+          <>
+            <TableCardHeader
+              name={table.tableName}
+              onEdit={() => handleEditTable(i)}
+              onRemove={() => ed.removeAt(i)}
+            />
+            <div className="origen-saved-cols">
+              {table.columns.map((col, j) => (
+                <CollapseRow key={j} col={col} />
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </>
+        )}
+      />
     </div>
   );
 }

@@ -1,6 +1,9 @@
 import { useState } from "react";
 import "../../css/etlForm.css";
-import { useTableEditor } from "./tableUtils";
+import { useTableEditor, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "./tableUtils";
+import { EMPTY_METADATA } from "./stagingMetadata";
+import { StagingMetadataSection, StagingMetaBadges } from "./StagingMetadataSection";
+import { formatStagingName } from "../../validation/stringCleanersDWH";
 
 const ORIGEN_TYPE_MAP = {
   string: "Texto", int: "Número", float: "Número", bool: "Booleano", date: "Fecha",
@@ -26,8 +29,8 @@ const EMPTY_TABLE = {
   tableName: "",
   origenVinculado: "",
   columns: [],
-  reglasTabla: { filtros: [], claveDeduplicacion: { columnas: [], estrategia: "keep_first" }, politicaError: "reject" },
-  metadata: { sourceSystem: "" },
+  reglasTabla: { ...EMPTY_REGLAS_TABLA, claveDeduplicacion: { columnas: [], estrategia: "keep_first" } },
+  metadata: { ...EMPTY_METADATA },
 };
 
 const makeCol = (nombre, tipo = "Texto") => ({
@@ -47,14 +50,14 @@ export default function StagingForm({ value, onChange, origenTables = [] }) {
     columnsKey: "columns",
   });
 
-  const [editingColIdx,  setEditingColIdx]  = useState(null);
-  const [selectedRegla,  setSelectedRegla]  = useState(REGLAS_OPCIONES[0]);
-  const [currentFiltro,  setCurrentFiltro]  = useState("");
+  const [editingColIdx,   setEditingColIdx]   = useState(null);
+  const [selectedRegla,   setSelectedRegla]   = useState(REGLAS_OPCIONES[0]);
+  const [currentFiltro,   setCurrentFiltro]   = useState("");
   const [currentDedupCol, setCurrentDedupCol] = useState("");
 
   const ct   = ed.currentTable;
   const rt   = ct.reglasTabla ?? { ...EMPTY_REGLAS_TABLA, claveDeduplicacion: { columnas: [], estrategia: "keep_first" } };
-  const meta = ct.metadata ?? { sourceSystem: "" };
+  const meta = ct.metadata ?? { ...EMPTY_METADATA };
 
   // ── Origen selection: auto-populate columns ──────────────────────────────
   const handleOrigenChange = (tableName) => {
@@ -66,7 +69,7 @@ export default function StagingForm({ value, onChange, origenTables = [] }) {
       ...t,
       origenVinculado: tableName,
       columns,
-      metadata: { ...t.metadata, sourceSystem: "" },
+      metadata: { ...EMPTY_METADATA },
     }));
     setEditingColIdx(null);
   };
@@ -143,6 +146,7 @@ export default function StagingForm({ value, onChange, origenTables = [] }) {
   // ── Save: auto-append unconfigured origin columns ────────────────────────
   const handleSaveTable = () => {
     if (!ct.tableName.trim() || !ct.origenVinculado) return;
+
     const ot = origenTables.find(t => t.tableName === ct.origenVinculado);
     let finalCols = [...ct.columns];
     if (ot) {
@@ -152,23 +156,21 @@ export default function StagingForm({ value, onChange, origenTables = [] }) {
         .map(c => makeCol(c.name, ORIGEN_TYPE_MAP[c.dataType] ?? "Texto"));
       finalCols = [...finalCols, ...missing];
     }
-    ed.saveTable(t => ({ ...t, columns: finalCols }));
+    //guardo y limpio el nombre de la tabla staging
+    ed.saveTable(t => ({ ...t, columns: finalCols, tableName: formatStagingName(t.tableName) }));
     setEditingColIdx(null);
     setCurrentFiltro("");
     setCurrentDedupCol("");
   };
 
-  const canAddTable   = ct.tableName.trim() && ct.origenVinculado;
+  const canAddTable    = ct.tableName.trim() && ct.origenVinculado;
   const dedupAvailable = ct.columns.filter(c => !rt.claveDeduplicacion.columnas.includes(c.nombre));
 
   return (
     <div className="form-section">
       <h2 className="form-section__title">Definición de tabla Staging</h2>
 
-      <div className="dwh-table-panel">
-        <p className="dwh-panel-label">
-          {ed.editingIndex !== null ? "Editar tabla" : "Nueva tabla"}
-        </p>
+      <TablePanel editingIndex={ed.editingIndex}>
 
         {/* ── Nombre + origen ── */}
         <div className="staging-add-row">
@@ -347,89 +349,53 @@ export default function StagingForm({ value, onChange, origenTables = [] }) {
         </div>
 
         {/* ── Metadatos inyectados ── */}
-        <div className="stg-metadata-section">
-          <p className="stg-section-label">Metadatos inyectados</p>
-          <div className="stg-metadata-row">
-            <div className="stg-meta-auto-item">
-              <span className="stg-meta-auto-badge">AUTO</span>
-              <span className="stg-meta-field-name">load_date</span>
-              <span className="stg-meta-field-desc">Fecha y hora de carga</span>
-            </div>
-            <div className="stg-meta-auto-item">
-              <span className="stg-meta-auto-badge">AUTO</span>
-              <span className="stg-meta-field-name">batch_id</span>
-              <span className="stg-meta-field-desc">ID de corrida · formato b_N</span>
-            </div>
-            <div className="stg-meta-source-item">
-              <span className="stg-meta-field-name">source_system</span>
-              <div className="form-field" style={{ flex: 1 }}>
-                <input
-                  type="text"
-                  placeholder={ct.origenVinculado ? `${ct.origenVinculado}_ORIGEN` : "Seleccionar origen primero"}
-                  value={meta.sourceSystem}
-                  onChange={(e) => ed.setCurrentTable(t => ({
-                    ...t,
-                    metadata: { ...t.metadata, sourceSystem: e.target.value },
-                  }))}
-                  disabled={!ct.origenVinculado}
-                />
-                {ct.origenVinculado && !meta.sourceSystem && (
-                  <span className="stg-meta-hint">Auto: {ct.origenVinculado}_ORIGEN</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <StagingMetadataSection
+          meta={meta}
+          origenVinculado={ct.origenVinculado}
+          onChange={(sourceSystem) => ed.setCurrentTable(t => ({
+            ...t,
+            metadata: { ...t.metadata, sourceSystem },
+          }))}
+        />
 
-        <button className="dwh-add-table-btn" onClick={handleSaveTable} disabled={!canAddTable}>
-          {ed.editingIndex !== null ? "Guardar cambios" : "+ Agregar tabla"}
-        </button>
-      </div>
+        <SaveTableButton
+          editingIndex={ed.editingIndex}
+          onClick={handleSaveTable}
+          disabled={!canAddTable}
+        />
+      </TablePanel>
 
       {/* ── Tablas guardadas ── */}
-      {tables.length > 0 && (
-        <div className="dwh-tables-list">
-          {tables.map((table, i) => (
-            <div key={i} className="dwh-table-card">
-              <div className="dwh-table-card__header">
-                <span className="dwh-table-card__name">{table.tableName}</span>
-                {table.origenVinculado && (
-                  <span className="dwh-table-card__origen">← {table.origenVinculado}</span>
-                )}
-                <button className="staging-edit-btn" onClick={() => { ed.editTable(i); setEditingColIdx(null); }}>✎</button>
-                <button className="staging-remove-btn" onClick={() => ed.removeAt(i)}>✕</button>
-              </div>
-
-              <div className="stg-saved-cols">
-                {table.columns.map((col, j) => {
-                  const reglas = Array.isArray(col.reglas) ? col.reglas : [];
-                  return (
-                    <div key={j} className="stg-saved-col">
-                      <span className="stg-saved-col__name">{col.nombre}</span>
-                      <span className="stg-tipo-badge stg-tipo-badge--sm">{col.tipo}</span>
-                      {reglas.length > 0 && (
-                        <div className="stg-saved-col__reglas">
-                          {reglas.map((r, ri) => <span key={ri} className="stg-regla-tag">{r}</span>)}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="stg-saved-meta">
-                <span className="stg-saved-meta-badge">load_date</span>
-                <span className="stg-saved-meta-badge">batch_id</span>
-                {(table.metadata?.sourceSystem || table.origenVinculado) && (
-                  <span className="stg-saved-meta-badge stg-saved-meta-badge--source">
-                    {table.metadata?.sourceSystem || `${table.origenVinculado}_ORIGEN`}
-                  </span>
-                )}
-              </div>
+      <SavedTablesList
+        tables={tables}
+        renderCard={(table, i) => (
+          <>
+            <TableCardHeader
+              name={table.tableName}
+              origen={table.origenVinculado}
+              onEdit={() => { ed.editTable(i); setEditingColIdx(null); }}
+              onRemove={() => ed.removeAt(i)}
+            />
+            <div className="stg-saved-cols">
+              {table.columns.map((col, j) => {
+                const reglas = Array.isArray(col.reglas) ? col.reglas : [];
+                return (
+                  <div key={j} className="stg-saved-col">
+                    <span className="stg-saved-col__name">{col.nombre}</span>
+                    <span className="stg-tipo-badge stg-tipo-badge--sm">{col.tipo}</span>
+                    {reglas.length > 0 && (
+                      <div className="stg-saved-col__reglas">
+                        {reglas.map((r, ri) => <span key={ri} className="stg-regla-tag">{r}</span>)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
-      )}
+            <StagingMetaBadges table={table} />
+          </>
+        )}
+      />
     </div>
   );
 }
