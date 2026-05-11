@@ -99,3 +99,61 @@ export function ColumnTable({ columns, columnDefs, onRemove, wrapperClass = "" }
     </div>
   );
 }
+
+/**
+ * Panel de construcción de tabla con header "Nueva tabla / Editar tabla".
+ */
+export function TablePanel({ editingIndex, children }) {
+  return (
+    <div className="dwh-table-panel">
+      <p className="dwh-panel-label">
+        {editingIndex !== null ? "Editar tabla" : "Nueva tabla"}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Botón inferior "Agregar tabla / Guardar cambios".
+ */
+export function SaveTableButton({ editingIndex, onClick, disabled }) {
+  return (
+    <button className="dwh-add-table-btn" onClick={onClick} disabled={disabled}>
+      {editingIndex !== null ? "Guardar cambios" : "+ Agregar tabla"}
+    </button>
+  );
+}
+
+/**
+ * Header de card de tabla guardada.
+ * prefix: nodo opcional antes del nombre (ej. badge de tipo en DWH).
+ */
+export function TableCardHeader({ name, origen, onEdit, onRemove, prefix }) {
+  return (
+    <div className="dwh-table-card__header">
+      {prefix}
+      <span className="dwh-table-card__name">{name}</span>
+      {origen && <span className="dwh-table-card__origen">← {origen}</span>}
+      {onEdit   && <button className="staging-edit-btn"   onClick={onEdit}>✎</button>}
+      {onRemove && <button className="staging-remove-btn" onClick={onRemove}>✕</button>}
+    </div>
+  );
+}
+
+/**
+ * Lista de tablas guardadas.
+ * renderCard(table, index) → contenido interno de cada dwh-table-card.
+ */
+export function SavedTablesList({ tables, renderCard }) {
+  if (!tables?.length) return null;
+  return (
+    <div className="dwh-tables-list">
+      {tables.map((table, i) => (
+        <div key={i} className="dwh-table-card">
+          {renderCard(table, i)}
+        </div>
+      ))}
+    </div>
+  );
+}

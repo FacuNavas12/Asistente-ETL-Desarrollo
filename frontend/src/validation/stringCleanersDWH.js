@@ -31,3 +31,18 @@ export const applySKPrefix = (name) => {
 export const removeSKPrefix = (name) => {
   return toUpperNoSpaces(name.replace(/^SK_/, ""));
 };
+
+// Staging names
+export const formatStagingName = (name) => {
+  console.log("nombre que llega por parametro: ", name);
+  const clean = toUpperNoSpaces(name);
+  if (!clean.startsWith("STG_")) return `STG_${clean}`;
+  return clean;
+}
+
+//Input names
+export const formatInputName = (name) => {
+  const clean = toUpperNoSpaces(name);
+  if (!clean.startsWith("INPUT_")) return `INPUT_${clean}`;
+  return clean;
+}

@@ -32,9 +32,13 @@ def _build_prompt(req: ETLRequest) -> str:
     for t in req.stagingDef:
         origen_ref = f" (origen: {t.origenVinculado})" if t.origenVinculado else ""
         cols = "\n".join(
-            f"    - {c.origenColumna} → {c.nombre} ({c.tipo}) | regla: {c.regla} | dato no válido: {c.datoNoValido}"
-            if c.origenColumna and c.origenColumna != c.nombre
-            else f"    - {c.nombre} ({c.tipo}) | regla: {c.regla} | dato no válido: {c.datoNoValido}"
+            (
+                f"    - {c.origenColumna} → {c.nombre} ({c.tipo})"
+                if c.origenColumna and c.origenColumna != c.nombre
+                else f"    - {c.nombre} ({c.tipo})"
+            ) + (
+                f" | reglas: {', '.join(c.reglas)}" if c.reglas else ""
+            ) + f" | dato no válido: {c.datoNoValido}"
             for c in t.columns
         )
         staging_txt += f"\n  Tabla: {t.tableName}{origen_ref}\n{cols}\n"

@@ -23,14 +23,16 @@ class ColumnaStaging(BaseModel):
     origenColumna: str = ""
     nombre: str
     tipo: str
-    regla: str
-    datoNoValido: str
+    reglas: List[str] = []       # array de reglas de limpieza
+    datoNoValido: str = "Reemplazar por NULL"
 
 
 class TablaStaging(BaseModel):
     tableName: str
     origenVinculado: str = ""
     columns: List[ColumnaStaging]
+    reglasTabla: Optional[dict] = None   # filtros, dedup, politicaError
+    metadata: Optional[dict] = None      # sourceSystem, etc.
 
 
 # ─── INPUT — DWH ─────────────────────────────────────────────────────────────
