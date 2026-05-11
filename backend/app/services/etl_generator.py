@@ -4,7 +4,7 @@ RF6 — Generar proceso ETL completo
 RF7 — Sugerir steps concretos de Pentaho PDI
 RF14 — Sugerir visualizaciones para Apache Superset
 
-Motor: Claude Sonnet 4.6
+Motor: Gemini 2.5 Flash (principal)
 """
 import json
 
@@ -14,43 +14,65 @@ from app.core.config import settings
 
 
 def _build_prompt(req: ETLRequest) -> str:
-    staging_cols = "\n".join(
-        f"  - {c.nombre} ({c.tipo}) | regla: {c.regla} | dato no válido: {c.dato_no_valido}"
-        for c in req.staging_def.columnas
-    )
 
-    dwh_tables = ""
-    for t in req.dwh_model.tables:
+    # Origen
+    origen_txt = ""
+    for t in req.origenTables:
         cols = "\n".join(
-            f"    - {c.nombre} ({c.tipo}){' [SK]' if c.es_surrogate_key else ''}"
+            f"    - {c.name} | tipo: {c.dataType}"
+            + (f" | formato: {c.dataFormat}" if c.dataFormat else "")
+            + f" | rol: {c.role}"
+            + (f" | datos ejemplo: {', '.join(c.data[:5])}" if c.data else "")
+            for c in t.columns
+        )
+        origen_txt += f"\n  Tabla: {t.tableName}\n{cols}\n"
+
+    # Staging
+    staging_txt = ""
+    for t in req.stagingDef:
+        origen_ref = f" (origen: {t.origenVinculado})" if t.origenVinculado else ""
+        cols = "\n".join(
+            f"    - {c.origenColumna} → {c.nombre} ({c.tipo}) | regla: {c.regla} | dato no válido: {c.datoNoValido}"
+            if c.origenColumna and c.origenColumna != c.nombre
+            else f"    - {c.nombre} ({c.tipo}) | regla: {c.regla} | dato no válido: {c.datoNoValido}"
+            for c in t.columns
+        )
+        staging_txt += f"\n  Tabla: {t.tableName}{origen_ref}\n{cols}\n"
+
+    # DWH
+    dwh_txt = ""
+    for t in req.dwhModel.tables:
+        origen_ref = f" | origen: {t.origenVinculado}" if t.origenVinculado else ""
+        cols = "\n".join(
+            f"    - {c.origenColumna} → {c.nombre} ({c.tipo}){' [SK]' if c.esSurrogateKey else ''}"
+            if c.origenColumna and c.origenColumna != c.nombre
+            else f"    - {c.nombre} ({c.tipo}){' [SK]' if c.esSurrogateKey else ''}"
             for c in t.columnas
         )
-        origen = f" | origen vinculado: {t.origen_vinculado}" if t.origen_vinculado else ""
-        dwh_tables += f"\n  Tabla {t.tipo}: {t.nombre}{origen}\n{cols}\n"
+        dwh_txt += f"\n  Tabla {t.tipo}: {t.nombre}{origen_ref}\n{cols}\n"
 
-    reglas = req.reglas_negocio.strip() if req.reglas_negocio.strip() else "No se especificaron reglas de negocio adicionales."
+    reglas = req.reglasNegocio.strip() or "No se especificaron reglas de negocio adicionales."
+    objetivo = req.descripcionObjetivo.strip() or "No especificado."
 
-    return f"""## DESCRIPCIÓN DEL PROCESO
+    return f"""## OBJETIVO DEL PROCESO ETL
+{objetivo}
 
-{req.origen_texto}
-
+## ESQUEMA DE ORIGEN
+{origen_txt}
 ## ESQUEMA DE STAGING
-
-Tabla: {req.staging_def.nombre_tabla}
-Columnas:
-{staging_cols}
-
+{staging_txt}
 ## MODELO DE DWH
-{dwh_tables}
-
+{dwh_txt}
 ## REGLAS DE NEGOCIO
 
 {reglas}
 
 ---
 
-Genera el proceso ETL completo para cargar desde la fuente descrita hacia el staging y luego hacia el DWH definido.
-Aplica todas las reglas de negocio. Verifica la consistencia entre las tres capas.
+Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
+El mapeo "origen → nombre" indica que el campo se renombra entre capas; respetá los nombres destino exactos.
+Aplica todas las reglas de limpieza definidas en cada columna de staging.
+Verifica la consistencia de tipos y nombres entre las tres capas.
 """
 
 

@@ -9,12 +9,13 @@ import {
 } from "../../validation/stringCleanersDWH";
 
 const EMPTY_TABLE = { tipo: "Dimension", nombre: "", origenVinculado: "", columnas: [] };
-const EMPTY_COL   = { nombre: "", tipo: "Texto", esSurrogateKey: false };
+const EMPTY_COL   = { origenColumna: "", nombre: "", tipo: "Texto", esSurrogateKey: false };
 
 const STG_DWH_TYPE_MAP = { Texto: "Texto", Número: "Entero", Fecha: "Fecha", Booleano: "Booleano" };
 
 const DWH_COL_DEFS = [
-  { key: "nombre",         label: "Columna" },
+  { key: "origenColumna",  label: "Campo STG" },
+  { key: "nombre",         label: "Nombre en DWH" },
   { key: "tipo",           label: "Tipo" },
   { key: "esSurrogateKey", label: "SK", render: (col) => col.esSurrogateKey ? "✔" : "—" },
 ];
@@ -107,7 +108,7 @@ export default function DwhModel({ value, onChange, stagingTables = [] }) {
         {/* Nueva columna */}
         <div className="staging-add-row">
           <div className="form-field">
-            <label>Nombre de columna</label>
+            <label>Campo origen (STG)</label>
             <select
               value={selectedStgColName}
               onChange={(e) => {
@@ -117,7 +118,7 @@ export default function DwhModel({ value, onChange, stagingTables = [] }) {
                 let cleaned = rawName ? cleanColumnText(rawName) : "";
                 cleaned = ed.currentCol.esSurrogateKey ? applySKPrefix(cleaned) : removeSKPrefix(cleaned);
                 const tipo = stgCol ? (STG_DWH_TYPE_MAP[stgCol.tipo] ?? "Texto") : "Texto";
-                ed.setCurrentCol({ ...ed.currentCol, nombre: cleaned, tipo });
+                ed.setCurrentCol({ ...ed.currentCol, origenColumna: rawName, nombre: cleaned, tipo });
               }}
               disabled={!ed.currentTable.origenVinculado}
             >
@@ -126,6 +127,20 @@ export default function DwhModel({ value, onChange, stagingTables = [] }) {
                 <option key={c.nombre} value={c.nombre}>{c.nombre}</option>
               ))}
             </select>
+          </div>
+
+          <div className="form-field">
+            <label>Nombre en DWH</label>
+            <input
+              type="text"
+              placeholder="Nombre en DWH"
+              value={ed.currentCol.nombre}
+              onChange={(e) => {
+                let newName = e.target.value;
+                newName = ed.currentCol.esSurrogateKey ? applySKPrefix(removeSKPrefix(newName)) : removeSKPrefix(newName);
+                ed.setCurrentCol({ ...ed.currentCol, nombre: newName });
+              }}
+            />
           </div>
 
           <div className="form-field">

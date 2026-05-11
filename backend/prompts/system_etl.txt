@@ -19,6 +19,7 @@ Usa ÚNICAMENTE los siguientes nombres de steps tal como aparecen aquí. No inve
 - Select values
 - Filter rows
 - Sort rows
+- Group by
 - Unique rows
 - Unique rows (HashSet)
 - Calculator
@@ -113,5 +114,13 @@ Responde SIEMPRE con un objeto JSON válido con exactamente esta estructura:
 6. **Reglas de negocio:** Aplica todas las reglas de negocio provistas en los steps correspondientes. Si una regla requiere un step específico, créalo.
 
 7. **No inventes datos:** Si la información del esquema es insuficiente para completar alguna parte, indicalo en `validaciones` con tipo `warning`.
+
+8. **Colisión de nombres de campo entre tablas [CRÍTICO]:** Cuando dos o más tablas de origen tienen campos con el mismo nombre (ej. dos tablas con un campo `Valor`), DEBES renombrar desde el origen antes de cualquier join o merge. Estrategia obligatoria: usa un alias SQL en el `Table Input` correspondiente (`SELECT campo AS NombreUnico FROM tabla`) o inserta un `Select values` inmediatamente después de la lectura de esa tabla, antes del join. Nunca permitas que dos campos con el mismo nombre coexistan en el stream sin renombramiento previo — Pentaho genera conflicto en ejecución.
+
+9. **Relaciones N:1 requieren agregación [CRÍTICO]:** Antes de cargar a una tabla de staging o dimensión de DWH, analiza si el flujo puede producir múltiples filas por entidad (clave de negocio). Si una tabla de origen tiene N filas por entidad (ej. múltiples compras por cliente, múltiples líneas por pedido), DEBES agregar un step `Group by` antes de la carga, usando las funciones de agregación apropiadas (SUM, COUNT, MAX, etc.). Omitir este step genera duplicados en el DWH. Identifica este patrón revisando si el join entre tablas multiplica las filas por clave de negocio.
+
+10. **No asumir claves de join [CRÍTICO]:** NUNCA asumas que existe una columna de unión en una tabla si no está explícitamente definida en el esquema provisto. Si necesitás unir dos tablas pero la clave de join no aparece en el esquema de una de ellas, reporta un `error` en `validaciones` con el mensaje "Clave de unión '[campo]' no encontrada en '[tabla]' — verificar esquema de origen antes de implementar el join". No generes el step de join con una columna que no fue declarada.
+
+11. **No inferir mapeos de campo [ADVERTENCIA]:** Solo mapea campos que estén explícitamente definidos en el esquema de la capa correspondiente. Si en staging o DWH hay un campo cuyo origen no está declarado en el esquema provisto, reporta un `warning` en `validaciones` indicando el campo sin origen confirmado. No crees pasos de transformación ni mapeos para campos cuya fuente es una suposición.
 
 Responde ÚNICAMENTE con el JSON. Sin texto adicional antes ni después.

@@ -2,30 +2,50 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 
-# ─── INPUT ────────────────────────────────────────────────────────────────────
+# ─── INPUT — Origen ───────────────────────────────────────────────────────────
+
+class ColumnaOrigen(BaseModel):
+    name: str
+    dataType: str
+    dataFormat: str = ""
+    role: str = "atributo"
+    data: List[str] = []
+
+
+class TablaOrigen(BaseModel):
+    tableName: str
+    columns: List[ColumnaOrigen]
+
+
+# ─── INPUT — Staging ──────────────────────────────────────────────────────────
 
 class ColumnaStaging(BaseModel):
+    origenColumna: str = ""
     nombre: str
     tipo: str
     regla: str
-    dato_no_valido: str
+    datoNoValido: str
 
 
-class EsquemaStaging(BaseModel):
-    nombre_tabla: str
-    columnas: List[ColumnaStaging]
+class TablaStaging(BaseModel):
+    tableName: str
+    origenVinculado: str = ""
+    columns: List[ColumnaStaging]
 
+
+# ─── INPUT — DWH ─────────────────────────────────────────────────────────────
 
 class ColumnaDwh(BaseModel):
+    origenColumna: str = ""
     nombre: str
     tipo: str
-    es_surrogate_key: bool
+    esSurrogateKey: bool
 
 
 class TablaDwh(BaseModel):
-    tipo: str                    # Fact | Dimension
+    tipo: str               # Fact | Dimension
     nombre: str
-    origen_vinculado: str = ""
+    origenVinculado: str = ""
     columnas: List[ColumnaDwh]
 
 
@@ -33,30 +53,33 @@ class ModeloDwh(BaseModel):
     tables: List[TablaDwh]
 
 
+# ─── INPUT — Request principal ────────────────────────────────────────────────
+
 class ETLRequest(BaseModel):
-    origen_texto: str
-    staging_def: EsquemaStaging
-    dwh_model: ModeloDwh
-    reglas_negocio: str
+    descripcionObjetivo: str = ""
+    origenTables: List[TablaOrigen]
+    stagingDef: List[TablaStaging]
+    dwhModel: ModeloDwh
+    reglasNegocio: str
 
 
 class ETLValidateRequest(BaseModel):
-    proceso_etl: dict            # proceso_etl ya generado
+    proceso_etl: dict
 
 
 class ETLDocumentRequest(BaseModel):
-    proceso_etl: dict            # proceso_etl ya generado
+    proceso_etl: dict
 
 
 # ─── OUTPUT ───────────────────────────────────────────────────────────────────
 
 class StepETL(BaseModel):
     orden: int
-    tipo_step_pdi: str           # nombre exacto del step en Pentaho PDI
+    tipo_step_pdi: str
     nombre: str
     descripcion: str
     configuracion: dict
-    justificacion: str           # RNF9 — por qué se usa este step
+    justificacion: str          # RNF9
 
 
 class ProcesoETL(BaseModel):
@@ -66,7 +89,7 @@ class ProcesoETL(BaseModel):
 
 
 class Validacion(BaseModel):
-    tipo: str                    # error | warning | info
+    tipo: str                   # error | warning | info
     campo: str
     mensaje: str
 

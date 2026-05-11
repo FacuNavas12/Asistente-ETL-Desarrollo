@@ -44,6 +44,7 @@ def call_main(user_message: str, system_prompt_file: str) -> tuple[str, object]:
     latency_ms = int((time.monotonic() - start) * 1000)
 
     usage = response.usage_metadata
+    raw = response.text
     logger.info(
         "ETL call | model=%s | input_tokens=%d | output_tokens=%d | latency_ms=%d",
         settings.google_model_main,
@@ -51,7 +52,10 @@ def call_main(user_message: str, system_prompt_file: str) -> tuple[str, object]:
         usage.candidates_token_count or 0,
         latency_ms,
     )
-    return response.text, usage
+    if not raw:
+        logger.error("Gemini (main) returned empty response. finish_reason=%s",
+                     response.candidates[0].finish_reason if response.candidates else "unknown")
+    return raw, usage
 
 
 def call_secondary(user_message: str, system_prompt_file: str) -> tuple[str, object]:

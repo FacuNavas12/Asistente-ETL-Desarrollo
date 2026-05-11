@@ -7,6 +7,7 @@ import OrigenInput from "../components/etl/OrigenInput";
 import EtlChecks from "../components/etl/EtlChecks";
 import ReglasNegocio from "../components/etl/ReglasNegocio";
 import DwhModel from "../components/etl/DwhModel";
+import DescripcionObjetivo from "../components/etl/DescripcionObjetivo";
 import HomeModal from "../components/HomeModal";
 import validateForm from "../validation/etlform";
 import "../css/createETL.css";
@@ -14,12 +15,13 @@ import "../css/etl-error.css";
 
 const EMPTY_DWH = { tables: [] };
 
-function isDirty(origenTables, stagingDef, reglasNegocio, dwhModel) {
+function isDirty(origenTables, stagingDef, reglasNegocio, dwhModel, descripcionObjetivo) {
   return (
     origenTables.length > 0 ||
     stagingDef.length > 0 ||
     reglasNegocio.trim().length > 0 ||
-    dwhModel.tables.length > 0
+    dwhModel.tables.length > 0 ||
+    descripcionObjetivo.trim().length > 0
   );
 }
 
@@ -30,6 +32,7 @@ export default function CreateETL() {
   const [step, setStep] = useState("form");
   const [showModal, setShowModal] = useState(false);
 
+  const [descripcionObjetivo, setDescripcionObjetivo] = useState(draft?.descripcionObjetivo ?? "");
   const [origenTables, setOrigenTables] = useState(draft?.origenTables ?? []);
   const [stagingDef, setStagingDef] = useState(Array.isArray(draft?.stagingDef) ? draft.stagingDef : []);
   const [reglasNegocio, setReglasNegocio] = useState(draft?.reglasNegocio ?? "");
@@ -37,12 +40,13 @@ export default function CreateETL() {
   const [errors, setErrors] = useState([]);
 
   useEffect(() => {
-    saveDraft({ origenTables, stagingDef, reglasNegocio, dwhModel });
-  }, [origenTables, stagingDef, reglasNegocio, dwhModel]);
+    saveDraft({ descripcionObjetivo, origenTables, stagingDef, reglasNegocio, dwhModel });
+  }, [descripcionObjetivo, origenTables, stagingDef, reglasNegocio, dwhModel]);
 
-  const dirty = isDirty(origenTables, stagingDef, reglasNegocio, dwhModel);
+  const dirty = isDirty(origenTables, stagingDef, reglasNegocio, dwhModel, descripcionObjetivo);
 
   const handleLimpiar = () => {
+    setDescripcionObjetivo("");
     setOrigenTables([]);
     setStagingDef([]);
     setReglasNegocio("");
@@ -61,13 +65,14 @@ export default function CreateETL() {
       const res = await fetch("http://localhost:8000/api/ai/etl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ origenTables, stagingDef, dwhModel, reglasNegocio }),
+        body: JSON.stringify({ descripcionObjetivo, origenTables, stagingDef, dwhModel, reglasNegocio }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
         throw new Error(err.detail ?? `HTTP ${res.status}`);
       }
-      const id = addEtl({ origenTables, stagingDef, reglasNegocio, dwhModel });
+      const apiResult = await res.json();
+      const id = addEtl({ origenTables, stagingDef, reglasNegocio, dwhModel }, apiResult);
       navigate(`/etl/${id}`);
     } catch (err) {
       setStep("form");
@@ -101,6 +106,7 @@ export default function CreateETL() {
         {step === "form" && (
           <div className="etl-body">
             <div className="etl-form-side">
+              <DescripcionObjetivo value={descripcionObjetivo} onChange={setDescripcionObjetivo} />
               <OrigenInput value={origenTables} onChange={setOrigenTables} />
               <StagingForm value={stagingDef} onChange={setStagingDef} origenTables={origenTables} />
               <DwhModel value={dwhModel} onChange={setDwhModel} stagingTables={stagingDef} />

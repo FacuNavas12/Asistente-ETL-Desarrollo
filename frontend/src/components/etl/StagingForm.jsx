@@ -2,15 +2,16 @@ import "../../css/etlForm.css";
 import { useTableEditor, ColumnTable } from "./tableUtils";
 
 const EMPTY_TABLE = { tableName: "", origenVinculado: "", columns: [] };
-const EMPTY_COL   = { nombre: "", tipo: "Texto", regla: "MAYÚSCULAS", datoNoValido: "Reemplazar por NULL" };
+const EMPTY_COL   = { origenColumna: "", nombre: "", tipo: "Texto", regla: "MAYÚSCULAS", datoNoValido: "Reemplazar por NULL" };
 
 const ORIGEN_TYPE_MAP = { string: "Texto", int: "Número", float: "Número", bool: "Booleano", date: "Fecha" };
 
 const STG_COL_DEFS = [
-  { key: "nombre",       label: "Campo" },
-  { key: "tipo",         label: "Tipo" },
-  { key: "regla",        label: "Regla" },
-  { key: "datoNoValido", label: "Dato no válido" },
+  { key: "origenColumna", label: "Campo origen" },
+  { key: "nombre",        label: "Nombre en STG" },
+  { key: "tipo",          label: "Tipo" },
+  { key: "regla",         label: "Regla" },
+  { key: "datoNoValido",  label: "Dato no válido" },
 ];
 
 // value: [{ tableName, origenVinculado, columns: [{nombre, tipo, regla, datoNoValido}] }]
@@ -32,7 +33,7 @@ export default function StagingForm({ value, onChange, origenTables = [] }) {
     ?.columns ?? [];
 
   const handleAddColumn = () => {
-    if (!ed.currentCol.nombre) return;
+    if (!ed.currentCol.nombre.trim()) return;
     ed.addColumn(ed.currentCol);
   };
 
@@ -78,14 +79,14 @@ export default function StagingForm({ value, onChange, origenTables = [] }) {
         {/* Nueva columna */}
         <div className="staging-add-row">
           <div className="form-field">
-            <label>Campo</label>
+            <label>Campo origen</label>
             <select
-              value={ed.currentCol.nombre}
+              value={ed.currentCol.origenColumna}
               onChange={(e) => {
                 const selectedName = e.target.value;
                 const origenCol = origenCols.find(c => c.name === selectedName);
                 const tipo = origenCol ? (ORIGEN_TYPE_MAP[origenCol.dataType] ?? "Texto") : ed.currentCol.tipo;
-                ed.setCurrentCol({ ...ed.currentCol, nombre: selectedName, tipo });
+                ed.setCurrentCol({ ...ed.currentCol, origenColumna: selectedName, nombre: selectedName, tipo });
               }}
               disabled={!ed.currentTable.origenVinculado}
             >
@@ -94,6 +95,16 @@ export default function StagingForm({ value, onChange, origenTables = [] }) {
                 <option key={c.name} value={c.name}>{c.name}</option>
               ))}
             </select>
+          </div>
+
+          <div className="form-field">
+            <label>Nombre en STG</label>
+            <input
+              type="text"
+              placeholder="Nombre en staging"
+              value={ed.currentCol.nombre}
+              onChange={(e) => ed.setCurrentCol({ ...ed.currentCol, nombre: e.target.value })}
+            />
           </div>
 
           <div className="form-field">
@@ -139,7 +150,7 @@ export default function StagingForm({ value, onChange, origenTables = [] }) {
           <button
             className="staging-add-btn"
             onClick={handleAddColumn}
-            disabled={!ed.currentCol.nombre}
+            disabled={!ed.currentCol.nombre.trim()}
             title="Agregar columna"
           >
             + Agregar
