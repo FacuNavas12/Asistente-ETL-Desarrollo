@@ -5,9 +5,10 @@ import OrigenInputCSV        from "./InputCSV";
 import OrigenInputExcel      from "./InputExcel";
 
 const MODOS = [
-  { id: "formulario", label: "Formulario" },
-  { id: "csv",        label: "CSV"        },
-  { id: "excel",      label: "Excel"      }
+  { id: "formulario", label: "Formulario"          },
+  { id: "csv",        label: "CSV"                 },
+  { id: "excel",      label: "Excel"               },
+  { id: "conection",      label: "Conexión"      }
 ];
 
 function TableDataPreview({ table }) {
