@@ -1,0 +1,241 @@
+.etl-detail {
+  flex: 1;
+  padding: 80px 40px 60px;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.etl-detail__header {
+  margin-bottom: 36px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.etl-detail__title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.etl-detail__date {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.etl-detail__body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.etl-detail__chart-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 32px;
+  box-shadow: var(--shadow);
+}
+
+.etl-detail__chart-box h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 24px;
+  letter-spacing: -0.2px;
+}
+
+.bar-chart {
+  width: 100%;
+  max-width: 400px;
+  display: block;
+}
+
+.etl-detail__explanation {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 32px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.etl-detail__explanation p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.etl-detail__section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px 28px;
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+}
+
+.etl-detail__subtitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 16px;
+}
+
+.etl-detail__desc {
+  margin: 0 0 20px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.etl-detail__doc {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.etl-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.etl-step {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.etl-step__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.etl-step__badge {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 6px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.etl-step__desc {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.etl-step__just {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.75;
+  font-style: italic;
+}
+
+.etl-validaciones {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.etl-validacion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.etl-validacion__campo {
+  font-weight: 600;
+  min-width: 120px;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+.badge--error { background: #fde8e8; color: #c0392b; }
+.badge--warning { background: #fef3cd; color: #856404; }
+.badge--info { background: #d1ecf1; color: #0c5460; }
+
+.etl-advertencias {
+  list-style: disc;
+  padding-left: 20px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.etl-detail__actions {
+  margin: 8px 0 20px;
+}
+
+.etl-explanation-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.etl-explanation-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.etl-detail__error {
+  color: #c0392b;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.etl-detail-notfound {
+  padding: 100px 32px;
+  color: var(--text);
+  font-size: 16px;
+  text-align: center;
+}
+
+.etl-detail-notfound button {
+  margin-left: 8px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 16px;
+}

@@ -1,11 +1,11 @@
-import { useAuth0 } from "@auth0/auth0-react";
+﻿import { useAuth0 } from "@auth0/auth0-react";
 import AppRouter from "./routes/AppRouter";
-import "./css/global.css";
+import "@/styles/global.css";
 
 export default function App() {
   const { isLoading, error } = useAuth0();
 
-  if (isLoading) return <p>Cargando autenticación...</p>;
+  if (isLoading) return <p>Cargando autenticaciÃ³n...</p>;
 
   return (
     <>

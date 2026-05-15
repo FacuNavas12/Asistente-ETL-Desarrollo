@@ -38,20 +38,13 @@ export function EtlProvider({ children }) {
     setDraftState(null);
   };
 
-  const addEtl = (formData) => {
+  const addEtl = (formData, generateResponse) => {
     const newEtl = {
       id: crypto.randomUUID(),
-      name: `ETL #${etls.length + 1}`,
+      name: generateResponse?.proceso_etl?.nombre ?? `ETL #${etls.length + 1}`,
       createdAt: new Date().toISOString(),
       formData,
-      result: {
-        chartData: Array.from({ length: 6 }, () => Math.floor(Math.random() * 40) + 5),
-        explanation: [
-          "Los datos de origen fueron analizados exitosamente. Se identificaron y resolvieron valores nulos, duplicados y formatos inconsistentes en las columnas clave del dataset de entrada.",
-          "La etapa de Staging procesó correctamente todas las transformaciones definidas. Las reglas de limpieza aplicadas redujeron el índice de error de datos en un 94% respecto al dataset original.",
-          "El modelo de Data Warehouse fue poblado conforme a la estructura dimensional definida. Las tablas de dimensiones y hechos reflejan la consistencia esperada según las reglas de negocio establecidas.",
-        ],
-      },
+      generateResponse,
     };
     const updated = [newEtl, ...etls];
     setEtls(updated);
