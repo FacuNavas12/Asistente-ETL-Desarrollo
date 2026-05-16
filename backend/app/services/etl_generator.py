@@ -10,6 +10,7 @@ import json
 
 from app.models.gemini_client import call_main
 from app.schemas.etl_schemas import ETLRequest, ETLGenerateResponse
+from app.services.ktr_builder import build_ktr
 from app.core.config import settings
 
 
@@ -86,11 +87,16 @@ def generate_etl(req: ETLRequest) -> ETLGenerateResponse:
 
     data = json.loads(raw)
 
+    process_name = data.get("proceso_etl", {}).get("nombre", "")
+    ktr_xml, ktr_filename = build_ktr(data.get("ktr", {}), process_name)
+
     return ETLGenerateResponse(
         proceso_etl=data["proceso_etl"],
         validaciones=data.get("validaciones", []),
         documentacion=data.get("documentacion", ""),
         advertencias_buenas_practicas=data.get("advertencias_buenas_practicas", []),
+        ktr_xml=ktr_xml,
+        ktr_filename=ktr_filename,
         metadata={
             "modelo_usado": settings.google_model_main,
             "tokens_input": usage.prompt_token_count or 0,

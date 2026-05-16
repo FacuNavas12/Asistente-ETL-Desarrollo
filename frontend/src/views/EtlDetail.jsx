@@ -48,7 +48,17 @@ export default function EtlDetail() {
     );
   }
 
-  const { proceso_etl, validaciones = [], documentacion = "", advertencias_buenas_practicas = [] } = etl.result ?? {};
+  const { proceso_etl, validaciones = [], documentacion = "", advertencias_buenas_practicas = [], ktr_xml = "", ktr_filename = "" } = etl.result ?? {};
+
+  const handleDownloadKtr = () => {
+    const blob = new Blob([ktr_xml], { type: "application/xml" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = ktr_filename || `${etl.name}.ktr`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <Layout>
@@ -58,6 +68,15 @@ export default function EtlDetail() {
           <span className="etl-detail__date">
             {new Date(etl.createdAt).toLocaleDateString("es-AR", { dateStyle: "long" })}
           </span>
+          <div className="etl-detail__actions">
+            {ktr_xml ? (
+              <button className="ktr-download-btn" onClick={handleDownloadKtr}>
+                Descargar .ktr para Pentaho PDI
+              </button>
+            ) : (
+              <span className="ktr-unavailable">No se pudo generar el .ktr</span>
+            )}
+          </div>
         </div>
 
         <div className="etl-detail__body">

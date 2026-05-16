@@ -10,9 +10,36 @@
 .etl-detail__header {
   margin-bottom: 36px;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.etl-detail__actions {
+  margin-left: auto;
+}
+
+.ktr-download-btn {
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1.5px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.ktr-download-btn:hover {
+  opacity: 0.85;
+}
+
+.ktr-unavailable {
+  font-size: 13px;
+  color: #ef4444;
+  opacity: 0.8;
 }
 
 .etl-detail__title {
