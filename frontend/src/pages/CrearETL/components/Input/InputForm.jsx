@@ -3,6 +3,7 @@ import "../etlForm.css";
 import OrigenInputFormulario from "./InputFormulario";
 import OrigenInputCSV        from "./InputCSV";
 import OrigenInputExcel      from "./InputExcel";
+import InputConection        from "./InputConection";
 
 const MODOS = [
   { id: "formulario", label: "Formulario"          },
@@ -119,8 +120,8 @@ export default function OrigenInput({ value, onChange }) {
       {modo === "excel" && (
         <OrigenInputExcel value={value} onChange={onChange} onSwitchMode={switchMode} />
       )}
-      {modo === "ddl" && (
-        <OrigenInputDDL value={value} onChange={onChange} onSwitchMode={switchMode} />
+      {modo === "conection" && (
+        <InputConection />
       )}
 
       {Array.isArray(value) && value.length > 0 && (

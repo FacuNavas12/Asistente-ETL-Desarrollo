@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Generar una clave con: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     credentials_encryption_keys: Annotated[list[str], NoDecode]
 
+    # Driver ODBC para SQL Server. Env var: MSSQL_ODBC_DRIVER.
+    mssql_odbc_driver: str = "ODBC Driver 18 for SQL Server"
+
     # Gemini 2.5 Flash para ambos roles de momento.
     # Cambiar GOOGLE_MODEL_MAIN a gemini-2.5-pro cuando se inicie la comparativa.
     google_model_main: str = "gemini-2.5-flash"
