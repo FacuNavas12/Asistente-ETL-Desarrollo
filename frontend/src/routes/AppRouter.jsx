@@ -1,10 +1,10 @@
 import { Routes, Route } from "react-router-dom";
-import Login from "../views/Login";
-import Register from "../views/Register";
-import Home from "../views/Home";
-import Profile from "../views/Profile";
-import CreateETL from "../views/CreateETL";
-import EtlDetail from "../views/EtlDetail";
+import Login from "@/pages/Login";
+import Register from "@/pages/Register";
+import Home from "@/pages/Home";
+import Profile from "@/pages/Profile";
+import CreateETL from "@/pages/CrearETL";
+import EtlDetail from "@/pages/EtlDetail";
 import PrivateRoute from "../auth0/PrivateRoute";
 
 export default function AppRouter() {

@@ -1,0 +1,40 @@
+﻿import { useAuth0 } from "@auth0/auth0-react";
+import Layout from "@/components/layout/Layout";
+import "./Profile.css";
+
+export default function Profile() {
+  const { user } = useAuth0();
+  const provider = user?.sub?.split("|")[0] || "â€”";
+
+  const fields = [
+    { label: "Nombre completo",  value: user?.name },
+    { label: "Apodo",            value: user?.nickname },
+    { label: "Email",            value: user?.email },
+    { label: "Email verificado", value: user?.email_verified ? "âœ… SÃ­" : "âŒ No" },
+    { label: "Proveedor",        value: provider },
+    { label: "ID",               value: user?.sub },
+  ];
+
+  return (
+    <Layout onProfilePage>
+      <div className="profile-page">
+        <div className="profile-card">
+          {user?.picture && (
+            <img src={user.picture} alt="avatar" className="profile-avatar" />
+          )}
+          <h1 className="profile-name">{user?.name}</h1>
+          <div className="profile-fields">
+            {fields.map(({ label, value }) => (
+              <div className="profile-field" key={label}>
+                <span className="profile-field__label">{label}</span>
+                <span className="profile-field__value">{value || "â€”"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Layout>
+  );
+}
+
+
