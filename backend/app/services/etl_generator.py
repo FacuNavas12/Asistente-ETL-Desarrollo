@@ -9,7 +9,7 @@ Motor: Gemini 2.5 Flash (principal)
 import json
 
 from app.models.gemini_client import call_main
-from app.schemas.etl_schemas import ETLRequest, ETLGenerateResponse
+from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse
 from app.services.ktr_builder import build_ktr
 from app.core.config import settings
 
@@ -81,15 +81,10 @@ Verifica la consistencia de tipos y nombres entre las tres capas.
 """
 
 
-def generate_etl(req: ETLRequest) -> ETLGenerateResponse:
-    prompt = _build_prompt(req)
-    raw, usage = call_main(prompt, "system_etl.txt")
-
+def _build_response(raw: str, usage) -> ETLGenerateResponse:
     data = json.loads(raw)
-
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_xml, ktr_filename = build_ktr(data.get("ktr", {}), process_name)
-
     return ETLGenerateResponse(
         proceso_etl=data["proceso_etl"],
         validaciones=data.get("validaciones", []),
@@ -104,3 +99,52 @@ def generate_etl(req: ETLRequest) -> ETLGenerateResponse:
             "region_inferencia": "google-cloud",
         },
     )
+
+
+def generate_etl(req: ETLRequest) -> ETLGenerateResponse:
+    prompt = _build_prompt(req)
+    raw, usage = call_main(prompt, "system_etl.txt")
+    return _build_response(raw, usage)
+
+
+def generate_etl_from_inference(req: ETLFromInferenceRequest) -> ETLGenerateResponse:
+    """
+    Genera el ETL completo a partir de estructuras STG y DWH ya inferidas por el modelo.
+    El STG y DWH llegan como DDL SQL confirmado por el usuario en la pantalla de revisión.
+    """
+    origen_txt = ""
+    for t in req.origenTables:
+        cols = "\n".join(
+            f"    - {c.name} | tipo: {c.dataType}"
+            + (f" | formato: {c.dataFormat}" if c.dataFormat else "")
+            + f" | rol: {c.role}"
+            + (f" | datos ejemplo: {', '.join(c.data[:5])}" if c.data else "")
+            for c in t.columns
+        )
+        origen_txt += f"\n  Tabla: {t.tableName}\n{cols}\n"
+
+    objetivo = req.descripcionObjetivo.strip() or "No especificado."
+    reglas = req.reglasNegocio.strip() or "No se especificaron reglas de negocio adicionales."
+
+    prompt = f"""## OBJETIVO DEL PROCESO ETL
+{objetivo}
+
+## ESQUEMA DE ORIGEN
+{origen_txt}
+## STAGING (inferido y confirmado por el usuario)
+{req.stg_definition}
+
+## MODELO DWH (inferido y confirmado por el usuario)
+{req.dwh_model}
+
+## REGLAS DE NEGOCIO
+{reglas}
+
+---
+
+Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
+Las estructuras STG y DWH ya fueron validadas por el usuario — usá exactamente esos nombres de tablas y columnas.
+Verifica la consistencia de tipos y nombres entre las tres capas.
+"""
+    raw, usage = call_main(prompt, "system_etl.txt")
+    return _build_response(raw, usage)

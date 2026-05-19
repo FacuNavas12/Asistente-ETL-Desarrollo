@@ -10,10 +10,15 @@ from app.schemas.etl_schemas import (
     ETLValidateResponse,
     ETLDocumentRequest,
     ETLDocumentResponse,
+    InferRequest,
+    RefineRequest,
+    InferResponse,
+    ETLFromInferenceRequest,
 )
-from app.services.etl_generator import generate_etl
+from app.services.etl_generator import generate_etl, generate_etl_from_inference
 from app.services.validator import validate_etl
 from app.services.documenter import document_etl
+from app.services.structure_inferrer import infer_structures, refine_structures
 
 router = APIRouter(tags=["ETL"])
 logger = logging.getLogger(__name__)
@@ -54,3 +59,23 @@ async def validate(req: ETLValidateRequest):
 async def document(req: ETLDocumentRequest):
     """RF11, RF12, RF13 — Genera documentación en lenguaje natural."""
     return _handle(document_etl, req)
+
+
+# ── Flujo de inferencia automática ───────────────────────────────────────────
+
+@router.post("/api/v1/etl/infer-structures", response_model=InferResponse)
+async def infer(req: InferRequest):
+    """Infiere automáticamente la tabla STG y el modelo DWH a partir de los 3 campos del usuario."""
+    return _handle(infer_structures, req)
+
+
+@router.post("/api/v1/etl/infer-structures/refine", response_model=InferResponse)
+async def refine(req: RefineRequest):
+    """Incorpora una corrección en lenguaje natural y regenera las estructuras con contexto acumulado."""
+    return _handle(refine_structures, req)
+
+
+@router.post("/api/v1/etl/generate-from-inference", response_model=ETLGenerateResponse)
+async def generate_from_inference(req: ETLFromInferenceRequest):
+    """Genera el proceso ETL completo usando estructuras STG/DWH inferidas por el modelo."""
+    return _handle(generate_etl_from_inference, req)

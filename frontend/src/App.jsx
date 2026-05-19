@@ -5,7 +5,7 @@ import "@/styles/global.css";
 export default function App() {
   const { isLoading, error } = useAuth0();
 
-  if (isLoading) return <p>Cargando autenticaciÃ³n...</p>;
+  if (isLoading) return <p>Cargando autenticación...</p>;
 
   return (
     <>

@@ -1,0 +1,182 @@
+.infer-review {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 0 40px;
+}
+
+.infer-review__header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.infer-review__title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.infer-review__subtitle {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0;
+}
+
+.infer-review__iter-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  align-self: flex-start;
+}
+
+/* Paneles STG + DWH */
+.infer-review__panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 700px) {
+  .infer-review__panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.infer-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.infer-panel__title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.infer-panel__ddl {
+  font-size: 12px;
+  font-family: "Consolas", "Fira Code", monospace;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  overflow-x: auto;
+  white-space: pre;
+  margin: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.infer-panel__rationale {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+  margin: 0;
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.infer-panel__rationale-icon {
+  flex-shrink: 0;
+}
+
+/* Corrección */
+.infer-review__correction {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow);
+}
+
+.infer-review__correction-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.infer-review__correction-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.infer-review__correction-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.infer-review__correction-input:disabled {
+  opacity: 0.6;
+}
+
+.infer-review__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Botones */
+.infer-btn {
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+
+.infer-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.infer-btn--secondary {
+  background: var(--bg);
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+}
+
+.infer-btn--primary {
+  background: var(--accent);
+  color: #fff;
+  border: 1.5px solid var(--accent);
+}
+
+.infer-btn--secondary:not(:disabled):hover,
+.infer-btn--primary:not(:disabled):hover {
+  opacity: 0.82;
+}

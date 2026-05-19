@@ -4,10 +4,20 @@ from pathlib import Path
 
 from google import genai
 from google.genai import types
+from google.genai.errors import ServerError, APIError
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+_MAX_RETRIES = 4
+_BACKOFF_BASE = 2   # segundos: 2, 4, 8, 16
+
+
+def _is_retryable(exc: APIError) -> bool:
+    """503 (alta demanda) y 429 (rate limit) son transitorios y vale la pena reintentar."""
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    return isinstance(exc, ServerError) or code in (429, 503)
 
 _client: genai.Client | None = None
 
@@ -29,33 +39,44 @@ def call_main(user_message: str, system_prompt_file: str) -> tuple[str, object]:
     client = get_client()
     system_text = _load_prompt(system_prompt_file)
 
-    start = time.monotonic()
-    response = client.models.generate_content(
-        model=settings.google_model_main,
-        contents=user_message,
-        config=types.GenerateContentConfig(
-            system_instruction=system_text,
-            temperature=settings.main_temperature,
-            max_output_tokens=settings.main_max_tokens,
-            response_mime_type="application/json",
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
-        ),
-    )
-    latency_ms = int((time.monotonic() - start) * 1000)
-
-    usage = response.usage_metadata
-    raw = response.text
-    logger.info(
-        "ETL call | model=%s | input_tokens=%d | output_tokens=%d | latency_ms=%d",
-        settings.google_model_main,
-        usage.prompt_token_count or 0,
-        usage.candidates_token_count or 0,
-        latency_ms,
-    )
-    if not raw:
-        logger.error("Gemini (main) returned empty response. finish_reason=%s",
-                     response.candidates[0].finish_reason if response.candidates else "unknown")
-    return raw, usage
+    for attempt in range(_MAX_RETRIES):
+        try:
+            start = time.monotonic()
+            response = client.models.generate_content(
+                model=settings.google_model_main,
+                contents=user_message,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_text,
+                    temperature=settings.main_temperature,
+                    max_output_tokens=settings.main_max_tokens,
+                    response_mime_type="application/json",
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                ),
+            )
+            latency_ms = int((time.monotonic() - start) * 1000)
+            usage = response.usage_metadata
+            raw = response.text
+            logger.info(
+                "ETL call | model=%s | attempt=%d | input_tokens=%d | output_tokens=%d | latency_ms=%d",
+                settings.google_model_main, attempt + 1,
+                usage.prompt_token_count or 0,
+                usage.candidates_token_count or 0,
+                latency_ms,
+            )
+            if not raw:
+                logger.error("Gemini (main) returned empty response. finish_reason=%s",
+                             response.candidates[0].finish_reason if response.candidates else "unknown")
+            return raw, usage
+        except APIError as e:
+            if not _is_retryable(e):
+                raise
+            wait = _BACKOFF_BASE ** attempt
+            logger.warning("Gemini (main) transient error (attempt %d/%d): %s — retrying in %ds",
+                           attempt + 1, _MAX_RETRIES, e, wait)
+            if attempt < _MAX_RETRIES - 1:
+                time.sleep(wait)
+            else:
+                raise
 
 
 def call_secondary(user_message: str, system_prompt_file: str) -> tuple[str, object]:
@@ -63,26 +84,37 @@ def call_secondary(user_message: str, system_prompt_file: str) -> tuple[str, obj
     client = get_client()
     system_text = _load_prompt(system_prompt_file)
 
-    start = time.monotonic()
-    response = client.models.generate_content(
-        model=settings.google_model_secondary,
-        contents=user_message,
-        config=types.GenerateContentConfig(
-            system_instruction=system_text,
-            temperature=settings.secondary_temperature,
-            max_output_tokens=settings.secondary_max_tokens,
-            response_mime_type="application/json",
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
-        ),
-    )
-    latency_ms = int((time.monotonic() - start) * 1000)
-
-    usage = response.usage_metadata
-    logger.info(
-        "ETL call | model=%s | input_tokens=%d | output_tokens=%d | latency_ms=%d",
-        settings.google_model_secondary,
-        usage.prompt_token_count or 0,
-        usage.candidates_token_count or 0,
-        latency_ms,
-    )
-    return response.text, usage
+    for attempt in range(_MAX_RETRIES):
+        try:
+            start = time.monotonic()
+            response = client.models.generate_content(
+                model=settings.google_model_secondary,
+                contents=user_message,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_text,
+                    temperature=settings.secondary_temperature,
+                    max_output_tokens=settings.secondary_max_tokens,
+                    response_mime_type="application/json",
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                ),
+            )
+            latency_ms = int((time.monotonic() - start) * 1000)
+            usage = response.usage_metadata
+            logger.info(
+                "ETL call | model=%s | attempt=%d | input_tokens=%d | output_tokens=%d | latency_ms=%d",
+                settings.google_model_secondary, attempt + 1,
+                usage.prompt_token_count or 0,
+                usage.candidates_token_count or 0,
+                latency_ms,
+            )
+            return response.text, usage
+        except APIError as e:
+            if not _is_retryable(e):
+                raise
+            wait = _BACKOFF_BASE ** attempt
+            logger.warning("Gemini (secondary) transient error (attempt %d/%d): %s — retrying in %ds",
+                           attempt + 1, _MAX_RETRIES, e, wait)
+            if attempt < _MAX_RETRIES - 1:
+                time.sleep(wait)
+            else:
+                raise

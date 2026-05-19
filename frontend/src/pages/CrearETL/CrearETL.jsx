@@ -2,83 +2,177 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
 import Layout from "@/components/layout/Layout";
-import StagingForm from "./components/Staging/StagingForm";
 import OrigenInput from "./components/Input/InputFormulario";
 import EtlChecks from "./components/EtlChecks";
 import ReglasNegocio from "./components/BussinesRules/BussinesRulesForm";
-import DwhModel from "./components/DWH/DwhForm";
 import DescripcionObjetivo from "@/components/etl/DescripcionObjetivo";
 import HomeModal from "./components/HomeModal";
 import OrigenInputTestPanel from "./components/Input/InputTestPanel";
-import validateForm from "./validation/etlform";
+import InferenceReview from "./components/InferenceReview/InferenceReview";
 import "./CreateETL.css";
 import "./etl-error.css";
 
-const EMPTY_DWH = { tables: [] };
+const API = "http://localhost:8000";
 
-function isDirty(origenTables, stagingDef, reglasNegocio, dwhModel, descripcionObjetivo) {
+// Estados de la máquina:
+// form → inferring → review → processing → (navigate)
+const STEP = {
+  FORM:       "form",
+  INFERRING:  "inferring",
+  REVIEW:     "review",
+  PROCESSING: "processing",
+};
+
+function isDirty(origenTables, reglasNegocio, descripcionObjetivo) {
   return (
     origenTables.length > 0 ||
-    stagingDef.length > 0 ||
     reglasNegocio.trim().length > 0 ||
-    dwhModel.tables.length > 0 ||
     descripcionObjetivo.trim().length > 0
   );
 }
 
 export default function CreateETL() {
-  const navigate = useNavigate();
+  const navigate   = useNavigate();
   const { draft, saveDraft, clearDraft, addEtl } = useEtl();
 
-  const [step, setStep] = useState("form");
+  const [step, setStep]       = useState(STEP.FORM);
   const [showModal, setShowModal] = useState(false);
   const [showTests, setShowTests] = useState(false);
 
+  // Campos del formulario (3)
   const [descripcionObjetivo, setDescripcionObjetivo] = useState(draft?.descripcionObjetivo ?? "");
-  const [origenTables, setOrigenTables] = useState(draft?.origenTables ?? []);
-  const [stagingDef, setStagingDef] = useState(Array.isArray(draft?.stagingDef) ? draft.stagingDef : []);
-  const [reglasNegocio, setReglasNegocio] = useState(draft?.reglasNegocio ?? "");
-  const [dwhModel, setDwhModel] = useState(draft?.dwhModel ?? EMPTY_DWH);
-  const [errors, setErrors] = useState([]);
+  const [origenTables,        setOrigenTables]        = useState(draft?.origenTables ?? []);
+  const [reglasNegocio,       setReglasNegocio]       = useState(draft?.reglasNegocio ?? "");
+
+  // Estado del flujo de inferencia
+  const [inferResult,      setInferResult]      = useState(null);
+  const [inferHistory,     setInferHistory]     = useState([]);
+  const [isRefining,       setIsRefining]       = useState(false);
+  const [errors,           setErrors]           = useState([]);
 
   useEffect(() => {
-    saveDraft({ descripcionObjetivo, origenTables, stagingDef, reglasNegocio, dwhModel });
-  }, [descripcionObjetivo, origenTables, stagingDef, reglasNegocio, dwhModel]);
+    saveDraft({ descripcionObjetivo, origenTables, reglasNegocio });
+  }, [descripcionObjetivo, origenTables, reglasNegocio]);
 
-  const dirty = isDirty(origenTables, stagingDef, reglasNegocio, dwhModel, descripcionObjetivo);
+  const dirty = isDirty(origenTables, reglasNegocio, descripcionObjetivo);
 
   const handleLimpiar = () => {
     setDescripcionObjetivo("");
     setOrigenTables([]);
-    setStagingDef([]);
     setReglasNegocio("");
-    setDwhModel(EMPTY_DWH);
+    setInferResult(null);
+    setInferHistory([]);
     clearDraft();
     setErrors([]);
+    setStep(STEP.FORM);
   };
 
-  const handleCreate = async () => {
-    const result = validateForm({ origenTables, stagingDef, reglasNegocio, dwhModel });
-    if (!result.isValid) { setErrors(result.errors); return; }
+  // Serializa origenTables a string JSON para el endpoint de inferencia
+  const serializeOrigen = () => JSON.stringify(origenTables, null, 2);
+
+  // ── PASO 1 → PASO 2: llamar a /infer-structures ──────────────────────────
+  const handleInfer = async () => {
+    if (!origenTables.length) {
+      setErrors(["Debe agregar al menos una tabla de origen."]);
+      return;
+    }
+    if (!descripcionObjetivo.trim()) {
+      setErrors(["Debe describir el objetivo del proceso."]);
+      return;
+    }
+    if (!reglasNegocio.trim()) {
+      setErrors(["Debe describir las reglas de negocio."]);
+      return;
+    }
+
     setErrors([]);
-    setStep("processing");
+    setStep(STEP.INFERRING);
 
     try {
-      const res = await fetch("http://localhost:8000/api/v1/etl/generate", {
+      const res = await fetch(`${API}/api/v1/etl/infer-structures`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ descripcionObjetivo, origenTables, stagingDef, dwhModel, reglasNegocio }),
+        body: JSON.stringify({
+          source_structure:    serializeOrigen(),
+          process_description: descripcionObjetivo,
+          business_rules:      reglasNegocio,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+        throw new Error(err.detail ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setInferResult(data);
+      setInferHistory([]);
+      setStep(STEP.REVIEW);
+    } catch (err) {
+      setStep(STEP.FORM);
+      setErrors([`Error al inferir estructuras: ${err.message}`]);
+    }
+  };
+
+  // ── DESDE REVISIÓN: aplicar corrección ───────────────────────────────────
+  const handleRefine = async (correction) => {
+    setIsRefining(true);
+    try {
+      const res = await fetch(`${API}/api/v1/etl/infer-structures/refine`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_structure:    serializeOrigen(),
+          process_description: descripcionObjetivo,
+          business_rules:      reglasNegocio,
+          current_stg:         inferResult.stg_definition,
+          current_dwh:         inferResult.dwh_model,
+          correction,
+          history:             inferHistory,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+        throw new Error(err.detail ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setInferHistory(prev => [
+        ...prev,
+        { correction, stg: inferResult.stg_definition, dwh: inferResult.dwh_model },
+      ]);
+      setInferResult(data);
+    } catch (err) {
+      setErrors([`Error al aplicar corrección: ${err.message}`]);
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
+  // ── DESDE REVISIÓN: confirmar y generar ETL ───────────────────────────────
+  const handleConfirm = async () => {
+    setErrors([]);
+    setStep(STEP.PROCESSING);
+
+    try {
+      const res = await fetch(`${API}/api/v1/etl/generate-from-inference`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          descripcionObjetivo,
+          origenTables,
+          stg_definition: inferResult.stg_definition,
+          dwh_model:      inferResult.dwh_model,
+          reglasNegocio,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
         throw new Error(err.detail ?? `HTTP ${res.status}`);
       }
       const apiResult = await res.json();
-      const id = addEtl({ origenTables, stagingDef, reglasNegocio, dwhModel }, apiResult);
+      const id = addEtl({ origenTables, reglasNegocio }, apiResult);
       navigate(`/etl/${id}`);
     } catch (err) {
-      setStep("form");
-      setErrors([`Error al enviar al servidor: ${err.message}`]);
+      setStep(STEP.REVIEW);
+      setErrors([`Error al generar el ETL: ${err.message}`]);
     }
   };
 
@@ -94,46 +188,66 @@ export default function CreateETL() {
       <div className="etl-page">
         <div className="etl-page__header">
           <h1 className="etl-title">Crear ETL</h1>
-          <div className="etl-header-actions">
-            <button
-              className="etl-test-toggle-btn"
-              onClick={() => setShowTests(s => !s)}
-              title="Probar parsers de ingreso"
-            >
-              {showTests ? "▲ Tests" : "▼ Tests"}
-            </button>
-            <button className="etl-clear-btn" disabled={!dirty} onClick={handleLimpiar}>
-              Limpiar
-            </button>
-          </div>
+          {step === STEP.FORM && (
+            <div className="etl-header-actions">
+              <button
+                className="etl-test-toggle-btn"
+                onClick={() => setShowTests(s => !s)}
+                title="Probar parsers de ingreso"
+              >
+                {showTests ? "▲ Tests" : "▼ Tests"}
+              </button>
+              <button className="etl-clear-btn" disabled={!dirty} onClick={handleLimpiar}>
+                Limpiar
+              </button>
+            </div>
+          )}
         </div>
 
-        {showTests && <OrigenInputTestPanel />}
+        {step === STEP.FORM && showTests && <OrigenInputTestPanel />}
 
-        {step === "processing" && (
+        {step === STEP.INFERRING && (
+          <div className="etl-processing">
+            <EtlChecks message="Analizando origen e infiriendo estructuras STG y DWH..." />
+          </div>
+        )}
+
+        {step === STEP.PROCESSING && (
           <div className="etl-processing">
             <EtlChecks />
           </div>
         )}
 
-        {step === "form" && (
+        {step === STEP.REVIEW && (
+          <div className="etl-body">
+            {errors.length > 0 && (
+              <div className="etl-errors-box">
+                <ul>{errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+              </div>
+            )}
+            <InferenceReview
+              inferResult={inferResult}
+              onConfirm={handleConfirm}
+              onRefine={handleRefine}
+              isRefining={isRefining}
+            />
+          </div>
+        )}
+
+        {step === STEP.FORM && (
           <div className="etl-body">
             <div className="etl-form-side">
               <DescripcionObjetivo value={descripcionObjetivo} onChange={setDescripcionObjetivo} />
               <OrigenInput value={origenTables} onChange={setOrigenTables} />
-              <StagingForm value={stagingDef} onChange={setStagingDef} origenTables={origenTables} />
-              <DwhModel value={dwhModel} onChange={setDwhModel} stagingTables={stagingDef} />
               <ReglasNegocio value={reglasNegocio} onChange={setReglasNegocio} />
 
-              <button className="etl-submit-btn" onClick={handleCreate}>
-                Crear ETL
+              <button className="etl-submit-btn" onClick={handleInfer}>
+                Inferir STG y DWH
               </button>
 
               {errors.length > 0 && (
                 <div className="etl-errors-box">
-                  <ul>
-                    {errors.map((err, i) => <li key={i}>{err}</li>)}
-                  </ul>
+                  <ul>{errors.map((err, i) => <li key={i}>{err}</li>)}</ul>
                 </div>
               )}
             </div>

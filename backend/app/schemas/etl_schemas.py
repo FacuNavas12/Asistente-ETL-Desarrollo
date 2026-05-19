@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 
 # ─── INPUT — Origen ───────────────────────────────────────────────────────────
@@ -122,3 +122,41 @@ class ETLValidateResponse(BaseModel):
 class ETLDocumentResponse(BaseModel):
     documentacion: str
     metadata: MetadataResponse
+
+
+# ─── INFERENCIA DE ESTRUCTURAS ────────────────────────────────────────────────
+
+class InferRequest(BaseModel):
+    source_structure: str           # origenTables serializado como JSON string
+    process_description: str
+    business_rules: str
+
+
+class RefineRequest(BaseModel):
+    source_structure: str
+    process_description: str
+    business_rules: str
+    current_stg: str                # DDL STG de la iteración anterior
+    current_dwh: str                # DDL DWH de la iteración anterior
+    correction: str                 # instrucción del usuario en lenguaje natural
+    history: List[Dict[str, Any]] = []   # [{correction, stg, dwh}, ...]
+
+
+class InferResponse(BaseModel):
+    stg_definition: str
+    dwh_model: str
+    stg_rationale: str
+    dwh_rationale: str
+    iteration: int = 1
+    metadata: MetadataResponse
+
+
+# ─── GENERATE DESDE INFERENCIA ───────────────────────────────────────────────
+
+class ETLFromInferenceRequest(BaseModel):
+    """Request para generar el ETL completo usando estructuras inferidas por el modelo."""
+    descripcionObjetivo: str = ""
+    origenTables: List[TablaOrigen]
+    stg_definition: str             # DDL STG confirmado por el usuario
+    dwh_model: str                  # DDL DWH confirmado por el usuario
+    reglasNegocio: str

@@ -25,3 +25,10 @@
 .check-icon {
   font-size: 18px;
 }
+
+.checks-message {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 4px;
+}
