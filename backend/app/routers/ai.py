@@ -35,10 +35,20 @@ def _handle(fn, *args):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _validate_etl_request(req: ETLRequest):
+    if not req.origenTables:
+        raise HTTPException(status_code=422, detail="origenTables no puede estar vacío.")
+    if not req.stagingDef:
+        raise HTTPException(status_code=422, detail="stagingDef no puede estar vacío.")
+    if not req.dwhModel.tables:
+        raise HTTPException(status_code=422, detail="dwhModel.tables no puede estar vacío.")
+
+
 # Endpoint que consume el frontend
 @router.post("/api/ai/etl", response_model=ETLGenerateResponse)
 async def etl_from_frontend(req: ETLRequest):
     """Recibe el payload del formulario y genera el proceso ETL completo."""
+    _validate_etl_request(req)
     return _handle(generate_etl, req)
 
 
@@ -46,6 +56,7 @@ async def etl_from_frontend(req: ETLRequest):
 @router.post("/api/v1/etl/generate", response_model=ETLGenerateResponse)
 async def generate(req: ETLRequest):
     """RF5, RF6, RF7, RF14 — Genera el proceso ETL completo."""
+    _validate_etl_request(req)
     return _handle(generate_etl, req)
 
 

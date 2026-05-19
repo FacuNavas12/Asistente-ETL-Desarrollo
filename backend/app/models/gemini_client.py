@@ -1,6 +1,7 @@
 import time
 import logging
 from pathlib import Path
+from typing import Optional, Tuple
 
 from google import genai
 from google.genai import types
@@ -19,7 +20,7 @@ def _is_retryable(exc: APIError) -> bool:
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
     return isinstance(exc, ServerError) or code in (429, 503)
 
-_client: genai.Client | None = None
+_client: Optional[genai.Client] = None
 
 
 def get_client() -> genai.Client:
