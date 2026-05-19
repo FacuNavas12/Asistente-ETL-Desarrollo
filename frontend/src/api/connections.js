@@ -1,0 +1,47 @@
+const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+
+async function parseResponse(res) {
+  if (res.ok) return res.json();
+  let msg;
+  try {
+    const body = await res.json();
+    if (Array.isArray(body.detail)) {
+      msg = body.detail
+        .map(item => `${item.loc.slice(1).join(".")}: ${item.msg}`)
+        .join("; ");
+    } else if (typeof body.detail === "string") {
+      msg = body.detail;
+    } else {
+      msg = `HTTP ${res.status}`;
+    }
+  } catch {
+    msg = `HTTP ${res.status}`;
+  }
+  throw new Error(msg);
+}
+
+export async function createConnection(payload) {
+  const res = await fetch(`${BASE}/api/connections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseResponse(res);
+}
+
+// Nota: /test devuelve 200 OK incluso cuando la conexión falla.
+// Leer body.success, NO el status HTTP.
+export async function testConnection(id) {
+  const res = await fetch(`${BASE}/api/connections/${id}/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  return parseResponse(res);
+}
+
+export async function listTables(id) {
+  const res = await fetch(`${BASE}/api/connections/${id}/schema/tables`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  return parseResponse(res);
+}
