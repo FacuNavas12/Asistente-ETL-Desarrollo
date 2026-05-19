@@ -2,12 +2,11 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
 import Layout from "@/components/layout/Layout";
-import OrigenInput from "./components/Input/InputFormulario";
+import OrigenInput from "./components/Input/InputForm";
 import EtlChecks from "./components/EtlChecks";
 import ReglasNegocio from "./components/BussinesRules/BussinesRulesForm";
 import DescripcionObjetivo from "@/components/etl/DescripcionObjetivo";
 import HomeModal from "./components/HomeModal";
-import OrigenInputTestPanel from "./components/Input/InputTestPanel";
 import InferenceReview from "./components/InferenceReview/InferenceReview";
 import "./CreateETL.css";
 import "./etl-error.css";
@@ -37,8 +36,6 @@ export default function CreateETL() {
 
   const [step, setStep]       = useState(STEP.FORM);
   const [showModal, setShowModal] = useState(false);
-  const [showTests, setShowTests] = useState(false);
-
   // Campos del formulario (3)
   const [descripcionObjetivo, setDescripcionObjetivo] = useState(draft?.descripcionObjetivo ?? "");
   const [origenTables,        setOrigenTables]        = useState(draft?.origenTables ?? []);
@@ -190,21 +187,12 @@ export default function CreateETL() {
           <h1 className="etl-title">Crear ETL</h1>
           {step === STEP.FORM && (
             <div className="etl-header-actions">
-              <button
-                className="etl-test-toggle-btn"
-                onClick={() => setShowTests(s => !s)}
-                title="Probar parsers de ingreso"
-              >
-                {showTests ? "▲ Tests" : "▼ Tests"}
-              </button>
               <button className="etl-clear-btn" disabled={!dirty} onClick={handleLimpiar}>
                 Limpiar
               </button>
             </div>
           )}
         </div>
-
-        {step === STEP.FORM && showTests && <OrigenInputTestPanel />}
 
         {step === STEP.INFERRING && (
           <div className="etl-processing">
