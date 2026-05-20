@@ -18,11 +18,15 @@ target/
 .vscode/
 .idea/
 
-# Python (por si IA usa Python)
+# Python
 __pycache__/
 *.pyc
+venv/
 .venv/
 
 # Sistemas operativos
 Thumbs.db
 .DS_Store
+
+# Claude Code
+.claude/settings.local.json

@@ -20,9 +20,7 @@ venv\Scripts\activate           # Windows venv
 uvicorn app.main:app --reload   # → http://localhost:8000
 ```
 
-Backend deps not in `requirements.txt` — installed manually in `backend/venv/`. Core deps: `fastapi uvicorn anthropic pydantic pydantic-settings python-dotenv`.
-
-Backend reads `ANTHROPIC_API_KEY` from `backend/.env`. Default model: `claude-haiku-4-5-20251001` (configurable in `backend/app/core/config.py`).
+Backend reads env vars from `backend/.env`. Currently uses Google Gemini (`GOOGLE_API_KEY`, `GOOGLE_MODEL_MAIN/SECONDARY`). Claude/Anthropic integration planned (`ANTHROPIC_API_KEY`, model configurable in `backend/app/core/config.py`).
 
 ## Architecture
 
@@ -76,3 +74,40 @@ reglasNegocio → ReglasNegocio.jsx   (free-text business rules)
 ## Auth
 
 Auth0 configured in `frontend/src/auth0/`. `PrivateRoute` wraps all ETL pages. Auth provider wraps the app in `main.jsx`.
+
+## Gestión de dependencias y entorno
+
+**Versión de Python acordada por el equipo:** [A DEFINIR — sugerencia: 3.12]
+
+**Entorno virtual:** cada desarrollador crea su propio `venv` local:
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate   # Windows
+# source venv/bin/activate  # Mac/Linux
+```
+El directorio `venv/` **nunca se commitea** — es específico del sistema operativo y del path de cada máquina.
+
+**Dependencias — fuente de verdad: `requirements.txt`**
+
+Flujo para agregar una dependencia:
+```bash
+pip install <paquete>
+pip show <paquete>          # verificar versión instalada
+# agregar al requirements.txt con versión exacta: paquete==X.Y.Z
+```
+No instalar paquetes sueltos sin actualizar `requirements.txt`. No usar rangos (`>=`) — versiones exactas (`==`) garantizan reproducibilidad.
+
+Flujo al hacer `git pull` y `requirements.txt` cambió:
+```bash
+pip install -r requirements.txt   # dentro del venv activado
+```
+No recrear el venv entero, solo sincronizar.
+
+**Variables de entorno:**
+- `backend/.env` contiene secretos → **nunca se commitea**.
+- `backend/.env.example` está en el repo → sirve de plantilla para onboarding. Al clonar el repo, copiar y completar:
+```bash
+cp backend/.env.example backend/.env
+# editar .env con los valores reales
+```
