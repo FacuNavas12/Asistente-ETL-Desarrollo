@@ -22,7 +22,7 @@ function TableDataPreview({ table }) {
     <div className="origen-preview">
       <div className="origen-preview__header">
         <span className="origen-preview__name">{table.tableName}</span>
-        <span className="origen-preview__meta">{cols.length} col Â· {maxRows} fil</span>
+        <span className="origen-preview__meta">{cols.length} col · {maxRows} fil</span>
         <button className="origen-preview__toggle" onClick={() => setOpen(o => !o)}>
           {open ? "Ocultar tabla" : "Ver como tabla"}
         </button>

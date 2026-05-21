@@ -6,7 +6,7 @@ export default function UserInfo() {
   return (
     <>
       <h1>Hola, {user?.name}</h1>
-      <h2>InformaciÃ³n del usuario</h2>
+      <h2>Información del usuario</h2>
       <pre className="user-data">
         {JSON.stringify(user, null, 2)}
       </pre>

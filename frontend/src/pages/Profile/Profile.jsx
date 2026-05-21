@@ -4,13 +4,13 @@ import "./Profile.css";
 
 export default function Profile() {
   const { user } = useAuth0();
-  const provider = user?.sub?.split("|")[0] || "â€”";
+  const provider = user?.sub?.split("|")[0] || "—";
 
   const fields = [
     { label: "Nombre completo",  value: user?.name },
     { label: "Apodo",            value: user?.nickname },
     { label: "Email",            value: user?.email },
-    { label: "Email verificado", value: user?.email_verified ? "âœ… SÃ­" : "âŒ No" },
+    { label: "Email verificado", value: user?.email_verified ? "✅ Sí" : "❌ No" },
     { label: "Proveedor",        value: provider },
     { label: "ID",               value: user?.sub },
   ];
@@ -27,7 +27,7 @@ export default function Profile() {
             {fields.map(({ label, value }) => (
               <div className="profile-field" key={label}>
                 <span className="profile-field__label">{label}</span>
-                <span className="profile-field__value">{value || "â€”"}</span>
+                <span className="profile-field__value">{value || "—"}</span>
               </div>
             ))}
           </div>

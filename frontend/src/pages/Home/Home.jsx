@@ -44,7 +44,7 @@ export default function Home() {
         <main className="home-main">
           {etls.length === 0 ? (
             <div className="home-empty">
-              <span className="home-empty__icon">ðŸ“‹</span>
+              <span className="home-empty__icon">📋</span>
               <p>No hay ETLs creados todaví­a.</p>
               <p className="home-empty__sub">Crea tu primer ETL para empezar.</p>
             </div>

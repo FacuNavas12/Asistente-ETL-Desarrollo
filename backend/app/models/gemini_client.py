@@ -58,7 +58,8 @@ def call_main(user_message: str, system_prompt_file: str) -> tuple[str, object]:
             usage = response.usage_metadata
             raw = response.text
             logger.info(
-                "ETL call | model=%s | attempt=%d | input_tokens=%d | output_tokens=%d | latency_ms=%d",
+                "🚀 Generación completada — Modelo: %s | Intento: %d | "
+                "Tokens enviados: %d | Tokens recibidos: %d | Tiempo de respuesta: %d ms",
                 settings.google_model_main, attempt + 1,
                 usage.prompt_token_count or 0,
                 usage.candidates_token_count or 0,
@@ -102,7 +103,8 @@ def call_secondary(user_message: str, system_prompt_file: str) -> tuple[str, obj
             latency_ms = int((time.monotonic() - start) * 1000)
             usage = response.usage_metadata
             logger.info(
-                "ETL call | model=%s | attempt=%d | input_tokens=%d | output_tokens=%d | latency_ms=%d",
+                "🚀 Generación completada — Modelo: %s | Intento: %d | "
+                "Tokens enviados: %d | Tokens recibidos: %d | Tiempo de respuesta: %d ms",
                 settings.google_model_secondary, attempt + 1,
                 usage.prompt_token_count or 0,
                 usage.candidates_token_count or 0,

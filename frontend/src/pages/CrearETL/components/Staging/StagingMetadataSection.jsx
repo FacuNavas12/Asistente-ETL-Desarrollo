@@ -14,7 +14,7 @@ export function StagingMetadataSection({ meta, origenVinculado, onChange }) {
         <div className="stg-meta-auto-item">
           <span className="stg-meta-auto-badge">AUTO</span>
           <span className="stg-meta-field-name">batch_id</span>
-          <span className="stg-meta-field-desc">ID de corrida Â· formato b_N</span>
+          <span className="stg-meta-field-desc">ID de corrida · formato b_N</span>
         </div>
         <div className="stg-meta-source-item">
           <span className="stg-meta-field-name">source_system</span>

@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,9 +7,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.log_filters import PasswordFilter
 from app.routers import ai, connections
 
+_log_dir = Path(__file__).resolve().parent.parent / "logs"
+_log_dir.mkdir(exist_ok=True)
+
+_fmt = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    format=_fmt,
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(_log_dir / "generaciones.log", encoding="utf-8"),
+    ],
 )
 logging.getLogger().addFilter(PasswordFilter())
 

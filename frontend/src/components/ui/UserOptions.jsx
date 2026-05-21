@@ -19,7 +19,7 @@ export default function UserOptions({ onProfilePage = false }) {
         <img src={user.picture} alt="avatar" className="user-options__avatar" />
       )}
       <span className="user-options__name">{user?.name}</span>
-      <span className={`user-options__arrow ${open ? "open" : ""}`}>â–¼</span>
+      <span className={`user-options__arrow ${open ? "open" : ""}`}>▼</span>
 
       {open && (
         <div className="user-options__dropdown" onClick={e => e.stopPropagation()}>
@@ -29,10 +29,10 @@ export default function UserOptions({ onProfilePage = false }) {
             <button onClick={() => navigate("/profile")}>Mi Perfil</button>
           )}
           <button onClick={toggle}>
-            Modo {dark ? "â˜€ï¸ Claro" : "ðŸŒ™ Oscuro"}
+            Modo {dark ? "☀️ Claro" : "🌙 Oscuro"}
           </button>
           <button className="user-options__logout" onClick={handleLogout}>
-            Cerrar SesiÃ³n
+            Cerrar Sesión
           </button>
         </div>
       )}
