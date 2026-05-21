@@ -27,23 +27,23 @@
 }
 
 .auth-btn.login {
-  background: linear-gradient(135deg, #7c3aed, #aa3bff);
-  box-shadow: 0 4px 20px rgba(170, 59, 255, 0.35);
+  background: linear-gradient(135deg, #E8442A, #F05540);
+  box-shadow: 0 4px 20px rgba(232, 68, 42, 0.35);
 }
 
 .auth-btn.login:hover {
-  box-shadow: 0 6px 28px rgba(170, 59, 255, 0.5);
+  box-shadow: 0 6px 28px rgba(232, 68, 42, 0.5);
 }
 
 .auth-btn.signup {
-  background: #1e1e2e;
-  border: 1px solid #2e2e45;
-  color: #c4b5fd;
+  background: #0D1E35;
+  border: 1px solid #1A3A5C;
+  color: #C8D8E8;
 }
 
 .auth-btn.signup:hover {
-  background: #252538;
-  border-color: #aa3bff;
+  background: #132540;
+  border-color: #E8442A;
 }
 
 .auth-btn.logout {

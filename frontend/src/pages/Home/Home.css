@@ -35,10 +35,10 @@
   font-weight: 600;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(135deg, #7c3aed, #aa3bff);
+  background: linear-gradient(135deg, #E8442A, #F05540);
   color: #fff;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(170, 59, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(232, 68, 42, 0.3);
   transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
   text-align: left;
   width: 100%;
@@ -47,7 +47,7 @@
 .etl-create-btn:hover {
   opacity: 0.9;
   transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(170, 59, 255, 0.45);
+  box-shadow: 0 6px 24px rgba(232, 68, 42, 0.45);
 }
 
 .etl-create-btn:active {
@@ -135,7 +135,7 @@
 
 .etl-card:hover {
   border-color: var(--accent-border);
-  box-shadow: 0 4px 20px rgba(170, 59, 255, 0.18);
+  box-shadow: 0 4px 20px rgba(232, 68, 42, 0.18);
   transform: translateY(-2px);
 }
 

@@ -52,18 +52,18 @@
   font-weight: 600;
   border: none;
   border-radius: 12px;
-  background: linear-gradient(135deg, #7c3aed, #aa3bff);
+  background: linear-gradient(135deg, #E8442A, #F05540);
   color: #fff;
   cursor: pointer;
   align-self: flex-start;
-  box-shadow: 0 4px 20px rgba(170, 59, 255, 0.35);
+  box-shadow: 0 4px 20px rgba(232, 68, 42, 0.35);
   transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
 }
 
 .etl-submit-btn:hover {
   opacity: 0.9;
   transform: translateY(-2px);
-  box-shadow: 0 6px 28px rgba(170, 59, 255, 0.5);
+  box-shadow: 0 6px 28px rgba(232, 68, 42, 0.5);
 }
 
 .etl-submit-btn:active {
