@@ -315,6 +315,273 @@ def _step_Dummy(el: Element, cfg: dict) -> None:
     pass
 
 
+# ─── Builders agregados (cobertura de los tipos listados en system_etl.txt) ──
+
+def _step_CsvInput(el: Element, cfg: dict) -> None:
+    _sub(el, "filename",         cfg.get("filename", "PLACEHOLDER.csv"))
+    _sub(el, "filename_field")
+    _sub(el, "rownum_field")
+    _sub(el, "include_filename", "N")
+    _sub(el, "separator",        cfg.get("separator", ","))
+    _sub(el, "enclosure",        cfg.get("enclosure", '"'))
+    _sub(el, "header",           "Y" if cfg.get("header", True) else "N")
+    _sub(el, "buffer_size",      "50000")
+    _sub(el, "lazy_conversion",  "Y")
+    _sub(el, "add_filename_result", "N")
+    _sub(el, "parallel",         "N")
+    _sub(el, "newline_possible", "N")
+    _sub(el, "format",           "mixed")
+    _sub(el, "encoding")
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f.get("name", ""))
+        _sub(field, "type",      f.get("type", "String"))
+        _sub(field, "format",    f.get("format", ""))
+        _sub(field, "currency",  "€")
+        _sub(field, "decimal",   ",")
+        _sub(field, "group",     ".")
+        _sub(field, "length",    str(f.get("length", -1)))
+        _sub(field, "precision", str(f.get("precision", -1)))
+        _sub(field, "trim_type", "none")
+
+
+def _step_Calculator(el: Element, cfg: dict) -> None:
+    """Cálculos numéricos / de fecha. config = {calculations: [{field_name, calc_type, field_a, field_b, value_type}]}"""
+    _sub(el, "failIfNoFile", "Y")
+    for c in cfg.get("calculations", []):
+        calc = SubElement(el, "calculation")
+        _sub(calc, "field_name",      c.get("field_name", ""))
+        _sub(calc, "calc_type",       c.get("calc_type", "NONE"))
+        _sub(calc, "field_a",         c.get("field_a", ""))
+        _sub(calc, "field_b",         c.get("field_b", ""))
+        _sub(calc, "field_c",         c.get("field_c", ""))
+        _sub(calc, "value_type",      c.get("value_type", "None"))
+        _sub(calc, "value_length",    str(c.get("value_length", -1)))
+        _sub(calc, "value_precision", str(c.get("value_precision", -1)))
+        _sub(calc, "remove",          "N")
+
+
+def _step_AddConstants(el: Element, cfg: dict) -> None:
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f.get("name", ""))
+        _sub(field, "type",      f.get("type", "String"))
+        _sub(field, "format",    f.get("format", ""))
+        _sub(field, "length",    str(f.get("length", -1)))
+        _sub(field, "precision", str(f.get("precision", -1)))
+        _sub(field, "nullif",    str(f.get("value", "")))
+        _sub(field, "set_empty_string", "N")
+
+
+def _step_DataValidator(el: Element, cfg: dict) -> None:
+    _sub(el, "validate_all", "Y" if cfg.get("validate_all", True) else "N")
+    _sub(el, "concat_errors", "Y")
+    for v in cfg.get("validations", []):
+        val = SubElement(el, "validator_field")
+        _sub(val, "name",                  v.get("name", ""))
+        _sub(val, "fieldname",             v.get("field", v.get("name", "")))
+        _sub(val, "max_length",            str(v.get("max_length", -1)))
+        _sub(val, "min_length",            str(v.get("min_length", -1)))
+        _sub(val, "null_allowed",          "Y" if v.get("null_allowed", True) else "N")
+        _sub(val, "only_null_allowed",     "N")
+        _sub(val, "only_numeric_allowed",  "Y" if v.get("only_numeric", False) else "N")
+        _sub(val, "data_type",             v.get("type", "String"))
+        _sub(val, "data_type_verified",    "N")
+        _sub(val, "conversion_mask",       v.get("mask", ""))
+        _sub(val, "decimal_symbol",        ".")
+        _sub(val, "grouping_symbol",       ",")
+        _sub(val, "max_value",             str(v.get("max_value", "")))
+        _sub(val, "min_value",             str(v.get("min_value", "")))
+        _sub(val, "start_string",          "")
+        _sub(val, "end_string",            "")
+        _sub(val, "start_string_not_allowed", "")
+        _sub(val, "end_string_not_allowed",   "")
+        _sub(val, "regular_expression",        v.get("regex", ""))
+        _sub(val, "regular_expression_not_allowed", "")
+        _sub(val, "error_code",            v.get("error_code", ""))
+        _sub(val, "error_description",     v.get("error_description", ""))
+        _sub(val, "is_sourcing_values_from_another_step", "N")
+
+
+def _step_StreamLookup(el: Element, cfg: dict) -> None:
+    _sub(el, "from",          cfg.get("step", cfg.get("from", "")))
+    _sub(el, "input_sorted",  "N")
+    _sub(el, "preserve_memory", "Y")
+    _sub(el, "sorted_list",   "N")
+    _sub(el, "integer_pair",  "N")
+    lookup = SubElement(el, "lookup")
+    for k in cfg.get("keys", []):
+        ke = SubElement(lookup, "key")
+        _sub(ke, "name",  k.get("stream", k.get("name", "")))
+        _sub(ke, "field", k.get("lookup", k.get("field", "")))
+    for v in cfg.get("values", cfg.get("fields", [])):
+        ve = SubElement(lookup, "value")
+        _sub(ve, "name",    v.get("name", ""))
+        _sub(ve, "rename",  v.get("rename", v.get("name", "")))
+        _sub(ve, "default", str(v.get("default", "")))
+        _sub(ve, "type",    v.get("type", "String"))
+
+
+def _step_MergeRows(el: Element, cfg: dict) -> None:
+    """Merge rows (diff) — compara dos streams ordenados y marca cambios."""
+    _sub(el, "keys")
+    keys_el = SubElement(el, "keys")
+    for k in cfg.get("keys", []):
+        _sub(keys_el, "key", k if isinstance(k, str) else k.get("name", ""))
+    values_el = SubElement(el, "values")
+    for v in cfg.get("compare", cfg.get("values", [])):
+        _sub(values_el, "value", v if isinstance(v, str) else v.get("name", ""))
+    _sub(el, "flag_field",    cfg.get("flag_field", "flagfield"))
+    _sub(el, "reference",     cfg.get("reference", ""))
+    _sub(el, "compare",       cfg.get("compare_step", ""))
+
+
+def _step_ConcatFields(el: Element, cfg: dict) -> None:
+    _sub(el, "extra_field",         cfg.get("target_field", "concat_result"))
+    _sub(el, "separator",           cfg.get("separator", ""))
+    _sub(el, "enclosure",           cfg.get("enclosure", ""))
+    _sub(el, "remove_selected_fields", "N")
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f if isinstance(f, str) else f.get("name", ""))
+        _sub(field, "type",      "String" if isinstance(f, str) else f.get("type", "String"))
+        _sub(field, "length",    "-1")
+        _sub(field, "precision", "-1")
+
+
+def _step_NumberRange(el: Element, cfg: dict) -> None:
+    _sub(el, "inputField",  cfg.get("input_field", ""))
+    _sub(el, "outputField", cfg.get("output_field", "range"))
+    _sub(el, "fallBackValue", cfg.get("fallback", ""))
+    rules = SubElement(el, "rules")
+    for r in cfg.get("ranges", []):
+        rule = SubElement(rules, "rule")
+        _sub(rule, "lower_bound", str(r.get("lower", "")))
+        _sub(rule, "upper_bound", str(r.get("upper", "")))
+        _sub(rule, "value",       str(r.get("value", "")))
+
+
+def _step_SplitFieldToRows(el: Element, cfg: dict) -> None:
+    _sub(el, "splitfield",         cfg.get("split_field", cfg.get("field", "")))
+    _sub(el, "delimiter",          cfg.get("delimiter", ","))
+    _sub(el, "newfield",           cfg.get("new_field", "value"))
+    _sub(el, "rownum",             "N")
+    _sub(el, "rownum_field")
+    _sub(el, "resetrownumber",     "Y")
+    _sub(el, "delimiter_is_regex", "Y" if cfg.get("regex", False) else "N")
+
+
+def _step_Denormaliser(el: Element, cfg: dict) -> None:
+    """Pivot filas->columnas. config = {key_field, group_fields:[...], pivots:[{field_name, key_value, target_name, target_type}]}"""
+    _sub(el, "key_field", cfg.get("key_field", ""))
+    group_el = SubElement(el, "group")
+    for g in cfg.get("group_fields", []):
+        ge = SubElement(group_el, "field")
+        _sub(ge, "name", g if isinstance(g, str) else g.get("name", ""))
+    fe = SubElement(el, "fields")
+    for p in cfg.get("pivots", []):
+        field = SubElement(fe, "field")
+        _sub(field, "field_name",   p.get("field_name", ""))
+        _sub(field, "key_value",    p.get("key_value", ""))
+        _sub(field, "target_name",  p.get("target_name", ""))
+        _sub(field, "target_type",  p.get("target_type", "String"))
+        _sub(field, "target_format", p.get("target_format", ""))
+        _sub(field, "target_length", str(p.get("target_length", -1)))
+        _sub(field, "target_precision", str(p.get("target_precision", -1)))
+        _sub(field, "target_aggregation_type", p.get("aggregation", "-"))
+
+
+def _step_ValueMapper(el: Element, cfg: dict) -> None:
+    _sub(el, "field_to_use",   cfg.get("source_field", cfg.get("field", "")))
+    _sub(el, "target_field",   cfg.get("target_field", ""))
+    _sub(el, "non_match_default", cfg.get("default", ""))
+    fe = SubElement(el, "fields")
+    for m in cfg.get("mappings", []):
+        field = SubElement(fe, "field")
+        _sub(field, "source_value", str(m.get("source", "")))
+        _sub(field, "target_value", str(m.get("target", "")))
+
+
+def _step_ReplaceString(el: Element, cfg: dict) -> None:
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "in_stream_name",  f.get("name", ""))
+        _sub(field, "out_stream_name", f.get("rename", ""))
+        _sub(field, "use_regex",       "Y" if f.get("regex", False) else "N")
+        _sub(field, "replace_string",  f.get("search", ""))
+        _sub(field, "replace_by_string", f.get("replace", ""))
+        _sub(field, "set_empty_string", "N")
+        _sub(field, "whole_word",       "N")
+        _sub(field, "case_sensitive",   "Y" if f.get("case_sensitive", False) else "N")
+
+
+# ─── Alias map ────────────────────────────────────────────────────────────────
+# El modelo a veces devuelve los nombres "display" de Spoon (con espacios) y otras
+# veces los nombres "internos" (camelCase). Este mapa normaliza ambos a la forma
+# canónica usada por STEP_BUILDERS antes de buscar el builder.
+
+STEP_TYPE_ALIASES = {
+    # Entrada
+    "Table Input":               "TableInput",
+    "CSV file input":            "CsvInput",
+    "CSVInput":                  "CsvInput",
+    "Text File Input":           "TextFileInput",
+    "Microsoft Excel Input":     "ExcelInput",
+    "Excel Input":               "ExcelInput",
+    "JSON Input":                "JsonInput",
+    "XML input stream (SAX)":    "GetXMLData",
+    "REST Client":               "Rest",
+    # Transformación
+    "Select values":             "SelectValues",
+    "Filter rows":               "FilterRows",
+    "Sort rows":                 "SortRows",
+    "Group by":                  "GroupBy",
+    "Memory Group by":           "MemoryGroupBy",
+    "Unique rows":               "Unique",
+    "Unique rows (HashSet)":     "UniqueRowsByHashSet",
+    "Calculator":                "Calculator",
+    "String operations":         "StringOperations",
+    "Replace in string":         "ReplaceString",
+    "Concat fields":             "ConcatFields",
+    "Split fields":              "SplitFieldToRows",
+    "Value mapper":              "ValueMapper",
+    "Null if...":                "IfNull",
+    "If field value is null":    "IfNull",
+    "Add constants":             "AddConstants",
+    "Number range":              "NumberRange",
+    "Regex evaluation":          "RegexEval",
+    "Row Normaliser":            "Normaliser",
+    "Row denormaliser":          "Denormaliser",
+    # Joins / lookups
+    "Database lookup":           "DBLookup",
+    "Stream lookup":             "StreamLookup",
+    "Merge rows (diff)":         "MergeRows",
+    "Merge join":                "MergeJoin",
+    # Salida
+    "Table Output":              "TableOutput",
+    "Insert / Update":           "InsertUpdate",
+    "Update":                    "Update",
+    "Delete":                    "Delete",
+    "Microsoft Excel Writer":    "MicrosoftExcelWriter",
+    "Text file output":          "TextFileOutput",
+    "JSON output":               "JsonOutput",
+    # Dimensiones / DWH
+    "Dimension lookup/update":   "DimensionLookup",
+    "Combination lookup/update": "CombinationLookup",
+    # Calidad / logging
+    "Field meta data validation": "FieldMetaDataValidation",
+    "Data validator":            "DataValidator",
+    "Write to log":              "WriteToLog",
+    # Control de flujo
+    "Mapping (sub-transformation)": "Mapping",
+    "Transformation executor":   "TransExecutor",
+}
+
+
 def _step_generic(el: Element, cfg: dict) -> None:
     for key, val in cfg.items():
         if isinstance(val, (str, int, float)):
@@ -324,22 +591,42 @@ def _step_generic(el: Element, cfg: dict) -> None:
 
 
 STEP_BUILDERS = {
+    # Entrada
     "TableInput":          _step_TableInput,
+    "CsvInput":            _step_CsvInput,
+    # Salida
     "TableOutput":         _step_TableOutput,
     "InsertUpdate":        _step_InsertUpdate,
+    # Selección / orden / filtros / unique
     "SelectValues":        _step_SelectValues,
     "FilterRows":          _step_FilterRows,
     "SortRows":            _step_SortRows,
     "GroupBy":             _step_GroupBy,
     "MemoryGroupBy":       _step_GroupBy,
-    "MergeJoin":           _step_MergeJoin,
-    "DimensionLookup":     _step_DimensionLookup,
-    "CombinationLookup":   _step_CombinationLookup,
-    "WriteToLog":          _step_WriteToLog,
-    "StringOperations":    _step_StringOperations,
-    "IfNull":              _step_IfNull,
     "Unique":              _step_Unique,
     "UniqueRowsByHashSet": _step_Unique,
+    # Joins / lookups
+    "MergeJoin":           _step_MergeJoin,
+    "StreamLookup":        _step_StreamLookup,
+    "MergeRows":           _step_MergeRows,
+    # DWH
+    "DimensionLookup":     _step_DimensionLookup,
+    "CombinationLookup":   _step_CombinationLookup,
+    # Cálculo / texto / constantes
+    "Calculator":          _step_Calculator,
+    "AddConstants":        _step_AddConstants,
+    "StringOperations":    _step_StringOperations,
+    "ReplaceString":       _step_ReplaceString,
+    "ConcatFields":        _step_ConcatFields,
+    "ValueMapper":         _step_ValueMapper,
+    "IfNull":              _step_IfNull,
+    "NumberRange":         _step_NumberRange,
+    "SplitFieldToRows":    _step_SplitFieldToRows,
+    "SplitFieldToRows3":   _step_SplitFieldToRows,
+    "Denormaliser":        _step_Denormaliser,
+    # Calidad / control
+    "DataValidator":       _step_DataValidator,
+    "WriteToLog":          _step_WriteToLog,
     "Dummy":               _step_Dummy,
 }
 
@@ -401,7 +688,8 @@ def _auto_layout(steps: list, hops: list) -> list:
 def _validate_ktr(ktr: dict) -> list[str]:
     warnings = []
     step_names = {s["name"] for s in ktr.get("steps", [])}
-    types = {s["type"] for s in ktr.get("steps", [])}
+    # Normalizar tipos usando los aliases, así reconocemos tanto "Table Input" como "TableInput"
+    types = {STEP_TYPE_ALIASES.get(s["type"], s["type"]) for s in ktr.get("steps", [])}
 
     input_types  = {"TableInput", "CsvInput", "ExcelInput", "TextFileInput", "JsonInput", "DataGrid", "RowGenerator"}
     output_types = {"TableOutput", "InsertUpdate", "Update", "Delete"}
@@ -480,11 +768,20 @@ def build_ktr(ktr_data: dict, process_name: str = "") -> tuple[str, str]:
         _sub(part, "schema_name")
 
         cfg     = step.get("config", {})
-        builder = STEP_BUILDERS.get(step_type)
+        # Normalizar tipo: el modelo puede devolver nombres con espacios ("Table Input")
+        # o internos ("TableInput"). El alias map traduce ambos al canónico.
+        canonical_type = STEP_TYPE_ALIASES.get(step_type, step_type)
+        if canonical_type != step_type:
+            logger.info("KTR: step type '%s' normalizado a '%s'", step_type, canonical_type)
+            # Reescribir el <type> en el XML para que Spoon lo reconozca
+            type_el = step_el.find("type")
+            if type_el is not None:
+                type_el.text = canonical_type
+        builder = STEP_BUILDERS.get(canonical_type)
         if builder:
             builder(step_el, cfg)
         else:
-            logger.warning("KTR: step type '%s' not supported, using generic builder", step_type)
+            logger.warning("KTR: step type '%s' (canonical: '%s') not supported, using generic builder", step_type, canonical_type)
             _step_generic(step_el, cfg)
 
         gui = SubElement(step_el, "GUI")
