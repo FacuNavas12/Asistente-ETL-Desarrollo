@@ -64,12 +64,13 @@
   padding: 11px 22px;
   font-size: 14px;
   font-weight: 600;
+  font-family: 'Outfit', sans-serif;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(135deg, #E8442A, #F05540);
+  background: var(--accent);
   color: #fff;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(232, 68, 42, 0.3);
+  box-shadow: 0 4px 16px var(--accent-shadow);
   transition: opacity 0.2s, transform 0.15s;
 }
 

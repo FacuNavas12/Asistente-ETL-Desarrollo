@@ -43,6 +43,7 @@ export function EtlProvider({ children }) {
       id: crypto.randomUUID(),
       name: apiResult?.proceso_etl?.nombre ?? `ETL #${etls.length + 1}`,
       createdAt: new Date().toISOString(),
+      status: 'done',
       formData,
       result: apiResult,
     };

@@ -3,7 +3,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 80px 20px 40px;
+  padding: 40px 20px 40px;
 }
 
 .profile-card {
@@ -26,8 +26,8 @@
   height: 88px;
   border-radius: 50%;
   object-fit: cover;
-  border: 3px solid var(--accent-border);
-  box-shadow: 0 0 0 4px var(--accent-bg);
+  border: 3px solid var(--avatar-border);
+  box-shadow: 0 0 0 4px var(--avatar-glow);
 }
 
 .profile-name {
@@ -70,8 +70,9 @@
 }
 
 .profile-field__value {
-  font-size: 14px;
-  color: var(--text-h);
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-1);
   font-weight: 500;
   max-width: 60%;
   text-align: right;

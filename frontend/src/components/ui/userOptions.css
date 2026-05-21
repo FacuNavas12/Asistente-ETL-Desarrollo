@@ -5,7 +5,7 @@
   gap: 10px;
   padding: 10px 16px;
   border-radius: 12px;
-  background: var(--surface);
+  background: var(--bg-panel);
   border: 1px solid var(--border);
   cursor: pointer;
   user-select: none;
@@ -21,19 +21,19 @@
   height: 36px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid var(--accent-border);
+  border: 2px solid var(--avatar-border);
   flex-shrink: 0;
 }
 
 .user-options__name {
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-h);
+  color: var(--text-1);
 }
 
 .user-options__arrow {
   font-size: 10px;
-  color: var(--text);
+  color: var(--text-2);
   margin-left: 4px;
   transition: transform 0.2s;
 }
@@ -47,7 +47,7 @@
   top: calc(100% + 8px);
   right: 0;
   min-width: 190px;
-  background: var(--surface);
+  background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow);
@@ -66,7 +66,8 @@
   border-bottom: 1px solid var(--border);
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-h);
+  font-family: 'Outfit', sans-serif;
+  color: var(--text-1);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -80,10 +81,9 @@
 }
 
 .user-options__logout {
-  background: #c0392b !important;
-  color: #ffffff !important;
+  color: #f87171 !important;
 }
 
 .user-options__logout:hover {
-  background: #a93226 !important;
+  background: rgba(192, 57, 43, 0.15) !important;
 }

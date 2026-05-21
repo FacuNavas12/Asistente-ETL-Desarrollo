@@ -73,7 +73,7 @@
 
 .infer-panel__ddl {
   font-size: 12px;
-  font-family: "Consolas", "Fira Code", monospace;
+  font-family: 'JetBrains Mono', monospace;
   line-height: 1.6;
   color: var(--text);
   background: var(--bg);

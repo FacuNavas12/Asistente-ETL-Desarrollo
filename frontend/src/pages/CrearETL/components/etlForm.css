@@ -857,7 +857,7 @@
 
 .origen-ddl-textarea {
   min-height: 180px;
-  font-family: "Consolas", "Fira Code", monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
 }
 
@@ -1023,7 +1023,7 @@
 
 .test-check__value {
   color: var(--text);
-  font-family: "Consolas", "Fira Code", monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   word-break: break-all;
 }
@@ -1052,7 +1052,7 @@
   background: var(--accent-bg);
   border: 1px solid var(--border);
   font-size: 11px;
-  font-family: "Consolas", "Fira Code", monospace;
+  font-family: 'JetBrains Mono', monospace;
   color: var(--text);
   overflow-x: auto;
   max-height: 260px;
