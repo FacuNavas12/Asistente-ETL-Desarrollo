@@ -10,7 +10,7 @@ export default function LogoutButton() {
         logout({ logoutParams: { returnTo: window.location.origin } })
       }
     >
-      Cerrar SesiÃ³n
+      Cerrar Sesión
     </button>
   );
 }

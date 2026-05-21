@@ -70,7 +70,7 @@ export default function Navbar({ onHomeClick }) {
                 Mi Perfil
               </button>
               <button className="navbar__logout" onClick={handleLogout}>
-                Cerrar SesiÃ³n
+                Cerrar Sesión
               </button>
             </div>
           )}

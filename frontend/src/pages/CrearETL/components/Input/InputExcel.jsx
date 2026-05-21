@@ -32,7 +32,7 @@ export default function OrigenInputExcel({ onChange, onSwitchMode }) {
       {!status?.tables ? (
         <>
           <p className="origen-file-zone__hint">
-            SeleccionÃ¡ un archivo <strong>.xlsx</strong> o <strong>.xls</strong>.
+            Seleccioná un archivo <strong>.xlsx</strong> o <strong>.xls</strong>.
             Cada hoja del libro se convierte en una tabla. La primera fila de cada hoja debe ser el encabezado.
           </p>
           <button
@@ -40,7 +40,7 @@ export default function OrigenInputExcel({ onChange, onSwitchMode }) {
             onClick={() => inputRef.current?.click()}
             disabled={status === "loading"}
           >
-            {status === "loading" ? "Procesandoâ€¦" : "Seleccionar archivo Excel"}
+            {status === "loading" ? "Procesando…" : "Seleccionar archivo Excel"}
           </button>
           <input
             ref={inputRef}
@@ -53,7 +53,7 @@ export default function OrigenInputExcel({ onChange, onSwitchMode }) {
         </>
       ) : (
         <div className="origen-file-loaded">
-          <span className="origen-file-loaded__icon">âœ“</span>
+          <span className="origen-file-loaded__icon">✓</span>
           <div className="origen-file-loaded__info">
             <strong>
               {status.tables.length} tabla{status.tables.length !== 1 ? "s" : ""} cargada{status.tables.length !== 1 ? "s" : ""}
@@ -62,7 +62,7 @@ export default function OrigenInputExcel({ onChange, onSwitchMode }) {
             <ul className="origen-file-loaded__list">
               {status.tables.map((t) => (
                 <li key={t.tableName}>
-                  <strong>{t.tableName}</strong> â€” {t.columns.length} col.
+                  <strong>{t.tableName}</strong> — {t.columns.length} col.
                 </li>
               ))}
             </ul>
