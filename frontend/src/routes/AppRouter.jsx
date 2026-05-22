@@ -4,7 +4,7 @@ import Register from "@/pages/Register";
 import Home from "@/pages/Home";
 import Profile from "@/pages/Profile";
 import Settings from "@/pages/Settings";
-import CreateETL from "@/pages/CrearETL";
+import CreateETL from "@/pages/CreateETL";
 import EtlDetail from "@/pages/EtlDetail";
 import PrivateRoute from "../auth0/PrivateRoute";
 

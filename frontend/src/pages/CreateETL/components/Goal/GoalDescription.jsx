@@ -1,4 +1,4 @@
-import "@/pages/CrearETL/components/etlForm.css";
+import "../etlForm.css";
 
 export default function DescripcionObjetivo({ value, onChange }) {
   return (

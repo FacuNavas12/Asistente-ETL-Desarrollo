@@ -5,7 +5,7 @@ import Layout from "@/components/layout/Layout";
 import OrigenInput from "./components/Input/InputForm";
 import EtlChecks from "./components/EtlChecks";
 import ReglasNegocio from "./components/BussinesRules/BussinesRulesForm";
-import DescripcionObjetivo from "@/components/etl/DescripcionObjetivo";
+import DescripcionObjetivo from "./components/Goal/GoalDescription";
 import HomeModal from "./components/HomeModal";
 import InferenceReview from "./components/InferenceReview/InferenceReview";
 import "./CreateETL.css";
