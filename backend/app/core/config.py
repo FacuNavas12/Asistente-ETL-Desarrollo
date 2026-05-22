@@ -3,7 +3,7 @@ import base64
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import field_validator
+from pydantic import Field, AliasChoices, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic_settings.sources.base import NoDecode
 
@@ -13,28 +13,38 @@ ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(ENV_PATH))
 
-    google_api_key: str
+    # ── Proveedor LLM ─────────────────────────────────────────────────────────
+    # "gemini" | "anthropic" — cambiar solo en .env para switchear proveedor
+    llm_provider: str = "gemini"
 
-    # Cadena de conexión de la base de datos de la aplicación.
+    # ── Credenciales de proveedores ───────────────────────────────────────────
+    google_api_key: str
+    # Opcional: solo requerida cuando LLM_PROVIDER=anthropic
+    anthropic_api_key: str = ""
+
+    # ── Modelos ───────────────────────────────────────────────────────────────
+    # GEMINI_MODEL acepta también GOOGLE_MODEL_MAIN (alias de compatibilidad).
+    # Usado para ambos roles (main y secondary); la diferencia es temperatura y tokens.
+    gemini_model: str = Field(
+        default="gemini-2.5-flash",
+        validation_alias=AliasChoices("gemini_model", "google_model_main"),
+    )
+    anthropic_model: str = "claude-sonnet-4-20250514"
+
+    # ── Base de datos ─────────────────────────────────────────────────────────
     # Ejemplo: postgresql+psycopg2://user:pass@localhost:5432/etl_db
     database_url: str
 
-    # Lista de claves Fernet para cifrado de passwords (soporte de rotación).
-    # En el .env se escribe como CSV: KEY_ACTIVA,KEY_ANTERIOR,...
-    # La primera clave es la activa para encriptar; las siguientes solo descifran durante rotación.
-    # NoDecode evita que pydantic-settings intente JSON-decodificar el valor antes del validator.
-    # Generar una clave con: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # ── Cifrado de credenciales ───────────────────────────────────────────────
+    # CSV de claves Fernet. La primera es la activa; las demás solo desencriptan.
+    # NoDecode evita que pydantic-settings JSON-decodifique el valor antes del validator.
+    # Generar: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     credentials_encryption_keys: Annotated[list[str], NoDecode]
 
-    # Driver ODBC para SQL Server. Env var: MSSQL_ODBC_DRIVER.
+    # ── Driver ODBC SQL Server ────────────────────────────────────────────────
     mssql_odbc_driver: str = "ODBC Driver 18 for SQL Server"
 
-    # Gemini 2.5 Flash para ambos roles de momento.
-    # Cambiar GOOGLE_MODEL_MAIN a gemini-2.5-pro cuando se inicie la comparativa.
-    google_model_main: str = "gemini-2.5-flash"
-    google_model_secondary: str = "gemini-2.5-flash"
-
-    # Parámetros de generación
+    # ── Parámetros de generación ──────────────────────────────────────────────
     main_temperature: float = 0.1    # RNF10 — reproducibilidad
     main_max_tokens: int = 32768     # subido desde 16384 — caso 01 (demografía) lo excedía
     secondary_temperature: float = 0.0  # determinismo total para validaciones

@@ -19,6 +19,9 @@ pyasn1==0.6.3              # transitive de google-auth
 pyasn1_modules==0.4.2      # transitive de google-auth
 tenacity==9.1.4            # transitive de google-genai (reintentos)
 distro==1.9.0              # transitive de google-genai (detección de OS)
+# "import anthropic" → SDK oficial Anthropic; usado cuando LLM_PROVIDER=anthropic
+# Fijar versión exacta tras instalar: pip install anthropic && pip show anthropic
+anthropic>=0.40.0
 
 # ─── Bases de datos ──────────────────────────────────────────────────────────
 # "from sqlalchemy import ..." → paquete SQLAlchemy (S mayúscula en PyPI)
@@ -65,3 +68,10 @@ certifi==2026.4.22         # transitive de httpx/requests (certificados TLS)
 idna==3.15                 # transitive de httpx/requests (nombres de dominio)
 urllib3==2.7.0             # transitive de requests
 charset-normalizer==3.4.7  # transitive de requests
+
+# ─── Testing ─────────────────────────────────────────────────────────────────
+pytest==9.0.3
+iniconfig==2.3.0           # transitive de pytest
+packaging==26.2            # transitive de pytest
+pluggy==1.6.0              # transitive de pytest
+pygments==2.20.0           # transitive de pytest (syntax highlighting en output)
