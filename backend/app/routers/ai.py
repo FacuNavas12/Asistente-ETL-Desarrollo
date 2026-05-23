@@ -3,6 +3,8 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
+from app.core.config import settings
+
 from app.schemas.etl_schemas import (
     ETLRequest,
     ETLGenerateResponse,
@@ -22,6 +24,12 @@ from app.services.structure_inferrer import infer_structures, refine_structures
 
 router = APIRouter(tags=["ETL"])
 logger = logging.getLogger(__name__)
+
+
+@router.get("/api/v1/model-info", tags=["Debug"])
+def model_info():
+    model = settings.anthropic_model if settings.llm_provider == "anthropic" else settings.gemini_model
+    return {"provider": settings.llm_provider, "model": model}
 
 
 async def _handle(fn, *args):
