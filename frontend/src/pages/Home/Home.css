@@ -79,6 +79,19 @@
   cursor: not-allowed;
 }
 
+/* ── Botón crear job (variante outlined del botón principal) ── */
+.job-create-btn {
+  background: none !important;
+  border: 1px solid var(--accent-border) !important;
+  color: var(--accent) !important;
+  box-shadow: none !important;
+}
+.job-create-btn:hover {
+  background: var(--accent-bg) !important;
+  opacity: 1;
+  box-shadow: none !important;
+}
+
 /* ── Main area ── */
 .home-main {
   flex: 1;

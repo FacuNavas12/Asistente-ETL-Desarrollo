@@ -32,6 +32,10 @@ export default function Home() {
             {draft ? "Reanudar ETL" : "+ Crear ETL"}
           </button>
 
+          <button className="etl-create-btn job-create-btn" onClick={() => navigate("/job-create")}>
+            + Crear Job
+          </button>
+
           <button
             className="etl-clear-btn"
             disabled={!draft}
