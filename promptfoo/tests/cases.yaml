@@ -1,0 +1,601 @@
+# Casos migrados desde backend/tests/test_api.py
+# Cada mensaje es la reconstrucción exacta del prompt que el backend Python
+# construye y envía al LLM (sin pasar por FastAPI).
+#
+# Prompts disponibles:
+#   etl       → system_etl.txt      (generación de procesos ETL)
+#   validator  → system_validator.txt (validación y documentación)
+#   inference  → system_inference.txt (inferencia y refinamiento de estructuras)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BLOQUE 1 — Generación de procesos ETL (6 tests)
+# Fuente: etl_generator._build_prompt() + etl_generator.generate_etl_from_inference()
+# ══════════════════════════════════════════════════════════════════════════════
+
+- description: "test_generar_etl_completo — ventas 5 cols → STG_VENTAS → DIM_CLIENTE + FACT_VENTAS"
+  prompt: etl
+  vars:
+    message: |
+      ## OBJETIVO DEL PROCESO ETL
+      Cargar ventas diarias al DWH para análisis de revenue
+
+      ## ESQUEMA DE ORIGEN
+
+        Tabla: ventas
+          - id_venta | tipo: INTEGER | rol: identificador | datos ejemplo: 1, 2, 3
+          - fecha | tipo: DATE | formato: YYYY-MM-DD | rol: atributo | datos ejemplo: 2024-01-01, 2024-01-02
+          - monto | tipo: DECIMAL | rol: medida | datos ejemplo: 100.50, 200.00, -5.00
+          - id_cliente | tipo: INTEGER | rol: FK | datos ejemplo: 10, 11, 12
+          - descripcion | tipo: VARCHAR | rol: atributo | datos ejemplo: Compra A, Compra B
+
+      ## ESQUEMA DE STAGING
+
+        Tabla: STG_VENTAS (origen: ventas)
+          - id_venta (INTEGER) | reglas: No nulo | dato no válido: Rechazar fila
+          - fecha (DATE) | reglas: Formato YYYY-MM-DD | dato no válido: Reemplazar por NULL
+          - monto (DECIMAL) | reglas: Mayor a 0 | dato no válido: Rechazar fila
+          - id_cliente (INTEGER) | reglas: No nulo, Existe en DIM_CLIENTE | dato no válido: Rechazar fila
+
+      ## MODELO DE DWH
+
+        Tabla Dimension: DIM_CLIENTE | origen: ventas
+          - SK_CLIENTE (INTEGER) [SK]
+          - id_cliente → ID_CLIENTE (INTEGER)
+
+        Tabla Fact: FACT_VENTAS | origen: ventas
+          - SK_VENTA (INTEGER) [SK]
+          - id_cliente → SK_CLIENTE (INTEGER)
+          - fecha → FECHA (DATE)
+          - monto → MONTO (DECIMAL)
+
+      ## REGLAS DE NEGOCIO
+
+      Excluir ventas con monto negativo. Cargar solo registros del año 2024.
+
+      ---
+
+      Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
+      El mapeo "origen → nombre" indica que el campo se renombra entre capas; respetá los nombres destino exactos.
+      Aplica todas las reglas de limpieza definidas en cada columna de staging.
+      Verifica la consistencia de tipos y nombres entre las tres capas.
+  assert:
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return 'proceso_etl' in d && 'validaciones' in d && 'ktr' in d;
+        } catch(e) { return false; }
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return Array.isArray(d.proceso_etl?.steps) && d.proceso_etl.steps.length > 0;
+        } catch(e) { return false; }
+    - type: llm-rubric
+      value: "El proceso ETL usa nombres de steps válidos de Pentaho PDI (ej: Table Input, Filter rows, Dimension lookup/update) y el objeto ktr tiene hops coherentes que conectan todos los steps en orden lógico."
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+- description: "test_generar_etl_sin_descripcion — mismo payload pero sin objetivo"
+  prompt: etl
+  vars:
+    message: |
+      ## OBJETIVO DEL PROCESO ETL
+      No especificado.
+
+      ## ESQUEMA DE ORIGEN
+
+        Tabla: ventas
+          - id_venta | tipo: INTEGER | rol: identificador | datos ejemplo: 1, 2, 3
+          - fecha | tipo: DATE | formato: YYYY-MM-DD | rol: atributo | datos ejemplo: 2024-01-01, 2024-01-02
+          - monto | tipo: DECIMAL | rol: medida | datos ejemplo: 100.50, 200.00, -5.00
+          - id_cliente | tipo: INTEGER | rol: FK | datos ejemplo: 10, 11, 12
+          - descripcion | tipo: VARCHAR | rol: atributo | datos ejemplo: Compra A, Compra B
+
+      ## ESQUEMA DE STAGING
+
+        Tabla: STG_VENTAS (origen: ventas)
+          - id_venta (INTEGER) | reglas: No nulo | dato no válido: Rechazar fila
+          - fecha (DATE) | reglas: Formato YYYY-MM-DD | dato no válido: Reemplazar por NULL
+          - monto (DECIMAL) | reglas: Mayor a 0 | dato no válido: Rechazar fila
+          - id_cliente (INTEGER) | reglas: No nulo, Existe en DIM_CLIENTE | dato no válido: Rechazar fila
+
+      ## MODELO DE DWH
+
+        Tabla Dimension: DIM_CLIENTE | origen: ventas
+          - SK_CLIENTE (INTEGER) [SK]
+          - id_cliente → ID_CLIENTE (INTEGER)
+
+        Tabla Fact: FACT_VENTAS | origen: ventas
+          - SK_VENTA (INTEGER) [SK]
+          - id_cliente → SK_CLIENTE (INTEGER)
+          - fecha → FECHA (DATE)
+          - monto → MONTO (DECIMAL)
+
+      ## REGLAS DE NEGOCIO
+
+      Excluir ventas con monto negativo. Cargar solo registros del año 2024.
+
+      ---
+
+      Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
+      El mapeo "origen → nombre" indica que el campo se renombra entre capas; respetá los nombres destino exactos.
+      Aplica todas las reglas de limpieza definidas en cada columna de staging.
+      Verifica la consistencia de tipos y nombres entre las tres capas.
+  assert:
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return 'proceso_etl' in d && 'validaciones' in d && 'ktr' in d;
+        } catch(e) { return false; }
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return Array.isArray(d.proceso_etl?.steps) && d.proceso_etl.steps.length > 0;
+        } catch(e) { return false; }
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+- description: "test_generar_etl_minimo — una tabla, una columna, una dimensión"
+  prompt: etl
+  vars:
+    message: |
+      ## OBJETIVO DEL PROCESO ETL
+      No especificado.
+
+      ## ESQUEMA DE ORIGEN
+
+        Tabla: clientes
+          - id | tipo: INTEGER | rol: atributo
+
+      ## ESQUEMA DE STAGING
+
+        Tabla: STG_CLIENTES
+          - id (INTEGER) | dato no válido: Reemplazar por NULL
+
+      ## MODELO DE DWH
+
+        Tabla Dimension: DIM_CLIENTES
+          - SK_CLIENTE (INTEGER) [SK]
+
+      ## REGLAS DE NEGOCIO
+
+      Sin reglas especiales
+
+      ---
+
+      Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
+      El mapeo "origen → nombre" indica que el campo se renombra entre capas; respetá los nombres destino exactos.
+      Aplica todas las reglas de limpieza definidas en cada columna de staging.
+      Verifica la consistencia de tipos y nombres entre las tres capas.
+  assert:
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return 'proceso_etl' in d && 'validaciones' in d && 'ktr' in d;
+        } catch(e) { return false; }
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return Array.isArray(d.proceso_etl?.steps) && d.proceso_etl.steps.length > 0;
+        } catch(e) { return false; }
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+- description: "test_generar_etl_multiples_tablas — ventas + productos → STG integrado → FACT_VENTAS"
+  prompt: etl
+  vars:
+    message: |
+      ## OBJETIVO DEL PROCESO ETL
+      Integrar ventas y productos
+
+      ## ESQUEMA DE ORIGEN
+
+        Tabla: ventas
+          - id_venta | tipo: INTEGER | rol: atributo | datos ejemplo: 1, 2
+          - id_prod | tipo: INTEGER | rol: atributo | datos ejemplo: 10, 11
+          - cantidad | tipo: INTEGER | rol: atributo | datos ejemplo: 3, 5
+
+        Tabla: productos
+          - id_prod | tipo: INTEGER | rol: atributo | datos ejemplo: 10, 11
+          - nombre | tipo: VARCHAR | rol: atributo | datos ejemplo: Prod A, Prod B
+          - precio | tipo: DECIMAL | rol: atributo | datos ejemplo: 50.0, 80.0
+
+      ## ESQUEMA DE STAGING
+
+        Tabla: STG_VENTAS_PROD
+          - id_venta (INTEGER) | dato no válido: Reemplazar por NULL
+          - nombre (VARCHAR) | dato no válido: Reemplazar por NULL
+          - cantidad (INTEGER) | dato no válido: Reemplazar por NULL
+          - precio (DECIMAL) | dato no válido: Reemplazar por NULL
+
+      ## MODELO DE DWH
+
+        Tabla Fact: FACT_VENTAS
+          - SK_VENTA (INTEGER) [SK]
+          - NOMBRE_PROD (VARCHAR)
+          - CANTIDAD (INTEGER)
+          - PRECIO (DECIMAL)
+
+      ## REGLAS DE NEGOCIO
+
+      Solo ventas con cantidad >= 1
+
+      ---
+
+      Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
+      El mapeo "origen → nombre" indica que el campo se renombra entre capas; respetá los nombres destino exactos.
+      Aplica todas las reglas de limpieza definidas en cada columna de staging.
+      Verifica la consistencia de tipos y nombres entre las tres capas.
+  assert:
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return 'proceso_etl' in d && 'validaciones' in d && 'ktr' in d;
+        } catch(e) { return false; }
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return Array.isArray(d.proceso_etl?.steps) && d.proceso_etl.steps.length > 0;
+        } catch(e) { return false; }
+    - type: llm-rubric
+      value: "El ETL maneja correctamente que 'id_prod' aparece en ambas tablas de origen (ventas y productos) — el proceso renombra o aliasa el campo para evitar colisión antes del join."
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+- description: "test_reglas_negocio_complejas — ventas con 7 reglas de limpieza"
+  prompt: etl
+  vars:
+    message: |
+      ## OBJETIVO DEL PROCESO ETL
+      Cargar ventas diarias al DWH para análisis de revenue
+
+      ## ESQUEMA DE ORIGEN
+
+        Tabla: ventas
+          - id_venta | tipo: INTEGER | rol: identificador | datos ejemplo: 1, 2, 3
+          - fecha | tipo: DATE | formato: YYYY-MM-DD | rol: atributo | datos ejemplo: 2024-01-01, 2024-01-02
+          - monto | tipo: DECIMAL | rol: medida | datos ejemplo: 100.50, 200.00, -5.00
+          - id_cliente | tipo: INTEGER | rol: FK | datos ejemplo: 10, 11, 12
+          - descripcion | tipo: VARCHAR | rol: atributo | datos ejemplo: Compra A, Compra B
+
+      ## ESQUEMA DE STAGING
+
+        Tabla: STG_VENTAS (origen: ventas)
+          - id_venta (INTEGER) | reglas: No nulo | dato no válido: Rechazar fila
+          - fecha (DATE) | reglas: Formato YYYY-MM-DD | dato no válido: Reemplazar por NULL
+          - monto (DECIMAL) | reglas: Mayor a 0 | dato no válido: Rechazar fila
+          - id_cliente (INTEGER) | reglas: No nulo, Existe en DIM_CLIENTE | dato no válido: Rechazar fila
+
+      ## MODELO DE DWH
+
+        Tabla Dimension: DIM_CLIENTE | origen: ventas
+          - SK_CLIENTE (INTEGER) [SK]
+          - id_cliente → ID_CLIENTE (INTEGER)
+
+        Tabla Fact: FACT_VENTAS | origen: ventas
+          - SK_VENTA (INTEGER) [SK]
+          - id_cliente → SK_CLIENTE (INTEGER)
+          - fecha → FECHA (DATE)
+          - monto → MONTO (DECIMAL)
+
+      ## REGLAS DE NEGOCIO
+
+      1. Excluir registros con monto <= 0. 2. Solo cargar ventas del año 2024. 3. Si id_cliente es NULL, asignar id_cliente = -1 (cliente desconocido). 4. Convertir la columna fecha a UTC antes de cargar. 5. Si descripcion está vacía, reemplazar por 'SIN DESCRIPCION'. 6. Deduplicar por id_venta manteniendo el registro más reciente. 7. Aplicar máscara al campo descripcion si contiene datos sensibles (PII).
+
+      ---
+
+      Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
+      El mapeo "origen → nombre" indica que el campo se renombra entre capas; respetá los nombres destino exactos.
+      Aplica todas las reglas de limpieza definidas en cada columna de staging.
+      Verifica la consistencia de tipos y nombres entre las tres capas.
+  assert:
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return 'proceso_etl' in d && 'validaciones' in d && 'ktr' in d;
+        } catch(e) { return false; }
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return Array.isArray(d.proceso_etl?.steps) && d.proceso_etl.steps.length > 0;
+        } catch(e) { return false; }
+    - type: llm-rubric
+      value: "El proceso cubre al menos 4 de las 7 reglas de negocio con steps específicos (filtro monto, filtro año, reemplazo nulo id_cliente, deduplicación por id_venta, o manejo de descripcion vacía)."
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+- description: "test_generar_desde_inferencia — STG y DWH pre-validados como DDL SQL"
+  prompt: etl
+  vars:
+    message: |
+      ## OBJETIVO DEL PROCESO ETL
+      Cargar ventas al DWH
+
+      ## ESQUEMA DE ORIGEN
+
+        Tabla: ventas
+          - id_venta | tipo: INTEGER | rol: identificador | datos ejemplo: 1, 2, 3
+          - fecha | tipo: DATE | formato: YYYY-MM-DD | rol: atributo | datos ejemplo: 2024-01-01, 2024-01-02
+          - monto | tipo: DECIMAL | rol: medida | datos ejemplo: 100.50, 200.00, -5.00
+          - id_cliente | tipo: INTEGER | rol: FK | datos ejemplo: 10, 11, 12
+          - descripcion | tipo: VARCHAR | rol: atributo | datos ejemplo: Compra A, Compra B
+
+      ## STAGING (inferido y confirmado por el usuario)
+
+          CREATE TABLE STG_VENTAS (
+              id_venta   INTEGER NOT NULL,
+              fecha      DATE,
+              monto      DECIMAL(10,2),
+              id_cliente INTEGER
+          );
+
+      ## MODELO DWH (inferido y confirmado por el usuario)
+
+          CREATE TABLE DIM_CLIENTE (SK_CLIENTE INTEGER PRIMARY KEY, ID_CLIENTE INTEGER);
+          CREATE TABLE FACT_VENTAS (SK_VENTA INTEGER PRIMARY KEY, SK_CLIENTE INTEGER, FECHA DATE, MONTO DECIMAL(10,2));
+
+      ## REGLAS DE NEGOCIO
+      Excluir ventas con monto negativo. Cargar solo registros del año 2024.
+
+      ---
+
+      Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
+      Las estructuras STG y DWH ya fueron validadas por el usuario — usá exactamente esos nombres de tablas y columnas.
+      Verifica la consistencia de tipos y nombres entre las tres capas.
+  assert:
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return 'proceso_etl' in d && 'validaciones' in d && 'ktr' in d;
+        } catch(e) { return false; }
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return Array.isArray(d.proceso_etl?.steps) && d.proceso_etl.steps.length > 0;
+        } catch(e) { return false; }
+    - type: llm-rubric
+      value: "El ETL usa exactamente los nombres de tabla y columna del DDL provisto (STG_VENTAS, DIM_CLIENTE, FACT_VENTAS, SK_CLIENTE, SK_VENTA) sin inventar nombres alternativos."
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BLOQUE 2 — Validación y documentación (2 tests)
+# Fuente: validator.validate_etl() y documenter.document_etl()
+# ══════════════════════════════════════════════════════════════════════════════
+
+- description: "test_validar_etl — ETL de 3 steps (TableInput → FilterRows → TableOutput)"
+  prompt: validator
+  vars:
+    message: |
+      Analiza el siguiente proceso ETL y detecta problemas de calidad y malas prácticas:
+
+      ```json
+      {
+        "nombre": "ETL_VENTAS",
+        "descripcion": "Carga de ventas al DWH",
+        "steps": [
+          {
+            "orden": 1,
+            "tipo_step_pdi": "TableInput",
+            "nombre": "Leer ventas",
+            "descripcion": "Lee la tabla de ventas del origen",
+            "configuracion": {
+              "connection": "origen_db",
+              "sql": "SELECT * FROM ventas"
+            },
+            "justificacion": "Punto de entrada del ETL"
+          },
+          {
+            "orden": 2,
+            "tipo_step_pdi": "FilterRows",
+            "nombre": "Filtrar montos negativos",
+            "descripcion": "Elimina registros con monto <= 0",
+            "configuracion": {
+              "condition": "monto > 0"
+            },
+            "justificacion": "Regla de negocio: excluir montos negativos"
+          },
+          {
+            "orden": 3,
+            "tipo_step_pdi": "TableOutput",
+            "nombre": "Cargar STG_VENTAS",
+            "descripcion": "Inserta en staging",
+            "configuracion": {
+              "connection": "dwh_db",
+              "table": "STG_VENTAS"
+            },
+            "justificacion": "Carga al staging"
+          }
+        ]
+      }
+      ```
+  assert:
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return Array.isArray(d.validaciones) && Array.isArray(d.advertencias_buenas_practicas);
+        } catch(e) { return false; }
+    - type: llm-rubric
+      value: "El análisis detecta al menos un problema real: SELECT * sin WHERE en TableInput (riesgo de full scan), ausencia de WriteToLog para trazabilidad, o ausencia de manejo de errores."
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+- description: "test_documentar_etl — documentación narrativa del mismo ETL de 3 steps"
+  prompt: validator
+  vars:
+    message: |
+      Genera documentación técnica en lenguaje natural para el siguiente proceso ETL.
+
+      La documentación debe:
+      1. Describir el flujo completo de forma que un desarrollador nuevo lo entienda
+      2. Explicar cada step en orden, qué hace y por qué existe
+      3. Mencionar las reglas de negocio aplicadas
+      4. Indicar los puntos de control de calidad del proceso
+
+      Responde con un objeto JSON con la siguiente estructura:
+      {
+        "documentacion": "string — documentación completa en lenguaje natural"
+      }
+
+      Proceso ETL a documentar:
+
+      ```json
+      {
+        "nombre": "ETL_VENTAS",
+        "descripcion": "Carga de ventas al DWH",
+        "steps": [
+          {
+            "orden": 1,
+            "tipo_step_pdi": "TableInput",
+            "nombre": "Leer ventas",
+            "descripcion": "Lee la tabla de ventas del origen",
+            "configuracion": {
+              "connection": "origen_db",
+              "sql": "SELECT * FROM ventas"
+            },
+            "justificacion": "Punto de entrada del ETL"
+          },
+          {
+            "orden": 2,
+            "tipo_step_pdi": "FilterRows",
+            "nombre": "Filtrar montos negativos",
+            "descripcion": "Elimina registros con monto <= 0",
+            "configuracion": {
+              "condition": "monto > 0"
+            },
+            "justificacion": "Regla de negocio: excluir montos negativos"
+          },
+          {
+            "orden": 3,
+            "tipo_step_pdi": "TableOutput",
+            "nombre": "Cargar STG_VENTAS",
+            "descripcion": "Inserta en staging",
+            "configuracion": {
+              "connection": "dwh_db",
+              "table": "STG_VENTAS"
+            },
+            "justificacion": "Carga al staging"
+          }
+        ]
+      }
+      ```
+  assert:
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return typeof d.documentacion === 'string' && d.documentacion.length > 100;
+        } catch(e) { return false; }
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BLOQUE 3 — Inferencia y refinamiento de estructuras (2 tests)
+# Fuente: structure_inferrer._build_infer_prompt() y _build_refine_prompt()
+# ══════════════════════════════════════════════════════════════════════════════
+
+- description: "test_inferir_estructuras — origen ventas → inferir STG + modelo DWH estrella"
+  prompt: inference
+  vars:
+    message: |
+      A partir de la siguiente información, generá la definición de la tabla de Staging (STG) y el modelo de Data Warehouse (DWH) destino.
+
+      ESTRUCTURA DE ORIGEN:
+      [{"tableName": "ventas", "columns": [{"name": "id_venta", "dataType": "INTEGER", "role": "identificador", "data": ["1", "2", "3"]}, {"name": "fecha", "dataType": "DATE", "dataFormat": "YYYY-MM-DD", "data": ["2024-01-01", "2024-01-02"]}, {"name": "monto", "dataType": "DECIMAL", "role": "medida", "data": ["100.50", "200.00", "-5.00"]}, {"name": "id_cliente", "dataType": "INTEGER", "role": "FK", "data": ["10", "11", "12"]}, {"name": "descripcion", "dataType": "VARCHAR", "data": ["Compra A", "Compra B"]}]}]
+
+      DESCRIPCIÓN DEL PROCESO / OBJETIVO:
+      Cargar ventas diarias al DWH para análisis de revenue por cliente
+
+      REGLAS DE NEGOCIO:
+      Excluir montos negativos. Solo año 2024.
+
+      Devuelve ÚNICAMENTE el JSON con la estructura de respuesta indicada. Sin texto adicional.
+  assert:
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return d.stg_definition?.toUpperCase().includes('CREATE TABLE') &&
+                 d.dwh_model?.toUpperCase().includes('CREATE TABLE');
+        } catch(e) { return false; }
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return d.iteration === 1;
+        } catch(e) { return false; }
+    - type: llm-rubric
+      value: "El STG tiene prefijo stg_ (ej: stg_ventas) e incluye los campos de auditoría (stg_fecha_carga, stg_origen, stg_estado). El DWH usa modelo estrella con al menos una dimensión (dim_cliente) y una tabla de hechos (fact_ventas)."
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+- description: "test_refinar_estructuras — agregar columna descripcion VARCHAR(255) al STG existente"
+  prompt: inference
+  vars:
+    message: |
+      El usuario solicitó la siguiente corrección sobre las estructuras generadas:
+
+      CORRECCIÓN SOLICITADA:
+      Agregar columna descripcion en STG_VENTAS de tipo VARCHAR(255)
+
+      ESTRUCTURAS ACTUALES:
+      STG:
+
+          CREATE TABLE STG_VENTAS (
+              id_venta   INTEGER,
+              fecha      DATE,
+              monto      DECIMAL(10,2),
+              id_cliente INTEGER
+          );
+
+      DWH:
+
+          CREATE TABLE DIM_CLIENTE (SK_CLIENTE INTEGER PRIMARY KEY, ID_CLIENTE INTEGER);
+          CREATE TABLE FACT_VENTAS (SK_VENTA INTEGER PRIMARY KEY, SK_CLIENTE INTEGER, FECHA DATE, MONTO DECIMAL(10,2));
+
+      CONTEXTO ORIGINAL:
+      Estructura de origen: [{"tableName": "ventas", "columns": [{"name": "id_venta", "dataType": "INTEGER", "role": "identificador", "data": ["1", "2", "3"]}, {"name": "fecha", "dataType": "DATE", "dataFormat": "YYYY-MM-DD", "data": ["2024-01-01", "2024-01-02"]}, {"name": "monto", "dataType": "DECIMAL", "role": "medida", "data": ["100.50", "200.00", "-5.00"]}, {"name": "id_cliente", "dataType": "INTEGER", "role": "FK", "data": ["10", "11", "12"]}, {"name": "descripcion", "dataType": "VARCHAR", "data": ["Compra A", "Compra B"]}]}]
+      Descripción del proceso: Cargar ventas al DWH
+      Reglas de negocio: Excluir montos negativos
+
+      HISTORIAL DE CORRECCIONES ANTERIORES:
+      Sin iteraciones previas.
+
+      Aplicá la corrección solicitada y devolvé el JSON actualizado con las estructuras completas.
+      Respetá todas las correcciones anteriores del historial.
+      El campo iteration debe ser 2.
+      Sin texto adicional.
+  assert:
+    - type: javascript
+      value: |
+        try {
+          const s = output.replace(/^```(?:json)?\n?|```\s*$/gm, '').trim();
+          const d = JSON.parse(s);
+          return d.iteration >= 2 && d.stg_definition?.toUpperCase().includes('CREATE TABLE');
+        } catch(e) { return false; }
+    - type: llm-rubric
+      value: "El STG DDL resultante incluye la columna 'descripcion' de tipo VARCHAR(255) además de las columnas originales (id_venta, fecha, monto, id_cliente). El DWH no fue modificado."

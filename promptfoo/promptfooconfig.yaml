@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: "Comparación de escalera de eficiencia: Gemini Flash/Pro vs Claude Haiku/Sonnet"
+
+providers:
+  - id: google:gemini-2.5-flash
+    label: "gemini-flash"
+    config:
+      temperature: 0.3
+      maxOutputTokens: 4096
+
+  - id: google:gemini-2.5-pro
+    label: "gemini-pro"
+    config:
+      temperature: 0.3
+      maxOutputTokens: 4096
+
+  # Descomentar cuando tengas ANTHROPIC_API_KEY disponible:
+  # - id: anthropic:messages:claude-haiku-4-5
+  #   label: "claude-haiku"
+  #   config:
+  #     temperature: 0.3
+  #     max_tokens: 4096
+
+  # - id: anthropic:messages:claude-sonnet-4-5-20250929
+  #   label: "claude-sonnet"
+  #   config:
+  #     temperature: 0.3
+  #     max_tokens: 4096
+
+# Tres templates, uno por system prompt (el user prompt varía por test en cases.yaml)
+prompts:
+  - id: file://prompts/etl.yaml
+    label: etl
+
+  - id: file://prompts/validator.yaml
+    label: validator
+
+  - id: file://prompts/inference.yaml
+    label: inference
+
+tests: file://tests/cases.yaml
+
+defaultTest:
+  assert:
+    - type: latency
+      threshold: 60000  # 60s — ajustable por test; modelos de inferencia son más lentos
