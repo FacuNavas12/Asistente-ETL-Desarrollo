@@ -90,6 +90,7 @@ def _build_response(raw: str, usage) -> ETLGenerateResponse:
         validaciones=data.get("validaciones", []),
         documentacion=data.get("documentacion", ""),
         advertencias_buenas_practicas=data.get("advertencias_buenas_practicas", []),
+        dwh_sample=data.get("dwh_sample", {}),
         ktr_xml=ktr_xml,
         ktr_filename=ktr_filename,
         metadata={
