@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
 import Layout from "@/components/layout/Layout";
+import ChartPanel from "@/components/ui/ChartPanel";
+import DataChartPanel from "@/components/ui/DataChartPanel";
 import "./EtlDetail.css";
 
 const VALIDATION_LABELS = { error: "Error", warning: "Advertencia", info: "Info" };
@@ -35,6 +38,7 @@ export default function EtlDetail() {
   const { id } = useParams();
   const { etls } = useEtl();
   const navigate = useNavigate();
+  const [chartView, setChartView] = useState("data");
   const etl = etls.find(e => e.id === id);
 
   if (!etl) {
@@ -85,6 +89,31 @@ export default function EtlDetail() {
             <div className="etl-section">
               <h2 className="etl-section__title">Descripción</h2>
               <p className="etl-section__text">{proceso_etl.descripcion}</p>
+            </div>
+          )}
+
+          {proceso_etl?.steps?.length > 0 && (
+            <div className="etl-section">
+              <div className="etl-chart-tabs">
+                <button
+                  className={`etl-chart-tab ${chartView === "data" ? "is-active" : ""}`}
+                  onClick={() => setChartView("data")}
+                >
+                  Datos limpios
+                </button>
+                <button
+                  className={`etl-chart-tab ${chartView === "process" ? "is-active" : ""}`}
+                  onClick={() => setChartView("process")}
+                >
+                  Estadísticas del proceso
+                </button>
+              </div>
+              {chartView === "data"
+                ? <DataChartPanel
+                    dwhSample={etl.result?.dwh_sample ?? {}}
+                    origenTables={etl.formData?.origenTables ?? []}
+                  />
+                : <ChartPanel data={etl.result} />}
             </div>
           )}
 

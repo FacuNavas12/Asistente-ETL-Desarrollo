@@ -108,6 +108,7 @@ class ETLGenerateResponse(BaseModel):
     validaciones: List[Validacion]
     documentacion: str
     advertencias_buenas_practicas: List[str]
+    dwh_sample: Dict[str, List[Dict[str, Any]]] = {}
     ktr_xml: str = ""
     ktr_filename: str = ""
     metadata: MetadataResponse

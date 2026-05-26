@@ -3,44 +3,23 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
 import { useEtl } from "@/context/EtlContext";
-import { ETL_STATUS } from "@/constants/etlStatus";
+import { ETL_STATUS } from "@/constants/status";
+import PendingModal from "./PendingModal";
 import "./navbar.css";
-
-function PendingModal({ pendingEtl, onGoTo, onCreateNew, onClose }) {
-  return (
-    <div className="sidebar-modal-overlay" onClick={onClose}>
-      <div className="sidebar-modal" onClick={e => e.stopPropagation()}>
-        <h2 className="sidebar-modal__title">Ya hay un ETL en proceso</h2>
-        <p className="sidebar-modal__sub">
-          "{pendingEtl.name}" aún no fue completado.
-        </p>
-        <div className="sidebar-modal__options">
-          <button className="sidebar-modal__opt sidebar-modal__opt--primary" onClick={onGoTo}>
-            Volver al ETL en proceso
-          </button>
-          <button className="sidebar-modal__opt" onClick={onCreateNew}>
-            Crear uno nuevo de todas formas
-          </button>
-          <button className="sidebar-modal__opt sidebar-modal__opt--muted" onClick={onClose}>
-            Ignorar, quedarme aquí
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function Navbar() {
   const { user, logout } = useAuth0();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
-  const { etls } = useEtl();
+  const { etls, jobs } = useEtl();
 
   const [avatarOpen, setAvatarOpen] = useState(false);
-  const [pendingModal, setPendingModal] = useState(false);
+  // 'etl' | 'job' | null — which pending modal is open
+  const [pendingModalType, setPendingModalType] = useState(null);
   const avatarRef = useRef(null);
 
   const pendingEtl = etls.find(e => e.status === ETL_STATUS.pending.key);
+  const pendingJob = jobs?.find(j => j.status === ETL_STATUS.pending.key);
 
   const initials = user?.name
     ? user.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
@@ -59,11 +38,21 @@ export default function Navbar() {
 
   const handleNewEtl = () => {
     if (pendingEtl) {
-      setPendingModal(true);
+      setPendingModalType("etl");
     } else {
       navigate("/etl-create");
     }
   };
+
+  const handleNewJob = () => {
+    if (pendingJob) {
+      setPendingModalType("job");
+    } else {
+      navigate("/job-create");
+    }
+  };
+
+  const closeModal = () => setPendingModalType(null);
 
   const handleLogout = () =>
     logout({ logoutParams: { returnTo: window.location.origin } });
@@ -77,7 +66,7 @@ export default function Navbar() {
           onClick={() => navigate("/home")}
           data-tooltip="Home"
         >
-          E
+          H
         </button>
 
         {/* Avatar */}
@@ -122,6 +111,20 @@ export default function Navbar() {
           </svg>
         </button>
 
+        {/* Nuevo Job */}
+        <button
+          className="sidebar__btn sidebar__btn--new"
+          onClick={handleNewJob}
+          data-tooltip="Nuevo Job"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="7" width="20" height="14" rx="2" />
+            <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+            <line x1="12" y1="12" x2="12" y2="16" />
+            <line x1="10" y1="14" x2="14" y2="14" />
+          </svg>
+        </button>
+
         {/* Spacer */}
         <div className="sidebar__spacer" />
 
@@ -129,7 +132,7 @@ export default function Navbar() {
         <button
           className="sidebar__btn"
           onClick={toggle}
-          data-tooltip={dark ? "Cambiar tema" : "Cambiar tema"}
+          data-tooltip="Cambiar tema"
         >
           {dark ? (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -176,12 +179,23 @@ export default function Navbar() {
         </button>
       </aside>
 
-      {pendingModal && pendingEtl && (
+      {pendingModalType === "etl" && pendingEtl && (
         <PendingModal
-          pendingEtl={pendingEtl}
-          onGoTo={() => { navigate(`/etl/${pendingEtl.id}`); setPendingModal(false); }}
-          onCreateNew={() => { navigate("/etl-create"); setPendingModal(false); }}
-          onClose={() => setPendingModal(false)}
+          type="etl"
+          pendingItem={pendingEtl}
+          onGoTo={() => { navigate("/home"); closeModal(); }}
+          onCreateNew={() => { navigate("/etl-create"); closeModal(); }}
+          onClose={closeModal}
+        />
+      )}
+
+      {pendingModalType === "job" && pendingJob && (
+        <PendingModal
+          type="job"
+          pendingItem={pendingJob}
+          onGoTo={() => { navigate("/home"); closeModal(); }}
+          onCreateNew={() => { navigate("/job-create"); closeModal(); }}
+          onClose={closeModal}
         />
       )}
     </>

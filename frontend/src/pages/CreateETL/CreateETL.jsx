@@ -8,6 +8,7 @@ import ReglasNegocio from "./components/BussinesRules/BussinesRulesForm";
 import DescripcionObjetivo from "./components/Goal/GoalDescription";
 import HomeModal from "./components/HomeModal";
 import InferenceReview from "./components/InferenceReview/InferenceReview";
+import { SAMPLE_ETL } from "./utils/sampleEtl";
 import "./CreateETL.css";
 import "./etl-error.css";
 
@@ -32,7 +33,7 @@ function isDirty(origenTables, reglasNegocio, descripcionObjetivo) {
 
 export default function CreateETL() {
   const navigate   = useNavigate();
-  const { draft, saveDraft, clearDraft, addEtl } = useEtl();
+  const { draft, saveDraft, clearDraft, addEtl, savePendingEtl, etls } = useEtl();
 
   const [step, setStep]       = useState(STEP.FORM);
   const [showModal, setShowModal] = useState(false);
@@ -62,6 +63,13 @@ export default function CreateETL() {
     clearDraft();
     setErrors([]);
     setStep(STEP.FORM);
+  };
+
+  const handleCargarEjemplo = () => {
+    setDescripcionObjetivo(SAMPLE_ETL.descripcionObjetivo);
+    setOrigenTables(SAMPLE_ETL.origenTables);
+    setReglasNegocio(SAMPLE_ETL.reglasNegocio);
+    setErrors([]);
   };
 
   // Serializa origenTables a string JSON para el endpoint de inferencia
@@ -165,7 +173,12 @@ export default function CreateETL() {
         throw new Error(err.detail ?? `HTTP ${res.status}`);
       }
       const apiResult = await res.json();
-      const id = addEtl({ origenTables, reglasNegocio }, apiResult);
+      const id = addEtl({
+        origenTables,
+        reglasNegocio,
+        stg_definition: inferResult?.stg_definition ?? "",
+        dwh_model: inferResult?.dwh_model ?? "",
+      }, apiResult);
       navigate(`/etl/${id}`);
     } catch (err) {
       setStep(STEP.REVIEW);
@@ -177,7 +190,13 @@ export default function CreateETL() {
     <Layout onHomeClick={() => setShowModal(true)}>
       {showModal && (
         <HomeModal
-          onConfirm={() => navigate("/home")}
+          onConfirm={() => {
+            if (dirty) {
+              const name = (descripcionObjetivo.trim().split("\n")[0] || `ETL #${etls.length + 1}`).slice(0, 50);
+              savePendingEtl(name, { descripcionObjetivo, origenTables, reglasNegocio });
+            }
+            navigate("/home");
+          }}
           onCancel={() => setShowModal(false)}
         />
       )}
@@ -187,6 +206,13 @@ export default function CreateETL() {
           <h1 className="etl-title">Crear ETL</h1>
           {step === STEP.FORM && (
             <div className="etl-header-actions">
+              <button
+                className="etl-clear-btn"
+                onClick={handleCargarEjemplo}
+                title="Completar el formulario con un caso de ejemplo (ventas)"
+              >
+                Cargar ejemplo
+              </button>
               <button className="etl-clear-btn" disabled={!dirty} onClick={handleLimpiar}>
                 Limpiar
               </button>

@@ -1,7 +1,8 @@
 import json
 import logging
+from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.schemas.etl_schemas import (
     ETLRequest,
@@ -19,6 +20,13 @@ from app.services.etl_generator import generate_etl, generate_etl_from_inference
 from app.services.validator import validate_etl
 from app.services.documenter import document_etl
 from app.services.structure_inferrer import infer_structures, refine_structures
+from app.schemas.job_schemas import (
+    JobAnalyzeResponse,
+    JobGenerateRequest,
+    JobGenerateResponse,
+    JobRefineRequest,
+)
+from app.services import job_analyzer
 
 router = APIRouter(tags=["ETL"])
 logger = logging.getLogger(__name__)
@@ -90,3 +98,51 @@ async def refine(req: RefineRequest):
 async def generate_from_inference(req: ETLFromInferenceRequest):
     """Genera el proceso ETL completo usando estructuras STG/DWH inferidas por el modelo."""
     return _handle(generate_etl_from_inference, req)
+
+
+# ── Flujo de generación de Jobs PDI (.kjb) ────────────────────────────────────
+
+@router.post("/api/v1/job/analyze", response_model=JobAnalyzeResponse)
+async def analyze_job(
+    ktr_files: List[UploadFile] = File(...),
+    job_description: str = Form(...),
+    business_rules: Optional[str] = Form(None),
+):
+    """Parsea N archivos .ktr, infiere el orden lógico y devuelve el plan del job para revisión."""
+    try:
+        return await job_analyzer.analyze_job(ktr_files, job_description, business_rules)
+    except json.JSONDecodeError as e:
+        logger.error("JSON parse error en analyze_job: %s", str(e))
+        raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
+    except Exception as e:
+        logger.error("Error en analyze_job: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/job/refine", response_model=JobAnalyzeResponse)
+async def refine_job(req: JobRefineRequest):
+    """Incorpora una corrección en lenguaje natural y regenera el plan del job con historial acumulado."""
+    try:
+        return await job_analyzer.refine_job(req)
+    except json.JSONDecodeError as e:
+        logger.error("JSON parse error en refine_job: %s", str(e))
+        raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
+    except Exception as e:
+        logger.error("Error en refine_job: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/job/generate", response_model=JobGenerateResponse)
+async def generate_job(req: JobGenerateRequest):
+    """Toma el JobPlan confirmado y genera el XML .kjb final + explicación en lenguaje natural."""
+    try:
+        return await job_analyzer.generate_job(req.session_id, req.job_plan)
+    except json.JSONDecodeError as e:
+        logger.error("JSON parse error en generate_job: %s", str(e))
+        raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
+    except FileNotFoundError as e:
+        logger.error("Sesión no encontrada: %s", str(e))
+        raise HTTPException(status_code=404, detail="Sesión expirada o no encontrada. Volvé a subir los archivos .ktr.")
+    except Exception as e:
+        logger.error("Error en generate_job: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))

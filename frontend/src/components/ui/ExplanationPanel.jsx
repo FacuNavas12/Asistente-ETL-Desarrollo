@@ -3,7 +3,7 @@
 export default function ExplanationPanel({ text }) {
   return (
     <div className="result-card">
-      <h2 className="result-title">ExplicaciÃ³n</h2>
+      <h2 className="result-title">Explicacion</h2>
       <p className="result-text">{text}</p>
     </div>
   );

@@ -96,6 +96,11 @@ Responde SIEMPRE con un objeto JSON válido con exactamente esta estructura:
   "advertencias_buenas_practicas": [
     "string — advertencia o recomendación de buenas prácticas ETL"
   ],
+  "dwh_sample": {
+    "NOMBRE_TABLA_DWH": [
+      { "columna1": "valor", "columna2": "valor" }
+    ]
+  },
   "ktr": {
     "name": "string — nombre técnico de la transformación (sin espacios, usar _)",
     "description": "string — descripción breve",
@@ -152,6 +157,13 @@ Responde SIEMPRE con un objeto JSON válido con exactamente esta estructura:
 10. **No asumir claves de join [CRÍTICO]:** NUNCA asumas que existe una columna de unión en una tabla si no está explícitamente definida en el esquema provisto. Si necesitás unir dos tablas pero la clave de join no aparece en el esquema de una de ellas, reporta un `error` en `validaciones` con el mensaje "Clave de unión '[campo]' no encontrada en '[tabla]' — verificar esquema de origen antes de implementar el join". No generes el step de join con una columna que no fue declarada.
 
 11. **No inferir mapeos de campo [ADVERTENCIA]:** Solo mapea campos que estén explícitamente definidos en el esquema de la capa correspondiente. Si en staging o DWH hay un campo cuyo origen no está declarado en el esquema provisto, reporta un `warning` en `validaciones` indicando el campo sin origen confirmado. No crees pasos de transformación ni mapeos para campos cuya fuente es una suposición.
+
+12. **dwh_sample [OBLIGATORIO]:** Generá filas de ejemplo realistas que representen el estado del DWH DESPUÉS de aplicar todas las transformaciones (joins, limpieza, agregaciones, surrogate keys, filtros). Las claves del objeto son los nombres exactos de las tablas del modelo DWH. Cada tabla debe tener entre 5 y 12 filas. Los valores deben reflejar:
+   - Joins resueltos (ej. fact_ventas con id_cliente referenciando a la dim_cliente correspondiente)
+   - Reglas de negocio aplicadas (ej. nombres normalizados, montos calculados, filtros)
+   - Surrogate keys numéricas secuenciales
+   - Datos consistentes con los ejemplos de origen pero ya transformados
+   Esto se usa para que el usuario visualice cómo quedan los datos cruzados/limpios en el DWH. No omitas este campo.
 
 ## GENERACIÓN DEL OBJETO `ktr`
 

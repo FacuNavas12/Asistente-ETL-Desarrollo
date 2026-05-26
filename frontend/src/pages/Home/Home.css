@@ -8,9 +8,17 @@
 /* ── Header ── */
 .home-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
   gap: 16px;
   margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+
+.home-header__left {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
@@ -25,7 +33,7 @@
 .home-count {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .home-count__label {
@@ -39,12 +47,59 @@
 .home-count__badge {
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   background: var(--bg-card);
   color: var(--text-1);
   padding: 2px 9px;
-  border-radius: 6px;
+  border-radius: 10px;
   border: 1px solid var(--border);
+}
+
+/* ── Filter toggle ── */
+.home-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.home-filter__btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  letter-spacing: 0.02em;
+}
+
+.home-filter__btn:hover:not(.home-filter__btn--active) {
+  background: var(--accent-bg);
+  color: var(--text-1);
+}
+
+.home-filter__btn--active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ── Botón crear job (variante outlined del botón principal) ── */
+.job-create-btn {
+  background: none !important;
+  border: 1px solid var(--accent-border) !important;
+  color: var(--accent) !important;
+  box-shadow: none !important;
+}
+.job-create-btn:hover {
+  background: var(--accent-bg) !important;
+  opacity: 1;
+  box-shadow: none !important;
 }
 
 /* ── Empty state ── */
@@ -75,23 +130,17 @@
   color: var(--text-2) !important;
 }
 
-/* ── ETL Grid ── */
+/* ── Grid ── */
 .home-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
   gap: 18px;
 }
 
-/* ── ETL Card ── */
+/* ── Cards ── */
 @keyframes cardAppear {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .etl-card {
@@ -108,7 +157,6 @@
   animation: cardAppear 0.35s ease both;
 }
 
-/* Gradient top border on hover via pseudo-element */
 .etl-card::before {
   content: '';
   position: absolute;
@@ -122,10 +170,19 @@
   transition: opacity 0.2s;
 }
 
+.etl-card--job::before {
+  background: linear-gradient(90deg, #6366f1, rgba(99, 102, 241, 0.2));
+}
+
 .etl-card:hover {
   border-color: var(--accent-border);
   box-shadow: 0 4px 20px var(--accent-shadow);
   transform: translateY(-2px);
+}
+
+.etl-card--job:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
 }
 
 .etl-card:hover::before {
@@ -145,8 +202,34 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
   flex-shrink: 0;
+}
+
+.etl-card__icon--job {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+/* Type tag (ETL / Job) */
+.etl-card__type-tag {
+  display: inline-flex;
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.etl-card__type-tag--etl {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.etl-card__type-tag--job {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
 }
 
 .etl-card__name {
@@ -162,7 +245,6 @@
   color: var(--text-3);
 }
 
-/* Status badge using inline CSS variable */
 .etl-card__status {
   display: inline-flex;
   align-items: center;
@@ -199,4 +281,8 @@
 
 .etl-card:hover .etl-card__action {
   color: var(--accent);
+}
+
+.etl-card--job:hover .etl-card__action {
+  color: #6366f1;
 }
