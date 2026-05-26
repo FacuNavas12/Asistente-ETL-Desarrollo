@@ -29,16 +29,33 @@ $env:GOOGLE_API_KEY = "AIzaSy..."     # clave real de Google AI Studio
 # 3. Instalar promptfoo (solo la primera vez, si no existe node_modules en la raíz)
 npm install
 
-# 4. Correr la evaluación
+# 4. Correr la evaluación completa (todos los tests)
 npm run eval
 
-# 5. Ver resultados en la UI web
+# 5. Correr un test específico por nombre
+npm run eval -- --filter-pattern "test_generar_etl_completo"
+
+# 6. Ver resultados en la UI web
 npm run eval:view   # abre http://localhost:15500
 ```
 
-O directamente con promptfoo (también desde la raíz):
+## Correr solo el primer caso
+
+```Terminal
+# 1. Después de primeros pasos
+
+npm run eval -- --filter-pattern "test_generar_etl_completo" --filter-prompts "etl"
+
+```
+
+
+> **Nota sobre `npm run eval --`:** el `--` separa los flags de npm de los flags que se pasan al script interno.
+> Sin `--`, npm no reenvía los flags a promptfoo.
+
+O directamente con npx (también desde la raíz — requiere `--config` explícito):
 ```powershell
 npx promptfoo eval --config promptfoo/promptfooconfig.yaml
+npx promptfoo eval --config promptfoo/promptfooconfig.yaml --filter-pattern "test_generar_etl_completo"
 npx promptfoo view
 ```
 

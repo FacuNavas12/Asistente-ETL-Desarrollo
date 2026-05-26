@@ -7,12 +7,14 @@ providers:
     config:
       temperature: 0.3
       maxOutputTokens: 4096
+      maxRetries: 0  # no reintentar en 429/timeout; falla rápido
 
   - id: google:gemini-2.5-pro
     label: "gemini-pro"
     config:
       temperature: 0.3
       maxOutputTokens: 4096
+      maxRetries: 0  # no reintentar en 429/timeout; falla rápido
 
   # Descomentar cuando tengas ANTHROPIC_API_KEY disponible:
   # - id: anthropic:messages:claude-haiku-4-5
@@ -40,7 +42,12 @@ prompts:
 
 tests: file://tests/cases.yaml
 
+evaluateOptions:
+  maxConcurrency: 1  # requests secuenciales para no saturar el rate limit simultáneamente
+
 defaultTest:
+  options:
+    provider: google:gemini-2.5-flash  # grader para llm-rubric: flash en vez de pro (evita llamadas extra a pro)
   assert:
     - type: latency
       threshold: 60000  # 60s — ajustable por test; modelos de inferencia son más lentos
