@@ -1,0 +1,15 @@
+# requirements-dev.txt — dependencias de desarrollo y testing
+# Instalar sobre requirements.txt: pip install -r requirements.txt -r requirements-dev.txt
+
+-r requirements.txt
+
+# ─── Testing ─────────────────────────────────────────────────────────────────
+pytest==9.0.3
+iniconfig==2.3.0           # transitive de pytest
+pluggy==1.6.0              # transitive de pytest (sistema de plugins)
+packaging==26.2            # transitive de pytest
+Pygments==2.20.0           # transitive de pytest (colorización de output)
+# httpx ya está en requirements.txt (transitive de google-genai);
+# se necesita aquí también para fastapi.testclient.TestClient
+# requests ya está en requirements.txt (transitive de google-genai);
+# se usa directamente en tests/test_api.py para llamadas HTTP a servidor live

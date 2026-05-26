@@ -1,7 +1,70 @@
-fastapi==0.115.12
-uvicorn[standard]==0.34.3
-google-genai>=1.0.0
-pydantic==2.11.5
-pydantic-settings==2.9.1
-python-dotenv==1.1.0
-python-multipart==0.0.20
+# requirements.txt — dependencias de producción del backend ETL
+# Versiones fijadas desde el venv activo (Python 3.14.5 / Windows)
+# Para reproducir: pip install -r requirements.txt
+
+# ─── Framework ───────────────────────────────────────────────────────────────
+fastapi==0.136.1
+uvicorn==0.47.0
+starlette==1.0.0           # transitive de fastapi
+annotated-doc==0.0.4       # transitive de fastapi
+click==8.4.0               # transitive de uvicorn
+colorama==0.4.6            # transitive de uvicorn (colores en terminal Windows)
+websockets==16.0           # transitive de uvicorn y google-genai
+
+# ─── Modelos de IA ───────────────────────────────────────────────────────────
+# "from google import genai" → paquete google-genai (no google-cloud-*)
+google-genai==2.4.0
+google-auth==2.53.0        # transitive de google-genai
+pyasn1==0.6.3              # transitive de google-auth
+pyasn1_modules==0.4.2      # transitive de google-auth
+tenacity==9.1.4            # transitive de google-genai (reintentos)
+distro==1.9.0              # transitive de google-genai (detección de OS)
+
+# ─── Bases de datos ──────────────────────────────────────────────────────────
+# "from sqlalchemy import ..." → paquete SQLAlchemy (S mayúscula en PyPI)
+SQLAlchemy==2.0.49
+greenlet==3.5.0            # transitive de SQLAlchemy (bridge sync/async)
+alembic==1.18.4
+Mako==1.3.12               # transitive de alembic (templates de migraciones)
+MarkupSafe==3.0.3          # transitive de Mako
+
+# Driver PostgreSQL — requerido para URLs postgresql+psycopg://
+# psycopg v3 (psycopg3); paquete distinto a psycopg2
+psycopg==3.3.4
+psycopg-binary==3.3.4      # extensión binaria C de psycopg3 (obligatoria en Windows)
+tzdata==2026.2             # transitive de psycopg (base de datos de zonas horarias)
+
+# Driver SQL Server — requerido para URLs mssql+pyodbc://
+# Requiere ODBC Driver instalado en el sistema (ej. "ODBC Driver 17/18 for SQL Server")
+pyodbc==5.3.0
+
+# ─── Validación y configuración ──────────────────────────────────────────────
+pydantic==2.13.4
+# "from pydantic_settings import BaseSettings" → paquete pydantic-settings
+pydantic-settings==2.14.1
+pydantic_core==2.46.4      # transitive de pydantic (núcleo compilado en Rust)
+annotated-types==0.7.0     # transitive de pydantic
+typing-inspection==0.4.2   # transitive de pydantic
+typing_extensions==4.15.0  # transitive compartido (pydantic, fastapi, sqlalchemy…)
+python-dotenv==1.2.2       # transitive de pydantic-settings; carga backend/.env
+
+# ─── Seguridad / Cifrado ─────────────────────────────────────────────────────
+# "from cryptography.fernet import Fernet" → paquete cryptography
+cryptography==48.0.0
+cffi==2.0.0                # transitive de cryptography (bindings C)
+pycparser==3.0             # transitive de cffi
+
+# ─── HTTP / Networking ───────────────────────────────────────────────────────
+httpx==0.28.1              # transitive de google-genai (HTTP transport)
+httpcore==1.0.9            # transitive de httpx
+h11==0.16.0                # transitive de httpcore (parser HTTP/1.1)
+anyio==4.13.0              # transitive de fastapi y google-genai (I/O asíncrono)
+sniffio==1.3.1             # transitive de anyio
+requests==2.34.2           # transitive de google-genai (HTTP fallback)
+certifi==2026.4.22         # transitive de httpx/requests (certificados TLS)
+idna==3.15                 # transitive de httpx/requests (nombres de dominio)
+urllib3==2.7.0             # transitive de requests
+charset-normalizer==3.4.7  # transitive de requests
+
+# ─── Uploads / Form data ─────────────────────────────────────────────────────
+python-multipart==0.0.20   # requerido por FastAPI para File y Form en endpoints

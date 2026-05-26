@@ -4,7 +4,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import ai
+from app.core.log_filters import PasswordFilter
+from app.routers import ai, connections
 
 _log_dir = Path(__file__).resolve().parent.parent / "logs"
 _log_dir.mkdir(exist_ok=True)
@@ -18,6 +19,7 @@ logging.basicConfig(
         logging.FileHandler(_log_dir / "generaciones.log", encoding="utf-8"),
     ],
 )
+logging.getLogger().addFilter(PasswordFilter())
 
 app = FastAPI(title="Acelerador ETL — API", version="0.1.0")
 
@@ -30,6 +32,7 @@ app.add_middleware(
 )
 
 app.include_router(ai.router)
+app.include_router(connections.router)
 
 
 @app.get("/")

@@ -12,7 +12,7 @@
   cursor: pointer;
   font-size: 15px;
   font-weight: 600;
-  color: white;
+  font-family: 'Outfit', sans-serif;
   letter-spacing: 0.2px;
   transition: transform 0.15s ease, opacity 0.15s, box-shadow 0.15s;
 }
@@ -27,31 +27,32 @@
 }
 
 .auth-btn.login {
-  background: linear-gradient(135deg, #E8442A, #F05540);
-  box-shadow: 0 4px 20px rgba(232, 68, 42, 0.35);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 20px var(--accent-shadow);
 }
 
 .auth-btn.login:hover {
-  box-shadow: 0 6px 28px rgba(232, 68, 42, 0.5);
+  box-shadow: 0 6px 28px var(--accent-border);
 }
 
 .auth-btn.signup {
-  background: #0D1E35;
-  border: 1px solid #1A3A5C;
-  color: #C8D8E8;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  color: var(--text-1);
 }
 
 .auth-btn.signup:hover {
-  background: #132540;
-  border-color: #E8442A;
+  background: var(--bg-card);
+  border-color: var(--accent-border);
 }
 
 .auth-btn.logout {
-  background: #3a1a1a;
-  border: 1px solid #5a2020;
+  background: rgba(192, 57, 43, 0.1);
+  border: 1px solid rgba(192, 57, 43, 0.25);
   color: #f87171;
 }
 
 .auth-btn.logout:hover {
-  background: #451f1f;
+  background: rgba(192, 57, 43, 0.2);
 }

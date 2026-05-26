@@ -1,6 +1,6 @@
 .etl-detail {
   flex: 1;
-  padding: 80px 40px 60px;
+  padding: 40px 40px 60px;
   max-width: 900px;
   margin: 0 auto;
   width: 100%;
@@ -24,8 +24,9 @@
 }
 
 .etl-detail__date {
-  font-size: 14px;
-  color: var(--text);
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-3);
 }
 
 .etl-detail__actions {

@@ -1,12 +1,13 @@
-﻿import Navbar from "./Navbar";
+import Navbar from "./Navbar";
 import "./layout.css";
 
-export default function Layout({ children, onHomeClick }) {
+export default function Layout({ children }) {
   return (
     <div className="layout">
-      <Navbar onHomeClick={onHomeClick} />
-      {children}
+      <Navbar />
+      <div className="layout__content">
+        {children}
+      </div>
     </div>
   );
 }
-
