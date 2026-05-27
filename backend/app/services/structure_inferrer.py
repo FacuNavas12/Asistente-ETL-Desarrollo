@@ -13,8 +13,8 @@ import json
 import logging
 
 from app.models.gemini_client import call_main
+from app.models.llm_base import LLMResponse
 from app.schemas.etl_schemas import InferRequest, RefineRequest, InferResponse
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +74,8 @@ El campo iteration debe ser {len(req.history) + 2}.
 Sin texto adicional."""
 
 
-def _parse_response(raw: str, usage) -> InferResponse:
-    data = json.loads(raw)
+def _parse_response(resp: LLMResponse) -> InferResponse:
+    data = json.loads(resp.content)
 
     if "stg_definition" not in data or "dwh_model" not in data:
         raise ValueError("La respuesta del modelo no contiene stg_definition o dwh_model.")
@@ -92,33 +92,33 @@ def _parse_response(raw: str, usage) -> InferResponse:
         dwh_rationale=data.get("dwh_rationale", ""),
         iteration=data.get("iteration", 1),
         metadata={
-            "modelo_usado": settings.google_model_main,
-            "tokens_input": usage.prompt_token_count or 0,
-            "tokens_output": usage.candidates_token_count or 0,
-            "region_inferencia": "google-cloud",
+            "modelo_usado": resp.model,
+            "tokens_input": resp.input_tokens,
+            "tokens_output": resp.output_tokens,
+            "region_inferencia": resp.provider,
         },
     )
 
 
-def infer_structures(request: InferRequest) -> InferResponse:
+async def infer_structures(request: InferRequest) -> InferResponse:
     prompt = _build_infer_prompt(request)
-    raw, usage = call_main(prompt, _SYSTEM_PROMPT)
+    resp = await call_main(prompt, _SYSTEM_PROMPT)
 
     try:
-        return _parse_response(raw, usage)
+        return _parse_response(resp)
     except (ValueError, KeyError) as e:
         logger.warning("Primer intento de inferencia inválido (%s), reintentando...", e)
-        raw, usage = call_main(prompt, _SYSTEM_PROMPT)
-        return _parse_response(raw, usage)
+        resp = await call_main(prompt, _SYSTEM_PROMPT)
+        return _parse_response(resp)
 
 
-def refine_structures(request: RefineRequest) -> InferResponse:
+async def refine_structures(request: RefineRequest) -> InferResponse:
     prompt = _build_refine_prompt(request)
-    raw, usage = call_main(prompt, _SYSTEM_PROMPT)
+    resp = await call_main(prompt, _SYSTEM_PROMPT)
 
     try:
-        return _parse_response(raw, usage)
+        return _parse_response(resp)
     except (ValueError, KeyError) as e:
         logger.warning("Primer intento de refinamiento inválido (%s), reintentando...", e)
-        raw, usage = call_main(prompt, _SYSTEM_PROMPT)
-        return _parse_response(raw, usage)
+        resp = await call_main(prompt, _SYSTEM_PROMPT)
+        return _parse_response(resp)

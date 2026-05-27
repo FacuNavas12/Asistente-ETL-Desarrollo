@@ -3,15 +3,13 @@ RF5 — Interpretar relaciones entre capas (origen → staging → DWH)
 RF6 — Generar proceso ETL completo
 RF7 — Sugerir steps concretos de Pentaho PDI
 RF14 — Sugerir visualizaciones para Apache Superset
-
-Motor: Gemini 2.5 Flash (principal)
 """
 import json
 
 from app.models.gemini_client import call_main
+from app.models.llm_base import LLMResponse
 from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse
 from app.services.ktr_builder import build_ktr
-from app.core.config import settings
 
 
 def _build_prompt(req: ETLRequest) -> str:
@@ -81,8 +79,8 @@ Verifica la consistencia de tipos y nombres entre las tres capas.
 """
 
 
-def _build_response(raw: str, usage) -> ETLGenerateResponse:
-    data = json.loads(raw)
+def _build_response(resp: LLMResponse) -> ETLGenerateResponse:
+    data = json.loads(resp.content)
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_xml, ktr_filename = build_ktr(data.get("ktr", {}), process_name)
     return ETLGenerateResponse(
@@ -94,21 +92,21 @@ def _build_response(raw: str, usage) -> ETLGenerateResponse:
         ktr_xml=ktr_xml,
         ktr_filename=ktr_filename,
         metadata={
-            "modelo_usado": settings.google_model_main,
-            "tokens_input": usage.prompt_token_count or 0,
-            "tokens_output": usage.candidates_token_count or 0,
-            "region_inferencia": "google-cloud",
+            "modelo_usado": resp.model,
+            "tokens_input": resp.input_tokens,
+            "tokens_output": resp.output_tokens,
+            "region_inferencia": resp.provider,
         },
     )
 
 
-def generate_etl(req: ETLRequest) -> ETLGenerateResponse:
+async def generate_etl(req: ETLRequest) -> ETLGenerateResponse:
     prompt = _build_prompt(req)
-    raw, usage = call_main(prompt, "system_etl.txt")
-    return _build_response(raw, usage)
+    resp = await call_main(prompt, "system_etl.txt")
+    return _build_response(resp)
 
 
-def generate_etl_from_inference(req: ETLFromInferenceRequest) -> ETLGenerateResponse:
+async def generate_etl_from_inference(req: ETLFromInferenceRequest) -> ETLGenerateResponse:
     """
     Genera el ETL completo a partir de estructuras STG y DWH ya inferidas por el modelo.
     El STG y DWH llegan como DDL SQL confirmado por el usuario en la pantalla de revisión.
@@ -147,5 +145,5 @@ Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
 Las estructuras STG y DWH ya fueron validadas por el usuario — usá exactamente esos nombres de tablas y columnas.
 Verifica la consistencia de tipos y nombres entre las tres capas.
 """
-    raw, usage = call_main(prompt, "system_etl.txt")
-    return _build_response(raw, usage)
+    resp = await call_main(prompt, "system_etl.txt")
+    return _build_response(resp)

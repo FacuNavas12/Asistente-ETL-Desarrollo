@@ -30,3 +30,9 @@ Thumbs.db
 
 # Claude Code
 .claude/settings.local.json
+
+# Promptfoo
+promptfoo/.promptfoo/
+promptfoo/output/
+node_modules/
+package-lock.json
