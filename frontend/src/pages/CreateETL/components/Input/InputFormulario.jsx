@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useTableEditor, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "../tableUtils";
+import { useTableEditor, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "../Tables/tableUtils";
 import { formatInputName } from "../../validation/stringCleaners";
 
 const TIPOS    = ["string", "int", "float", "bool", "date"];

@@ -4,15 +4,14 @@ import { useEtl } from "@/context/EtlContext";
 import Layout from "@/components/layout/Layout";
 import OrigenInput from "./components/Input/InputForm";
 import EtlChecks from "./components/EtlChecks";
-import ReglasNegocio from "./components/BussinesRules/BussinesRulesForm";
+import BusinessRulesDrawer from "./components/BussinesRules/BusinessRulesDrawer";
 import DescripcionObjetivo from "./components/Goal/GoalDescription";
 import HomeModal from "./components/HomeModal";
 import InferenceReview from "./components/InferenceReview/InferenceReview";
 import { SAMPLE_ETL } from "./utils/sampleEtl";
+import { inferStructures, refineInference, generateFromInference } from "@/services/etlService";
 import "./CreateETL.css";
 import "./etl-error.css";
-
-const API = "http://localhost:8000";
 
 // Estados de la máquina:
 // form → inferring → review → processing → (navigate)
@@ -72,7 +71,6 @@ export default function CreateETL() {
     setErrors([]);
   };
 
-  // Serializa origenTables a string JSON para el endpoint de inferencia
   const serializeOrigen = () => JSON.stringify(origenTables, null, 2);
 
   // ── PASO 1 → PASO 2: llamar a /infer-structures ──────────────────────────
@@ -94,20 +92,11 @@ export default function CreateETL() {
     setStep(STEP.INFERRING);
 
     try {
-      const res = await fetch(`${API}/api/v1/etl/infer-structures`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source_structure:    serializeOrigen(),
-          process_description: descripcionObjetivo,
-          business_rules:      reglasNegocio,
-        }),
+      const data = await inferStructures({
+        source_structure:    serializeOrigen(),
+        process_description: descripcionObjetivo,
+        business_rules:      reglasNegocio,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        throw new Error(err.detail ?? `HTTP ${res.status}`);
-      }
-      const data = await res.json();
       setInferResult(data);
       setInferHistory([]);
       setStep(STEP.REVIEW);
@@ -121,24 +110,15 @@ export default function CreateETL() {
   const handleRefine = async (correction) => {
     setIsRefining(true);
     try {
-      const res = await fetch(`${API}/api/v1/etl/infer-structures/refine`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source_structure:    serializeOrigen(),
-          process_description: descripcionObjetivo,
-          business_rules:      reglasNegocio,
-          current_stg:         inferResult.stg_definition,
-          current_dwh:         inferResult.dwh_model,
-          correction,
-          history:             inferHistory,
-        }),
+      const data = await refineInference({
+        source_structure:    serializeOrigen(),
+        process_description: descripcionObjetivo,
+        business_rules:      reglasNegocio,
+        current_stg:         inferResult.stg_definition,
+        current_dwh:         inferResult.dwh_model,
+        correction,
+        history:             inferHistory,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        throw new Error(err.detail ?? `HTTP ${res.status}`);
-      }
-      const data = await res.json();
       setInferHistory(prev => [
         ...prev,
         { correction, stg: inferResult.stg_definition, dwh: inferResult.dwh_model },
@@ -157,22 +137,13 @@ export default function CreateETL() {
     setStep(STEP.PROCESSING);
 
     try {
-      const res = await fetch(`${API}/api/v1/etl/generate-from-inference`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          descripcionObjetivo,
-          origenTables,
-          stg_definition: inferResult.stg_definition,
-          dwh_model:      inferResult.dwh_model,
-          reglasNegocio,
-        }),
+      const apiResult = await generateFromInference({
+        descripcionObjetivo,
+        origenTables,
+        stg_definition: inferResult.stg_definition,
+        dwh_model:      inferResult.dwh_model,
+        reglasNegocio,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        throw new Error(err.detail ?? `HTTP ${res.status}`);
-      }
-      const apiResult = await res.json();
       const id = addEtl({
         origenTables,
         reglasNegocio,
@@ -216,6 +187,9 @@ export default function CreateETL() {
               <button className="etl-clear-btn" disabled={!dirty} onClick={handleLimpiar}>
                 Limpiar
               </button>
+              <button className="etl-infer-header-btn" onClick={handleInfer}>
+                Inferir STG y DWH
+              </button>
             </div>
           )}
         </div>
@@ -253,11 +227,6 @@ export default function CreateETL() {
             <div className="etl-form-side">
               <DescripcionObjetivo value={descripcionObjetivo} onChange={setDescripcionObjetivo} />
               <OrigenInput value={origenTables} onChange={setOrigenTables} />
-              <ReglasNegocio value={reglasNegocio} onChange={setReglasNegocio} />
-
-              <button className="etl-submit-btn" onClick={handleInfer}>
-                Inferir STG y DWH
-              </button>
 
               {errors.length > 0 && (
                 <div className="etl-errors-box">
@@ -268,6 +237,10 @@ export default function CreateETL() {
           </div>
         )}
       </div>
+
+      {step === STEP.FORM && (
+        <BusinessRulesDrawer value={reglasNegocio} onChange={setReglasNegocio} />
+      )}
     </Layout>
   );
 }

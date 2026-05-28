@@ -7,9 +7,8 @@ import HomeModal from "../CreateETL/components/HomeModal";
 import JobForm from "./components/JobForm";
 import JobReview from "./components/JobReview";
 import JobResult from "./components/JobResult";
+import { analyzeJob, refineJob, generateJob } from "@/services/jobService";
 import "./crearJob.css";
-
-const API = "http://localhost:8000";
 
 const STEP = {
   FORM:       "form",
@@ -80,20 +79,11 @@ export default function CrearJob() {
     setStep(STEP.ANALYZING);
 
     try {
-      const formData = new FormData();
-      ktrFiles.forEach((f) => formData.append("ktr_files", f));
-      formData.append("job_description", jobDescription);
-      if (businessRules.trim()) formData.append("business_rules", businessRules);
-
-      const res = await fetch(`${API}/api/v1/job/analyze`, {
-        method: "POST",
-        body: formData,
+      const data = await analyzeJob({
+        ktrFiles,
+        job_description: jobDescription,
+        business_rules:  businessRules,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        throw new Error(err.detail ?? `HTTP ${res.status}`);
-      }
-      const data = await res.json();
       setAnalyzeResult(data);
       setSessionId(data.session_id);
       setJobHistory([]);
@@ -108,23 +98,14 @@ export default function CrearJob() {
   const handleRefine = async (correction) => {
     setIsRefining(true);
     try {
-      const res = await fetch(`${API}/api/v1/job/refine`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id:       sessionId,
-          job_description:  jobDescription,
-          business_rules:   businessRules || null,
-          current_job_plan: analyzeResult.job_plan,
-          correction,
-          history:          jobHistory,
-        }),
+      const data = await refineJob({
+        session_id:       sessionId,
+        job_description:  jobDescription,
+        business_rules:   businessRules || null,
+        current_job_plan: analyzeResult.job_plan,
+        correction,
+        history:          jobHistory,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        throw new Error(err.detail ?? `HTTP ${res.status}`);
-      }
-      const data = await res.json();
       setJobHistory((prev) => [
         ...prev,
         { correction, job_plan: analyzeResult.job_plan },
@@ -143,19 +124,10 @@ export default function CrearJob() {
     setStep(STEP.GENERATING);
 
     try {
-      const res = await fetch(`${API}/api/v1/job/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId,
-          job_plan:   analyzeResult.job_plan,
-        }),
+      const data = await generateJob({
+        session_id: sessionId,
+        job_plan:   analyzeResult.job_plan,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        throw new Error(err.detail ?? `HTTP ${res.status}`);
-      }
-      const data = await res.json();
       setJobResult(data);
       addJob({ jobDescription, businessRules }, data);
       setStep(STEP.RESULT);

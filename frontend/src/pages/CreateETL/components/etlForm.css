@@ -1068,13 +1068,20 @@
   gap: 10px;
 }
 
+.origen-previews__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .origen-previews__label {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-h);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin: 0 0 2px;
+  margin: 0;
 }
 
 .origen-preview {

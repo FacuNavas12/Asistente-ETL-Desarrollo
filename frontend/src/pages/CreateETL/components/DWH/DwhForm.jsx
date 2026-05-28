@@ -1,6 +1,6 @@
 import { useState } from "react";
 import "../etlForm.css";
-import { useTableEditor, ColumnTable, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "../tableUtils";
+import { useTableEditor, ColumnTable, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "../Tables/tableUtils";
 import {
   formatTableName,
   cleanColumnText,

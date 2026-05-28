@@ -1,5 +1,5 @@
 import { useState } from "react";
-import "./etlForm.css";
+import "../etlForm.css";
 
 export function useTableList(items, setItems) {
   return {
