@@ -1,5 +1,5 @@
 import { useState } from "react";
-import "./inferenceReview.css";
+import "../../css/inferenceReview.css";
 
 export default function InferenceReview({ inferResult, onConfirm, onRefine, isRefining }) {
   const [correction, setCorrection] = useState("");

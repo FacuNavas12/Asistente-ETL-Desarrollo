@@ -1,34 +1,50 @@
-﻿import { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { csvToTables } from "../../utils/csvToTables";
+import TableConfirmPanel from "../Tables/TableConfirmPanel";
+import "../../css/shared.css";
+import "../../css/inputOrigin.css";
+import "../../css/inputConnection.css";
+import "../../css/tableConfirmPanel.css";
 
-export default function OrigenInputCSV({ onChange, onSwitchMode }) {
+export default function OrigenInputCSV({ value = [], onChange, onSwitchMode }) {
   const inputRef = useRef();
-  const [status, setStatus] = useState(null); // null | "loading" | { tables } | "error"
-  const [error, setError]   = useState("");
+  const [candidates, setCandidates] = useState(null);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setStatus("loading");
+    setLoading(true);
     setError("");
     try {
       const tables = await csvToTables(file);
-      onChange(tables);
-      setStatus({ tables });
+      setCandidates(tables);
     } catch (err) {
       setError(err.message ?? "Error al procesar el archivo");
-      setStatus("error");
+    } finally {
+      setLoading(false);
     }
     e.target.value = "";
   };
 
-  const totalCols = status?.tables
-    ? status.tables.reduce((acc, t) => acc + t.columns.length, 0)
-    : 0;
+  const handleReset = () => {
+    setCandidates(null);
+    onChange([]);
+  };
+
+  const handleEditInForm = () => {
+    if (candidates) {
+      const confirmedNames = new Set((value || []).map(t => t.tableName));
+      const toAdd = candidates.filter(t => !confirmedNames.has(t.tableName));
+      if (toAdd.length > 0) onChange([...(value || []), ...toAdd]);
+    }
+    onSwitchMode?.("formulario");
+  };
 
   return (
     <div className="origen-file-zone">
-      {!status?.tables ? (
+      {!candidates ? (
         <>
           <p className="origen-file-zone__hint">
             Seleccione un archivo <strong>.csv</strong>. La primera fila debe ser el encabezado de columnas.
@@ -37,9 +53,9 @@ export default function OrigenInputCSV({ onChange, onSwitchMode }) {
           <button
             className="origen-file-btn"
             onClick={() => inputRef.current?.click()}
-            disabled={status === "loading"}
+            disabled={loading}
           >
-            {status === "loading" ? "Procesando" : "Seleccionar archivo CSV"}
+            {loading ? "Procesando..." : "Seleccionar archivo CSV"}
           </button>
           <input
             ref={inputRef}
@@ -51,36 +67,31 @@ export default function OrigenInputCSV({ onChange, onSwitchMode }) {
           {error && <p className="origen-file-zone__error">{error}</p>}
         </>
       ) : (
-        <div className="origen-file-loaded">
-          <span className="origen-file-loaded__icon">✓</span>
-          <div className="origen-file-loaded__info">
-            <strong>
-              {status.tables.length} tabla{status.tables.length !== 1 ? "s" : ""} cargada{status.tables.length !== 1 ? "s" : ""}
-            </strong>
-            <span>{totalCols} columna{totalCols !== 1 ? "s" : ""} en total</span>
-            <ul className="origen-file-loaded__list">
-              {status.tables.map((t) => (
-                <li key={t.tableName}>
-                  <strong>{t.tableName}</strong> - {t.columns.length} col.
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="origen-file-loaded__actions">
-            <button className="staging-add-btn" onClick={() => onSwitchMode("formulario")}>
+        <>
+          <p className="tpc-catalog-header">
+            {candidates.length} tabla{candidates.length !== 1 ? "s" : ""} detectada{candidates.length !== 1 ? "s" : ""}
+            <span className="conn-catalog-hint">
+              — clic en el nombre para previsualizar · confirmar para usar en el ETL
+            </span>
+          </p>
+          <TableConfirmPanel
+            candidates={candidates}
+            value={value}
+            onChange={onChange}
+          />
+          <div className="origen-file-loaded__actions" style={{ marginTop: "12px" }}>
+            <button className="staging-add-btn" onClick={handleEditInForm}>
               Editar en formulario
             </button>
             <button
               className="staging-remove-btn origen-cancel-btn"
-              onClick={() => { setStatus(null); onChange([]); }}
+              onClick={handleReset}
             >
               Cargar otro
             </button>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
 }
-
-

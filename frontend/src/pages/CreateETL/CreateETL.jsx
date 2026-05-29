@@ -10,8 +10,8 @@ import HomeModal from "./components/HomeModal";
 import InferenceReview from "./components/InferenceReview/InferenceReview";
 import { SAMPLE_ETL } from "./utils/sampleEtl";
 import { inferStructures, refineInference, generateFromInference } from "@/services/etlService";
-import "./CreateETL.css";
-import "./etl-error.css";
+import "./css/createETL.css";
+import "./css/etlError.css";
 
 // Estados de la máquina:
 // form → inferring → review → processing → (navigate)

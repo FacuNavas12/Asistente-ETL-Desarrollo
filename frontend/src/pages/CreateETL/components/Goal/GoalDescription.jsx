@@ -1,4 +1,4 @@
-import "../etlForm.css";
+import "../../css/shared.css";
 
 export default function DescripcionObjetivo({ value, onChange }) {
   return (

@@ -1,0 +1,97 @@
+/* ── TableDataPreview — individual preview card ───────────────────────────── */
+
+.origen-preview {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.origen-preview__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--accent-bg);
+}
+
+.origen-preview__name {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-h);
+  flex: 1;
+}
+
+.origen-preview__meta {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.origen-preview__toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.origen-preview__toggle:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.origen-preview__wrap {
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+}
+
+.origen-preview__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.origen-preview__table th,
+.origen-preview__table td {
+  padding: 7px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.origen-preview__table th {
+  font-weight: 700;
+  color: var(--text-h);
+  background: var(--accent-bg);
+  position: sticky;
+  top: 0;
+}
+
+.origen-preview__table tr:last-child td {
+  border-bottom: none;
+}
+
+.origen-preview__table tbody tr:hover td {
+  background: var(--accent-bg);
+}
+
+.origen-preview__rn {
+  text-align: center !important;
+  width: 36px;
+  color: var(--text) !important;
+  opacity: 0.4;
+  font-size: 11px !important;
+  user-select: none;
+}
+
+.origen-preview__empty {
+  opacity: 0.25;
+}

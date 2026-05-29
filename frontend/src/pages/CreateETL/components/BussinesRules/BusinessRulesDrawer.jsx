@@ -1,6 +1,6 @@
 import { useState } from "react";
-import "../etlForm.css";
-import "./BusinessRulesDrawer.css";
+import "../../css/shared.css";
+import "../../css/businessRulesDrawer.css";
 
 export default function BusinessRulesDrawer({ value, onChange }) {
   const [open, setOpen] = useState(false);

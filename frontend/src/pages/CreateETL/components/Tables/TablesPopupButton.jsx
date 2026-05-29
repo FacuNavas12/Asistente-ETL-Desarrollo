@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
-import "../etlForm.css";
+import "../../css/tableDataPreview.css";
 
 function collectCSS() {
   let css = "";

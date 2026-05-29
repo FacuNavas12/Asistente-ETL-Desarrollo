@@ -128,3 +128,28 @@
 .etl-infer-header-btn:active {
   transform: scale(0.97);
 }
+/* ── CreateETL — header actions ───────────────────────────────────────────── */
+
+.etl-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.etl-test-toggle-btn {
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.etl-test-toggle-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--text-h);
+}

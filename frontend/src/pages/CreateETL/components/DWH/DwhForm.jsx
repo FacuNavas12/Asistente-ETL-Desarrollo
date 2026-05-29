@@ -1,5 +1,6 @@
 import { useState } from "react";
-import "../etlForm.css";
+import "../../css/shared.css";
+import "../../css/dwhForm.css";
 import { useTableEditor, ColumnTable, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "../Tables/tableUtils";
 import {
   formatTableName,

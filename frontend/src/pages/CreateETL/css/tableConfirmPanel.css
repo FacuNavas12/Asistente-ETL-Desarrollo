@@ -1,0 +1,58 @@
+/* ── TableConfirmPanel ────────────────────────────────────────────────────── */
+
+.tpc-error {
+  font-size: 13px;
+  color: var(--error, #e55);
+  margin-bottom: 8px;
+}
+
+.tpc-row-num {
+  opacity: 0.5;
+  width: 40px;
+}
+
+.tpc-row-name {
+  font-family: monospace;
+}
+
+.tpc-row-name--clickable {
+  cursor: pointer;
+}
+
+.tpc-row-name--clickable:hover {
+  opacity: 0.75;
+}
+
+.tpc-row--selected td {
+  background-color: var(--accent-subtle, rgba(99, 102, 241, 0.12));
+}
+
+.tpc-row-action {
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 6px;
+}
+
+button.staging-add-btn.tpc-confirm-btn {
+  padding: 3px 12px;
+  font-size: 12px;
+}
+
+.tpc-confirmed-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  font-family: sans-serif;
+  color: var(--success, #4ade80);
+  font-weight: 600;
+}
+
+.tpc-preview-cell {
+  padding: 0;
+}
+
+.tpc-catalog-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 8px;
+}

@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { useTableEditor, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "../Tables/tableUtils";
+import { useTableConfirmation } from "../Tables/TableConfirmPanel";
+import "../../css/shared.css";
+import "../../css/inputOrigin.css";
 import { formatInputName } from "../../validation/stringCleaners";
 
 const TIPOS    = ["string", "int", "float", "bool", "date"];
@@ -46,6 +49,8 @@ export default function OrigenInputFormulario({ value, onChange }) {
   const tables = Array.isArray(value) ? value : [];
   const [currentDato,   setCurrentDato]   = useState("");
   const [editingColIdx, setEditingColIdx] = useState(null);
+
+  const { remove } = useTableConfirmation({ value: tables, onChange });
 
   const ed = useTableEditor({
     emptyTable: EMPTY_TABLE,
@@ -233,7 +238,7 @@ export default function OrigenInputFormulario({ value, onChange }) {
             <TableCardHeader
               name={table.tableName}
               onEdit={() => handleEditTable(i)}
-              onRemove={() => ed.removeAt(i)}
+              onRemove={() => remove(table.tableName)}
             />
             <div className="origen-saved-cols">
               {table.columns.map((col, j) => (

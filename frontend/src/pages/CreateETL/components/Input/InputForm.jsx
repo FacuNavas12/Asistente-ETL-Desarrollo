@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import "../etlForm.css";
+import "../../css/shared.css";
+import "../../css/inputOrigin.css";
 import OrigenInputFormulario from "./InputFormulario";
 import OrigenInputCSV        from "./InputCSV";
 import OrigenInputExcel      from "./InputExcel";
-import InputConection        from "./InputConection";
+import InputConection        from "./InputConnection";
 import TablesPopupButton     from "../Tables/TablesPopupButton";
 import TableDataPreview      from "../Tables/TableDataPreview";
 

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import "../etlForm.css";
+import "../../css/tableDataPreview.css";
 
-export default function TableDataPreview({ table }) {
-  const [open, setOpen] = useState(false);
+export default function TableDataPreview({ table, forceOpen = false }) {
+  const [open, setOpen] = useState(forceOpen);
   const cols    = table.columns ?? [];
   const maxRows = cols.length > 0 ? Math.max(...cols.map(c => c.data?.length ?? 0)) : 0;
   if (maxRows === 0) return null;
