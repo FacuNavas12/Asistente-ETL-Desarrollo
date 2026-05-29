@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -21,7 +22,15 @@ logging.basicConfig(
 )
 logging.getLogger().addFilter(PasswordFilter())
 
-app = FastAPI(title="Acelerador ETL — API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from app.core.database import create_tables
+    create_tables()
+    yield
+
+
+app = FastAPI(title="Acelerador ETL — API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

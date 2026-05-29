@@ -22,9 +22,11 @@ from app.schemas.connection import (
     ConnectionUpdate,
     PostgresConnectionCreate,
     SqlServerConnectionCreate,
+    TableDataResponse,
 )
 from app.services.db_connector import (
     get_columns,
+    get_table_data,
     list_tables,
     test_connection as svc_test,
 )
@@ -185,4 +187,34 @@ def schema_get_columns(
         )
         raise HTTPException(
             status_code=502, detail="No se pudo obtener las columnas de la tabla."
+        )
+
+
+@router.get("/{conn_id}/schema/table-data", response_model=TableDataResponse)
+def schema_get_table_data(
+    conn_id: uuid.UUID,
+    schema: str = Query(..., min_length=1),
+    table: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=500),
+    exact_count: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """
+    Devuelve filas paginadas de una tabla.
+    schema y table se pasan por separado y se validan contra information_schema.
+    Paginación obligatoria: máximo 500 filas por request.
+    """
+    conn = _get_or_404(conn_id, db)
+    try:
+        return get_table_data(conn, schema, table, page, page_size, exact_count)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.error(
+            "Error fetching data for %s/%s.%s: %s",
+            conn_id, schema, table, sanitize_error(str(exc)),
+        )
+        raise HTTPException(
+            status_code=502, detail="No se pudo obtener los datos de la tabla."
         )

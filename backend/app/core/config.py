@@ -32,8 +32,8 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-sonnet-4-20250514"
 
     # ── Base de datos ─────────────────────────────────────────────────────────
-    # Ejemplo: postgresql+psycopg2://user:pass@localhost:5432/etl_db
-    database_url: str
+    # Dev local: sqlite:///./app.db (default). Prod: postgresql+psycopg://...
+    database_url: str = "sqlite:///./app.db"
 
     # ── Cifrado de credenciales ───────────────────────────────────────────────
     # CSV de claves Fernet. La primera es la activa; las demás solo desencriptan.

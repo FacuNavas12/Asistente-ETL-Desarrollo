@@ -109,6 +109,30 @@ class TestBuildUrl:
         url = _build_url(conn)
         assert "Encrypt=yes" in url
 
+    def test_build_url_postgres_sslmode_prefer(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.db_connector.decrypt_password", lambda _: "secret"
+        )
+        conn = _make(ssl_mode="prefer")
+        url = _build_url(conn)
+        assert "sslmode=prefer" in url
+
+    def test_build_url_postgres_sslmode_allow(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.db_connector.decrypt_password", lambda _: "secret"
+        )
+        conn = _make(ssl_mode="allow")
+        url = _build_url(conn)
+        assert "sslmode=allow" in url
+
+    def test_build_url_postgres_no_sslmode_when_none(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.db_connector.decrypt_password", lambda _: "secret"
+        )
+        conn = _make(ssl_mode=None)
+        url = _build_url(conn)
+        assert "sslmode" not in url
+
     def test_build_url_mssql_uses_configurable_driver(self, monkeypatch):
         monkeypatch.setattr(
             "app.services.db_connector.decrypt_password", lambda _: "secret"
@@ -126,26 +150,27 @@ class TestBuildUrl:
 
 class TestListTablesMultiSchema:
     def test_excludes_system_schemas_and_returns_schema_dot_table(self, monkeypatch):
-        def _get_table_names(schema=None):
-            return {
-                "public": ["orders", "customers"],
-                "staging": ["raw_orders"],
-                "information_schema": ["columns"],   # sistema → excluir
-                "pg_catalog": ["pg_class"],           # sistema → excluir
-            }.get(schema, [])
-
-        mock_inspector = MagicMock()
-        mock_inspector.get_schema_names.return_value = [
-            "public", "staging", "information_schema", "pg_catalog"
+        # list_tables ahora consulta information_schema.tables vía SQL directo.
+        mock_rows = [
+            ("information_schema", "columns"),   # sistema → excluir
+            ("pg_catalog", "pg_class"),           # sistema → excluir
+            ("public", "customers"),
+            ("public", "orders"),
+            ("staging", "raw_orders"),
         ]
-        mock_inspector.get_table_names.side_effect = _get_table_names
+
+        mock_exec_result = MagicMock()
+        mock_exec_result.fetchall.return_value = mock_rows
+
+        mock_session = MagicMock()
+        mock_session.execute.return_value = mock_exec_result
+
         mock_engine = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_session
 
         monkeypatch.setattr(
-            "app.services.db_connector.build_engine", lambda _conn: mock_engine
-        )
-        monkeypatch.setattr(
-            "app.services.db_connector.inspect", lambda _engine: mock_inspector
+            "app.services.db_connector.build_engine",
+            lambda _conn, **_kwargs: mock_engine,
         )
 
         result = list_tables(_make())

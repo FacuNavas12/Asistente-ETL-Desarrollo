@@ -45,3 +45,20 @@ export async function listTables(id) {
   });
   return parseResponse(res);
 }
+
+export async function getTableData(id, schema, table, page = 1, pageSize = 100, exactCount = false) {
+  const params = new URLSearchParams({
+    schema,
+    table,
+    page,
+    page_size: pageSize,
+    exact_count: exactCount,
+  });
+  const res = await fetch(`${BASE}/api/connections/${id}/schema/table-data?${params}`);
+  return parseResponse(res);
+}
+
+export async function getColumns(id, tableName) {
+  const res = await fetch(`${BASE}/api/connections/${id}/schema/tables/${encodeURIComponent(tableName)}/columns`);
+  return parseResponse(res);
+}

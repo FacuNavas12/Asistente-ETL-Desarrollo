@@ -5,6 +5,7 @@
 # ─── Framework ───────────────────────────────────────────────────────────────
 fastapi==0.136.1
 uvicorn==0.47.0
+python-multipart==0.0.20   # requerido por FastAPI para Form data y file uploads
 starlette==1.0.0           # transitive de fastapi
 annotated-doc==0.0.4       # transitive de fastapi
 click==8.4.0               # transitive de uvicorn
