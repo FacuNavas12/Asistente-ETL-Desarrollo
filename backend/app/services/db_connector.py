@@ -15,6 +15,7 @@ from app.core.crypto import decrypt_password
 from app.core.sanitize import sanitize_error
 from app.models.connection import Connection, DbType
 from app.schemas.connection import ColumnInfo, ConnectionTestResult, TableDataResponse
+from app.services.dialect import SampleResult, get_dialect
 
 logger = logging.getLogger(__name__)
 
@@ -354,6 +355,48 @@ def get_columns(conn: Connection, table_name: str) -> list[ColumnInfo]:
     finally:
         engine.dispose()
 
+
+
+def get_sample_rows(
+    conn: Connection,
+    schema: str,
+    table: str,
+    limit: int = 20,
+) -> SampleResult:
+    """
+    Returns a SampleResult(col_names, rows, bias) with a random sample of ≤limit rows.
+
+    Uses the dialect's primary_sample strategy (TABLESAMPLE-based) for speed on large
+    tables, then falls back to fallback_sample when primary returns nothing (small tables).
+    SampleResult.bias declares the sampling granularity so callers can log it.
+
+    Raw rows are returned to the profiler only. They must not leave the backend.
+    """
+    dialect   = get_dialect(conn.db_type)
+    engine    = build_engine(conn, read_only=True)
+    qualified = f"{_quote_identifier(schema, conn.db_type)}.{_quote_identifier(table, conn.db_type)}"
+
+    primary  = dialect.primary_sample(qualified, limit)
+    fallback = dialect.fallback_sample(qualified, limit)
+
+    try:
+        with engine.connect() as c:
+            _validate_table_exists(c, schema, table)
+
+            result  = c.execute(text(primary.sql))
+            columns = list(result.keys())
+            rows    = [_serialize_row(r) for r in result.fetchall()]
+            bias    = primary.bias
+
+            if not rows:
+                result  = c.execute(text(fallback.sql))
+                columns = list(result.keys())
+                rows    = [_serialize_row(r) for r in result.fetchall()]
+                bias    = fallback.bias
+
+        return SampleResult(col_names=columns, rows=rows, bias=bias)
+    finally:
+        engine.dispose()
 
 
 def get_table_data(

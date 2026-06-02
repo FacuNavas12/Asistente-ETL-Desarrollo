@@ -9,12 +9,18 @@ class ColumnaOrigen(BaseModel):
     dataType: str
     dataFormat: str = ""
     role: str = "atributo"
+    # Raw sample values from CSV/Excel. Ignored for DB sources (re-queried by
+    # the profiler). Never passed directly to the model — goes through profiler.
     data: List[str] = []
 
 
 class TablaOrigen(BaseModel):
     tableName: str
     columns: List[ColumnaOrigen]
+    # Set by the frontend when the table comes from a DB connection.
+    # Used by context_builder to re-query via db_connector. Never sent to model.
+    connection_id: Optional[str] = None
+    schema_name: Optional[str] = None
 
 
 # ─── INPUT — Staging ──────────────────────────────────────────────────────────

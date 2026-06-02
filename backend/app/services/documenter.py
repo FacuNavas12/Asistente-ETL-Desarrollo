@@ -3,15 +3,22 @@ RF11 — Generación de documentación automática
 RF12 — Explicación del flujo en lenguaje natural
 RF13 — Estructuración de resultados para persistencia
 """
-import json
+from __future__ import annotations
 
-from app.models.gemini_client import call_secondary
+import json
+from pathlib import Path
+
+from app.models.llm_base import BaseLLM
 from app.schemas.etl_schemas import ETLDocumentRequest, ETLDocumentResponse
 
 _DOCUMENT_SYSTEM = "system_validator.txt"
 
 
-async def document_etl(req: ETLDocumentRequest) -> ETLDocumentResponse:
+def _load_system(filename: str) -> str:
+    return (Path(__file__).resolve().parent.parent.parent / "prompts" / filename).read_text(encoding="utf-8")
+
+
+async def document_etl(req: ETLDocumentRequest, llm: BaseLLM) -> ETLDocumentResponse:
     prompt = f"""Genera documentación técnica en lenguaje natural para el siguiente proceso ETL.
 
 La documentación debe:
@@ -31,8 +38,7 @@ Proceso ETL a documentar:
 {json.dumps(req.proceso_etl, ensure_ascii=False, indent=2)}
 ```
 """
-    resp = await call_secondary(prompt, _DOCUMENT_SYSTEM)
-
+    resp = await llm.complete(prompt, _load_system(_DOCUMENT_SYSTEM))
     data = json.loads(resp.content)
 
     return ETLDocumentResponse(

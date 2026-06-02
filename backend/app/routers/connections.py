@@ -24,12 +24,16 @@ from app.schemas.connection import (
     SqlServerConnectionCreate,
     TableDataResponse,
 )
+from app.schemas.context_schemas import ColumnProfile
 from app.services.db_connector import (
     get_columns,
+    get_sample_rows,
     get_table_data,
     list_tables,
     test_connection as svc_test,
 )
+from app.services import profiler as profiler_svc
+from app.services import context_builder
 
 router = APIRouter(prefix="/api/connections", tags=["connections"])
 logger = logging.getLogger(__name__)
@@ -187,6 +191,61 @@ def schema_get_columns(
         )
         raise HTTPException(
             status_code=502, detail="No se pudo obtener las columnas de la tabla."
+        )
+
+
+@router.get(
+    "/{conn_id}/schema/tables/{table_name}/profile",
+    response_model=list[ColumnProfile],
+)
+def schema_profile_table(
+    conn_id: uuid.UUID,
+    table_name: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Profiles a table: fetches population stats via SQL and a random sample (≤20 rows),
+    then returns ColumnProfile per column — no raw values, no connection identifiers.
+
+    Intended call site: frontend when the user confirms a DB table into the ETL context.
+    The frontend stores the profiles; no raw data needs to travel to or from the model.
+    """
+    conn = _get_or_404(conn_id, db)
+
+    if "." in table_name:
+        schema, _, table = table_name.partition(".")
+    else:
+        schema, table = "", table_name
+
+    try:
+        col_infos = get_columns(conn, table_name)
+        col_names = [c.name for c in col_infos]
+        if not schema:
+            # get_columns already resolved the schema; recover it from col_infos if needed.
+            # We need the resolved schema for stats + sample queries.
+            # Re-split from the table_name that get_columns succeeded with.
+            schema = table_name.partition(".")[0] if "." in table_name else table
+
+        # Resolve schema robustly the same way db_connector does.
+        from app.services.db_connector import build_engine, _resolve_schema
+        engine = build_engine(conn, read_only=True)
+        try:
+            with engine.connect() as c:
+                if not schema or schema == table:
+                    schema = _resolve_schema(c, table)
+        finally:
+            engine.dispose()
+
+        stats         = profiler_svc.fetch_column_stats(conn, schema, table, col_names)
+        sample_result = get_sample_rows(conn, schema, table, limit=20)
+        logger.debug("sample bias for %s.%s: %s", schema, table, sample_result.bias)
+        return profiler_svc.profile_columns(col_names, stats, sample_result.rows)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.error("Error profiling %s/%s: %s", conn_id, table_name, exc)
+        raise HTTPException(
+            status_code=502, detail="No se pudo perfilar la tabla."
         )
 
 

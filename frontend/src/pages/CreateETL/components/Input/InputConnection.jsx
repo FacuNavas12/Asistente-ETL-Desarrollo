@@ -166,7 +166,8 @@ export default function InputConection({ value, onChange }) {
           data:       sampleData,
         };
       });
-      const newTable = { tableName: qualified, columns };
+      const { schema } = splitTable(qualified);
+      const newTable = { tableName: qualified, connection_id: connId, schema_name: schema, columns };
       onChange([...(Array.isArray(value) ? value : []), newTable]);
     } catch (err) {
       setConfirmError(`No se pudo confirmar "${qualified}": ${err.message}`);

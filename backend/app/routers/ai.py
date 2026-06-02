@@ -2,21 +2,23 @@ import json
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
-from app.core.config import settings
-
+from app.core.database import get_db
+from app.core.dependencies import get_main_llm, get_secondary_llm
+from app.models.llm_base import BaseLLM
 from app.schemas.etl_schemas import (
-    ETLRequest,
-    ETLGenerateResponse,
-    ETLValidateRequest,
-    ETLValidateResponse,
     ETLDocumentRequest,
     ETLDocumentResponse,
-    InferRequest,
-    RefineRequest,
-    InferResponse,
     ETLFromInferenceRequest,
+    ETLGenerateResponse,
+    ETLRequest,
+    ETLValidateRequest,
+    ETLValidateResponse,
+    InferRequest,
+    InferResponse,
+    RefineRequest,
 )
 from app.services.etl_generator import generate_etl, generate_etl_from_inference
 from app.services.validator import validate_etl
@@ -32,7 +34,6 @@ from app.services import job_analyzer
 
 router = APIRouter(tags=["ETL"])
 logger = logging.getLogger(__name__)
-
 
 
 async def _handle(fn, *args):
@@ -55,61 +56,90 @@ def _validate_etl_request(req: ETLRequest):
         raise HTTPException(status_code=422, detail="dwhModel.tables no puede estar vacío.")
 
 
-# Endpoint que consume el frontend
+# ── ETL — endpoints principales ───────────────────────────────────────────────
+
 @router.post("/api/ai/etl", response_model=ETLGenerateResponse)
-async def etl_from_frontend(req: ETLRequest):
+async def etl_from_frontend(
+    req: ETLRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
     """Recibe el payload del formulario y genera el proceso ETL completo."""
     _validate_etl_request(req)
-    return await _handle(generate_etl, req)
+    return await _handle(generate_etl, req, llm, db)
 
 
-# Endpoints REST versionados (para testing directo y futura expansión)
 @router.post("/api/v1/etl/generate", response_model=ETLGenerateResponse)
-async def generate(req: ETLRequest):
+async def generate(
+    req: ETLRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
     """RF5, RF6, RF7, RF14 — Genera el proceso ETL completo."""
     _validate_etl_request(req)
-    return await _handle(generate_etl, req)
+    return await _handle(generate_etl, req, llm, db)
 
 
 @router.post("/api/v1/etl/validate", response_model=ETLValidateResponse)
-async def validate(req: ETLValidateRequest):
+async def validate(
+    req: ETLValidateRequest,
+    llm: BaseLLM = Depends(get_secondary_llm),
+):
     """RF8, RF9 — Valida calidad y malas prácticas."""
-    return await _handle(validate_etl, req)
+    return await _handle(validate_etl, req, llm)
 
 
 @router.post("/api/v1/etl/document", response_model=ETLDocumentResponse)
-async def document(req: ETLDocumentRequest):
+async def document(
+    req: ETLDocumentRequest,
+    llm: BaseLLM = Depends(get_secondary_llm),
+):
     """RF11, RF12, RF13 — Genera documentación en lenguaje natural."""
-    return await _handle(document_etl, req)
+    return await _handle(document_etl, req, llm)
 
 
-# ── Flujo de inferencia automática ───────────────────────────────────────────
+# ── Flujo de inferencia automática ────────────────────────────────────────────
 
 @router.post("/api/v1/etl/infer-structures", response_model=InferResponse)
-async def infer(req: InferRequest):
+async def infer(
+    req: InferRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
     """Infiere automáticamente la tabla STG y el modelo DWH a partir de los 3 campos del usuario."""
-    return await _handle(infer_structures, req)
+    return await _handle(infer_structures, req, llm, db)
 
 
 @router.post("/api/v1/etl/infer-structures/refine", response_model=InferResponse)
-async def refine(req: RefineRequest):
+async def refine(
+    req: RefineRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
     """Incorpora una corrección en lenguaje natural y regenera las estructuras con contexto acumulado."""
-    return await _handle(refine_structures, req)
+    return await _handle(refine_structures, req, llm, db)
 
 
 @router.post("/api/v1/etl/generate-from-inference", response_model=ETLGenerateResponse)
-async def generate_from_inference(req: ETLFromInferenceRequest):
+async def generate_from_inference(
+    req: ETLFromInferenceRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
     """Genera el proceso ETL completo usando estructuras STG/DWH inferidas por el modelo."""
-    return await _handle(generate_etl_from_inference, req)
+    return await _handle(generate_etl_from_inference, req, llm, db)
 
 
 # ── Flujo de generación de Jobs PDI (.kjb) ────────────────────────────────────
+# job_analyzer is out of scope for the context-safety refactor.
+# It continues using gemini_client.call_main / call_secondary internally,
+# which now build a fresh client per call (no module-level singleton).
 
 @router.post("/api/v1/job/analyze", response_model=JobAnalyzeResponse)
 async def analyze_job(
-    ktr_files: List[UploadFile] = File(...),
-    job_description: str = Form(...),
-    business_rules: Optional[str] = Form(None),
+    ktr_files:        List[UploadFile] = File(...),
+    job_description:  str              = Form(...),
+    business_rules:   Optional[str]    = Form(None),
 ):
     """Parsea N archivos .ktr, infiere el orden lógico y devuelve el plan del job para revisión."""
     try:
@@ -149,6 +179,3 @@ async def generate_job(req: JobGenerateRequest):
     except Exception as e:
         logger.error("Error en generate_job: %s", str(e))
         raise HTTPException(status_code=500, detail=str(e))
-    return await _handle(generate_etl_from_inference, req)
-
-#TODO: revisar generate

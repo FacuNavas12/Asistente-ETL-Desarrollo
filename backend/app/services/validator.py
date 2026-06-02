@@ -2,21 +2,27 @@
 RF8 — Verificación de calidad del flujo ETL
 RF9 — Detección de malas prácticas ETL
 """
-import json
+from __future__ import annotations
 
-from app.models.gemini_client import call_secondary
+import json
+from pathlib import Path
+
+from app.models.llm_base import BaseLLM
 from app.schemas.etl_schemas import ETLValidateRequest, ETLValidateResponse
 
 
-async def validate_etl(req: ETLValidateRequest) -> ETLValidateResponse:
+def _load_system(filename: str) -> str:
+    return (Path(__file__).resolve().parent.parent.parent / "prompts" / filename).read_text(encoding="utf-8")
+
+
+async def validate_etl(req: ETLValidateRequest, llm: BaseLLM) -> ETLValidateResponse:
     prompt = f"""Analiza el siguiente proceso ETL y detecta problemas de calidad y malas prácticas:
 
 ```json
 {json.dumps(req.proceso_etl, ensure_ascii=False, indent=2)}
 ```
 """
-    resp = await call_secondary(prompt, "system_validator.txt")
-
+    resp = await llm.complete(prompt, _load_system("system_validator.txt"))
     data = json.loads(resp.content)
 
     return ETLValidateResponse(

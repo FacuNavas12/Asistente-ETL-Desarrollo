@@ -9,25 +9,69 @@ Recibe los 3 campos simplificados del usuario y genera:
 Soporta refinamiento iterativo: el usuario puede corregir en lenguaje natural
 y el servicio regenera las estructuras manteniendo el historial de correcciones.
 """
+from __future__ import annotations
+
 import json
 import logging
+from pathlib import Path
+from typing import Optional
 
-from app.models.gemini_client import call_main
-from app.models.llm_base import LLMResponse
+from sqlalchemy.orm import Session
+
+from app.models.llm_base import BaseLLM, LLMResponse
 from app.schemas.etl_schemas import InferRequest, RefineRequest, InferResponse
+from app.services import context_builder
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = "system_inference.txt"
+_SYSTEM_PROMPT   = "system_inference.txt"
 _MAX_HISTORY_FULL = 10
 
 
-def _build_infer_prompt(req: InferRequest) -> str:
+def _load_system(filename: str) -> str:
+    return (Path(__file__).resolve().parent.parent.parent / "prompts" / filename).read_text(encoding="utf-8")
+
+
+def _safe_format_source(source_structure: str, db: Optional[Session] = None) -> str:
+    """
+    Parse source_structure (JSON list of TablaOrigen) and return its
+    format_model_context_for_prompt() representation.
+
+    If parsing fails, strip all 'data' fields from the raw JSON to prevent
+    raw values from reaching the prompt, then include the schema-only JSON.
+    """
+    from app.schemas.etl_schemas import TablaOrigen
+
+    try:
+        raw    = json.loads(source_structure)
+        tables = [TablaOrigen.model_validate(t) for t in raw]
+        ctx    = context_builder.build_model_context(tables, db=db)
+        return context_builder.format_model_context_for_prompt(ctx)
+    except Exception as exc:
+        logger.warning("Could not parse source_structure for whitelisting: %s", exc)
+
+    # Fallback: strip raw data values from the JSON, keep schema metadata only.
+    try:
+        parsed = json.loads(source_structure)
+        if isinstance(parsed, list):
+            for tabla in parsed:
+                if not isinstance(tabla, dict):
+                    continue
+                for col in tabla.get("columns", []):
+                    if isinstance(col, dict):
+                        col.pop("data", None)
+        return json.dumps(parsed, ensure_ascii=False, indent=2)
+    except Exception:
+        return "[estructura de origen no disponible]"
+
+
+def _build_infer_prompt(req: InferRequest, db: Optional[Session] = None) -> str:
+    origen_safe = _safe_format_source(req.source_structure, db)
     return f"""A partir de la siguiente información, generá la definición de la tabla de Staging (STG) \
 y el modelo de Data Warehouse (DWH) destino.
 
 ESTRUCTURA DE ORIGEN:
-{req.source_structure}
+{origen_safe}
 
 DESCRIPCIÓN DEL PROCESO / OBJETIVO:
 {req.process_description}
@@ -38,7 +82,9 @@ REGLAS DE NEGOCIO:
 Devuelve ÚNICAMENTE el JSON con la estructura de respuesta indicada. Sin texto adicional."""
 
 
-def _build_refine_prompt(req: RefineRequest) -> str:
+def _build_refine_prompt(req: RefineRequest, db: Optional[Session] = None) -> str:
+    origen_safe = _safe_format_source(req.source_structure, db)
+
     if len(req.history) > _MAX_HISTORY_FULL:
         history_txt = (
             f"[{len(req.history)} iteraciones previas — resumen: "
@@ -46,7 +92,10 @@ def _build_refine_prompt(req: RefineRequest) -> str:
             + "]"
         )
     else:
-        history_txt = json.dumps(req.history, ensure_ascii=False, indent=2) if req.history else "Sin iteraciones previas."
+        history_txt = (
+            json.dumps(req.history, ensure_ascii=False, indent=2)
+            if req.history else "Sin iteraciones previas."
+        )
 
     return f"""El usuario solicitó la siguiente corrección sobre las estructuras generadas:
 
@@ -61,7 +110,7 @@ DWH:
 {req.current_dwh}
 
 CONTEXTO ORIGINAL:
-Estructura de origen: {req.source_structure}
+Estructura de origen: {origen_safe}
 Descripción del proceso: {req.process_description}
 Reglas de negocio: {req.business_rules}
 
@@ -100,25 +149,25 @@ def _parse_response(resp: LLMResponse) -> InferResponse:
     )
 
 
-async def infer_structures(request: InferRequest) -> InferResponse:
-    prompt = _build_infer_prompt(request)
-    resp = await call_main(prompt, _SYSTEM_PROMPT)
-
+async def infer_structures(request: InferRequest, llm: BaseLLM, db: Optional[Session] = None) -> InferResponse:
+    prompt = _build_infer_prompt(request, db)
+    system = _load_system(_SYSTEM_PROMPT)
+    resp   = await llm.complete(prompt, system)
     try:
         return _parse_response(resp)
     except (ValueError, KeyError) as e:
         logger.warning("Primer intento de inferencia inválido (%s), reintentando...", e)
-        resp = await call_main(prompt, _SYSTEM_PROMPT)
+        resp = await llm.complete(prompt, system)
         return _parse_response(resp)
 
 
-async def refine_structures(request: RefineRequest) -> InferResponse:
-    prompt = _build_refine_prompt(request)
-    resp = await call_main(prompt, _SYSTEM_PROMPT)
-
+async def refine_structures(request: RefineRequest, llm: BaseLLM, db: Optional[Session] = None) -> InferResponse:
+    prompt = _build_refine_prompt(request, db)
+    system = _load_system(_SYSTEM_PROMPT)
+    resp   = await llm.complete(prompt, system)
     try:
         return _parse_response(resp)
     except (ValueError, KeyError) as e:
         logger.warning("Primer intento de refinamiento inválido (%s), reintentando...", e)
-        resp = await call_main(prompt, _SYSTEM_PROMPT)
+        resp = await llm.complete(prompt, system)
         return _parse_response(resp)
