@@ -32,13 +32,13 @@ function CandidateRow({
   const [previewOpen, setPreviewOpen] = useState(false);
   const isObj    = candidate !== null && typeof candidate === "object";
   const name     = isObj ? candidate.tableName : candidate;
-  const hasData  = isObj && (candidate.columns || []).some(c => (c.data || []).length > 0);
-  const clickable = !!onSelectTable || hasData;
+  const hasCols  = isObj && (candidate.columns || []).length > 0;
+  const clickable = !!onSelectTable || hasCols;
 
   const handleNameClick = () => {
     if (onSelectTable) {
       onSelectTable(name);
-    } else if (hasData) {
+    } else if (hasCols) {
       setPreviewOpen(o => !o);
     }
   };
@@ -70,7 +70,7 @@ function CandidateRow({
           )}
         </td>
       </tr>
-      {previewOpen && hasData && (
+      {previewOpen && hasCols && (
         <tr>
           <td colSpan={3} className="tpc-preview-cell">
             <TableDataPreview table={candidate} forceOpen />

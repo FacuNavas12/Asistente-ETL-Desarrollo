@@ -1,9 +1,11 @@
 """
 Builds ModelContext from origin tables.
 
-Bifurcation:
-  DB source   (table.connection_id is set) → fetch stats via SQL + random sample from DB
-  File source (no connection_id)           → use .data from request columns
+Four paths, all routed through CanonicalSchema:
+  DB source        (connection_id set)    → _profile_from_db()
+  File source      (canonical_schema set) → canonical_schema used directly
+  DDL source       (canonical_schema set, source_type="ddl") → same as file
+  Formulario/manual (none of the above)  → _schema_from_columnas_origen()
 
 format_model_context_for_prompt() is the ONLY exit point that serializes
 table context into a prompt string. All services must go through it.
@@ -16,111 +18,152 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.schemas.context_schemas import ColumnProfile, ColumnStats, ModelContext, ModelTableContext
+from app.schemas.canonical import CanonicalField, CanonicalSchema, CanonicalType, TableProfile
+from app.schemas.context_schemas import ModelContext, ModelTableContext
 from app.services import profiler as profiler_svc
+from app.services.adapters import db_adapter
+from app.services.adapters.schema_to_context import canonical_to_model_context
 
 logger = logging.getLogger(__name__)
+
+# ─── DEBUG: filtrado de contexto ──────────────────────────────────────────────
+# Para activar el log de lo que entra y sale de format_model_context_for_prompt,
+# descomenta la línea siguiente. Para quitar el feature, borra este bloque y los
+# dos bloques "if _DEBUG_CONTEXT_FILTER" dentro de la función de abajo.
+# 
+# ─────────────────────────────────────────────────────────────────────────────
+_DEBUG_CONTEXT_FILTER = True
+
+# Frontend dataType strings → CanonicalType.
+# Used in the formulario path and the DB fallback.
+_FRONTEND_TO_CANONICAL: dict[str, CanonicalType] = {
+    "int":      CanonicalType.INTEGER,
+    "integer":  CanonicalType.INTEGER,
+    "float":    CanonicalType.NUMBER,
+    "number":   CanonicalType.NUMBER,
+    "decimal":  CanonicalType.NUMBER,
+    "numeric":  CanonicalType.NUMBER,
+    "bool":     CanonicalType.BOOLEAN,
+    "boolean":  CanonicalType.BOOLEAN,
+    "date":     CanonicalType.DATE,
+    "datetime": CanonicalType.DATETIME,
+    "time":     CanonicalType.TIME,
+    "string":   CanonicalType.STRING,
+    "text":     CanonicalType.STRING,
+}
+
+
+def _map_frontend_type(dt: str) -> CanonicalType:
+    return _FRONTEND_TO_CANONICAL.get((dt or "").lower(), CanonicalType.UNKNOWN)
 
 
 # ─── DB path ──────────────────────────────────────────────────────────────────
 
-def _profile_from_db(table, db: Session) -> list[ColumnProfile]:
-    """Fetch population stats via SQL + random sample, then profile."""
+def _profile_from_db(table, db: Session) -> CanonicalSchema:
+    """
+    Fetch structural schema from INFORMATION_SCHEMA and stats from the profiler.
+    Returns a CanonicalSchema with the statistical profile embedded in schema.profile.
+    Falls back to _schema_from_columnas_origen() on any connectivity or query error.
+    """
     from app.models.connection import Connection
-    from app.services.db_connector import get_sample_rows
+    from app.services.db_connector import get_columns, get_foreign_keys, get_sample_rows
 
     try:
         conn_uuid = uuid.UUID(table.connection_id)
     except (ValueError, AttributeError):
-        logger.warning("Invalid connection_id '%s'; falling back to memory", table.connection_id)
-        return _profile_from_memory(table)
+        logger.warning("Invalid connection_id '%s'; using formulario fallback", table.connection_id)
+        return _schema_from_columnas_origen(table, source_type="database")
 
     conn = db.get(Connection, conn_uuid)
     if conn is None:
-        logger.warning("Connection %s not found; falling back to memory", table.connection_id)
-        return _profile_from_memory(table)
+        logger.warning("Connection %s not found; using formulario fallback", table.connection_id)
+        return _schema_from_columnas_origen(table, source_type="database")
 
-    # Resolve schema and table name.
     schema = table.schema_name or ""
     tname  = table.tableName
     if "." in tname and not schema:
         schema, _, tname = tname.partition(".")
 
-    col_names = [c.name for c in table.columns]
+    qualified = f"{schema}.{tname}" if schema else tname
 
     try:
+        col_infos = get_columns(conn, qualified)
+        fk_map    = get_foreign_keys(conn, [qualified])
+        fk_refs   = fk_map.get(qualified, [])
+
+        col_names     = [ci.name for ci in col_infos]
         stats         = profiler_svc.fetch_column_stats(conn, schema, tname, col_names)
         sample_result = get_sample_rows(conn, schema, tname, limit=20)
-        logger.debug("sample bias for %s.%s: %s", schema, tname, sample_result.bias)
-        return profiler_svc.profile_columns(col_names, stats, sample_result.rows)
+        logger.debug("sample bias for %s: %s", qualified, sample_result.bias)
+        profiles = profiler_svc.profile_columns(col_names, stats, sample_result.rows)
+
+        return db_adapter.build(
+            col_infos,
+            qualified,
+            fk_refs=fk_refs,
+            profile=TableProfile(column_profiles=profiles),
+        )
     except Exception as exc:
-        logger.warning("DB profiling failed for %s: %s; using memory fallback", table.tableName, exc)
-        return _profile_from_memory(table)
+        logger.warning(
+            "DB profiling failed for %s: %s; using formulario fallback", qualified, exc
+        )
+        return _schema_from_columnas_origen(table, source_type="database")
 
 
-# ─── Memory path (CSV / Excel / manual entry) ────────────────────────────────
+# ─── Formulario / fallback path ───────────────────────────────────────────────
 
-def _map_datatype(dt: str) -> str:
-    t = (dt or "").lower()
-    if any(t.startswith(k) for k in ("int", "bigint", "smallint", "serial")):
-        return "int"
-    if any(t.startswith(k) for k in ("float", "double", "decimal", "numeric", "real", "money")):
-        return "float"
-    if t in ("bool", "boolean"):
-        return "bool"
-    if any(t.startswith(k) for k in ("date", "datetime", "timestamp", "time")):
-        return "date"
-    return "string"
+def _schema_from_columnas_origen(
+    table,
+    source_type: str = "database",
+) -> CanonicalSchema:
+    """
+    Build a CanonicalSchema from ColumnaOrigen objects.
 
+    Used for:
+      - Manual form entry (InputFormulario): columns defined by the user.
+      - DB fallback: when INFORMATION_SCHEMA is unreachable.
 
-def _profile_from_memory(table) -> list[ColumnProfile]:
-    """Use .data from request columns as both population source and sample."""
-    col_names = [c.name for c in table.columns]
-    col_data  = [list(c.data or []) for c in table.columns]
-    max_rows  = max((len(d) for d in col_data), default=0)
-
-    if max_rows == 0:
-        return [
-            ColumnProfile(
-                name=c.name,
-                inferred_type=_map_datatype(c.dataType),
-                null_pct=0.0,
-                distinct_count=0,
-                leading_trailing_spaces_pct=0.0,
-                casing_distribution={},
-            )
-            for c in table.columns
-        ]
-
-    all_rows = [
-        [col_data[ci][ri] if ri < len(col_data[ci]) else None
-         for ci in range(len(col_names))]
-        for ri in range(max_rows)
+    Fields carry inferred_by="user". No statistical profile — stats are
+    unknown for this source, so the prompt will show names and types only.
+    """
+    fields = [
+        CanonicalField(
+            name=c.name,
+            type=_map_frontend_type(c.dataType),
+            inferred_by="user",
+        )
+        for c in table.columns
     ]
+    return CanonicalSchema(
+        source_name=table.tableName,
+        source_type=source_type,  # type: ignore[arg-type]
+        fields=fields,
+    )
 
-    stats       = profiler_svc.compute_stats_from_memory(col_names, all_rows)
-    sample_rows = all_rows[:20]
-    return profiler_svc.profile_columns(col_names, stats, sample_rows)
 
-
-# ─── ModelContext builder (bifurcation) ───────────────────────────────────────
+# ─── ModelContext builder ─────────────────────────────────────────────────────
 
 def build_model_context(tables: list, db: Optional[Session] = None) -> ModelContext:
     """
-    Routes each table to DB or memory profiling.
-    InternalTableRef is derived internally and never included in ModelContext.
+    Routes each table to the appropriate CanonicalSchema builder, then converts
+    to ModelContext via canonical_to_model_context().
+
+    DB path          (connection_id set)    → _profile_from_db()
+    File/DDL path    (canonical_schema set) → canonical_schema used directly
+    Formulario path  (neither)              → _schema_from_columnas_origen()
     """
     model_tables: list[ModelTableContext] = []
     for table in tables:
         if getattr(table, "connection_id", None) and db is not None:
-            profiles = _profile_from_db(table, db)
+            canonical = _profile_from_db(table, db)
+        elif getattr(table, "canonical_schema", None) is not None:
+            canonical = table.canonical_schema
         else:
-            profiles = _profile_from_memory(table)
+            canonical = _schema_from_columnas_origen(table)
 
-        model_tables.append(ModelTableContext(
-            table_name=table.tableName,
-            columns=profiles,
-        ))
+        ctx = canonical_to_model_context([canonical])
+        model_tables.extend(ctx.source_tables)
+
     return ModelContext(source_tables=model_tables)
 
 
@@ -130,13 +173,19 @@ def format_model_context_for_prompt(ctx: ModelContext) -> str:
     """
     Serializes ModelContext to the text that appears inside a prompt.
 
-    WHITELIST — only these fields from ColumnProfile are written:
+    WHITELIST — only these ColumnProfile fields are written:
       name, inferred_type, null_pct, distinct_count,
       leading_trailing_spaces_pct, casing_distribution,
       min_length, max_length, format_hint, masked_examples.
 
-    Absent: connection_id, raw .data values, InternalTableRef, InternalContext.
+    Absent: connection_id, raw data values, InternalTableRef, InternalContext.
     """
+    # ───────────────────────────────── DEBUG: log completo vs filtrado ─────────────────────────────────
+    if _DEBUG_CONTEXT_FILTER:
+       logger.debug("[CTX FILTER] Received (ModelContext completo):\n%s", ctx.model_dump_json(indent=2))
+    # ─────────────────────────────────                                 ─────────────────────────────────
+
+
     lines: list[str] = []
     for t in ctx.source_tables:
         lines.append(f"\n  Tabla: {t.table_name}")
@@ -159,4 +208,12 @@ def format_model_context_for_prompt(ctx: ModelContext) -> str:
             if col.masked_examples:
                 parts.append(f"ejemplos: {', '.join(col.masked_examples)}")
             lines.append(" | ".join(parts))
+
+    # ───────────────────────────────── DEBUG: log completo vs filtrado ─────────────────────────────────
+    if _DEBUG_CONTEXT_FILTER:
+        result = "\n".join(lines)
+        logger.debug("[CTX FILTER] Output (lo que va al prompt):\n%s", result)
+        return result
+    # ─────────────────────────────────                                 ─────────────────────────────────
+    
     return "\n".join(lines)

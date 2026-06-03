@@ -103,7 +103,7 @@ export default function Navbar() {
         <button
           className="sidebar__btn sidebar__btn--new"
           onClick={handleNewEtl}
-          data-tooltip="Nuevo ETL"
+          data-tooltip="Nueva Transformación"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" />

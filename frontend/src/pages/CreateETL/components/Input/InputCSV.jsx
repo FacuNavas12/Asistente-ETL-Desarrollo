@@ -1,10 +1,25 @@
 import { useRef, useState } from "react";
-import { csvToTables } from "../../utils/csvToTables";
+import Papa from "papaparse";
+import { inferSchema, canonicalSchemaToTablaOrigen } from "@/api/schema";
 import TableConfirmPanel from "../Tables/TableConfirmPanel";
 import "../../css/shared.css";
 import "../../css/inputOrigin.css";
 import "../../css/inputConnection.css";
 import "../../css/tableConfirmPanel.css";
+
+// PapaParse is kept for rendering the data preview only.
+// Schema extraction (types, stats) is done by the backend via POST /api/schema/infer.
+function parsePreview(file) {
+  return new Promise((resolve, reject) => {
+    Papa.parse(file, {
+      header: true,
+      preview: 20,       // only first 20 rows for preview
+      skipEmptyLines: true,
+      complete: r  => resolve(r),
+      error:    err => reject(new Error(err.message)),
+    });
+  });
+}
 
 export default function OrigenInputCSV({ value = [], onChange, onSwitchMode }) {
   const inputRef = useRef();
@@ -18,8 +33,21 @@ export default function OrigenInputCSV({ value = [], onChange, onSwitchMode }) {
     setLoading(true);
     setError("");
     try {
-      const tables = await csvToTables(file);
-      setCandidates(tables);
+      // 1. Backend infers schema + stats (authoritative, handles encoding/delimiters).
+      const canonicalSchema = await inferSchema(file);
+      const tabla = canonicalSchemaToTablaOrigen(canonicalSchema);
+
+      // 2. PapaParse provides a lightweight preview for the UI (no schema inference).
+      try {
+        const preview = await parsePreview(file);
+        if (preview.data?.length > 0) {
+          tabla._previewRows = preview.data;   // UI-only, never sent to backend
+        }
+      } catch {
+        // Preview failure is non-fatal — schema is already available.
+      }
+
+      setCandidates([tabla]);
     } catch (err) {
       setError(err.message ?? "Error al procesar el archivo");
     } finally {
@@ -48,7 +76,7 @@ export default function OrigenInputCSV({ value = [], onChange, onSwitchMode }) {
         <>
           <p className="origen-file-zone__hint">
             Seleccione un archivo <strong>.csv</strong>. La primera fila debe ser el encabezado de columnas.
-            Cada columna se carga como campo de la tabla con todos sus valores.
+            El servidor detecta automáticamente el delimitador y la codificación.
           </p>
           <button
             className="origen-file-btn"
@@ -74,6 +102,18 @@ export default function OrigenInputCSV({ value = [], onChange, onSwitchMode }) {
               — clic en el nombre para previsualizar · confirmar para usar en el ETL
             </span>
           </p>
+          {/* Show inferred-by-sample badges */}
+          {candidates.map(t => {
+            const schema = t.canonical_schema;
+            if (!schema) return null;
+            const sampledFields = (schema.fields ?? []).filter(f => f.inferred_by === "frictionless");
+            if (!sampledFields.length) return null;
+            return (
+              <p key={t.tableName} className="conn-catalog-hint" style={{ marginBottom: "6px" }}>
+                Tipos inferidos por muestra ({sampledFields.length} columnas) — revisar antes de confirmar.
+              </p>
+            );
+          })}
           <TableConfirmPanel
             candidates={candidates}
             value={value}

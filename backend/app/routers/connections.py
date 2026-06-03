@@ -15,8 +15,8 @@ from app.core.crypto import encrypt_password
 from app.core.database import get_db
 from app.core.sanitize import sanitize_error
 from app.models.connection import Connection, TestStatus
+from app.schemas.canonical import CanonicalField, CanonicalSchema, TableProfile
 from app.schemas.connection import (
-    ColumnInfo,
     ConnectionRead,
     ConnectionTestResult,
     ConnectionUpdate,
@@ -24,9 +24,10 @@ from app.schemas.connection import (
     SqlServerConnectionCreate,
     TableDataResponse,
 )
-from app.schemas.context_schemas import ColumnProfile
+from app.services.adapters import db_adapter
 from app.services.db_connector import (
     get_columns,
+    get_foreign_keys,
     get_sample_rows,
     get_table_data,
     list_tables,
@@ -172,17 +173,23 @@ def schema_list_tables(conn_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.get(
     "/{conn_id}/schema/tables/{table_name}/columns",
-    response_model=list[ColumnInfo],
+    response_model=list[CanonicalField],
 )
 def schema_get_columns(
     conn_id: uuid.UUID,
     table_name: str,
     db: Session = Depends(get_db),
 ):
-    """Devuelve columnas de una tabla. Acepta formato 'schema.tabla' o 'tabla'."""
+    """
+    Devuelve las columnas de una tabla como CanonicalField[].
+    Acepta formato 'schema.tabla' o 'tabla'.
+    No incluye perfil estadístico — usar /profile para eso.
+    """
     conn = _get_or_404(conn_id, db)
     try:
-        return get_columns(conn, table_name)
+        col_infos = get_columns(conn, table_name)
+        schema = db_adapter.build(col_infos, table_name)
+        return schema.fields
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
@@ -196,7 +203,7 @@ def schema_get_columns(
 
 @router.get(
     "/{conn_id}/schema/tables/{table_name}/profile",
-    response_model=list[ColumnProfile],
+    response_model=CanonicalSchema,
 )
 def schema_profile_table(
     conn_id: uuid.UUID,
@@ -204,11 +211,14 @@ def schema_profile_table(
     db: Session = Depends(get_db),
 ):
     """
-    Profiles a table: fetches population stats via SQL and a random sample (≤20 rows),
-    then returns ColumnProfile per column — no raw values, no connection identifiers.
+    Returns a CanonicalSchema for the requested table.
 
-    Intended call site: frontend when the user confirms a DB table into the ETL context.
-    The frontend stores the profiles; no raw data needs to travel to or from the model.
+    Structural layer: column types, nullable, PK and FK relationships
+    from INFORMATION_SCHEMA (authoritative, no row access).
+
+    Statistical layer: null_pct, distinct_count, format_hint, masked examples
+    from a single SQL aggregate pass + ≤20 random sample rows (no raw values
+    leave the backend — all embedded in schema.profile.column_profiles).
     """
     conn = _get_or_404(conn_id, db)
 
@@ -219,14 +229,8 @@ def schema_profile_table(
 
     try:
         col_infos = get_columns(conn, table_name)
-        col_names = [c.name for c in col_infos]
-        if not schema:
-            # get_columns already resolved the schema; recover it from col_infos if needed.
-            # We need the resolved schema for stats + sample queries.
-            # Re-split from the table_name that get_columns succeeded with.
-            schema = table_name.partition(".")[0] if "." in table_name else table
 
-        # Resolve schema robustly the same way db_connector does.
+        # Resolve schema for profiler calls (needs schema and table separately).
         from app.services.db_connector import build_engine, _resolve_schema
         engine = build_engine(conn, read_only=True)
         try:
@@ -236,10 +240,23 @@ def schema_profile_table(
         finally:
             engine.dispose()
 
+        qualified = f"{schema}.{table}"
+
+        fk_map  = get_foreign_keys(conn, [qualified])
+        fk_refs = fk_map.get(qualified, [])
+
+        col_names     = [c.name for c in col_infos]
         stats         = profiler_svc.fetch_column_stats(conn, schema, table, col_names)
         sample_result = get_sample_rows(conn, schema, table, limit=20)
-        logger.debug("sample bias for %s.%s: %s", schema, table, sample_result.bias)
-        return profiler_svc.profile_columns(col_names, stats, sample_result.rows)
+        logger.debug("sample bias for %s: %s", qualified, sample_result.bias)
+        profiles = profiler_svc.profile_columns(col_names, stats, sample_result.rows)
+
+        return db_adapter.build(
+            col_infos,
+            qualified,
+            fk_refs=fk_refs,
+            profile=TableProfile(column_profiles=profiles),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:

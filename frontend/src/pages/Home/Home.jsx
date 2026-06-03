@@ -9,7 +9,7 @@ const ETL_ICONS  = ["⚡", "🔄", "📊", "🔗", "🗃️", "⚙️", "🧩", 
 const JOB_ICONS  = ["🤖", "🛠️", "🔧", "📋", "🔩", "💾", "🚀", "🎯"];
 const FILTERS    = [
   { key: "all", label: "Todo" },
-  { key: "etl", label: "ETL" },
+  { key: "etl", label: "TF" },
   { key: "job", label: "Job" },
 ];
 
@@ -20,7 +20,7 @@ function EtlCard({ etl, index, onClick }) {
   return (
     <div className="etl-card" style={{ animationDelay: `${index * 60}ms` }} onClick={onClick}>
       <div className="etl-card__icon">{ETL_ICONS[index % ETL_ICONS.length]}</div>
-      <span className="etl-card__type-tag etl-card__type-tag--etl">ETL</span>
+      <span className="etl-card__type-tag etl-card__type-tag--etl">Transformación</span>
       <span className="etl-card__name">{etl.name}</span>
       <span className="etl-card__date">
         {new Date(etl.createdAt).toLocaleDateString("es-AR", { dateStyle: "medium" })}
@@ -98,7 +98,7 @@ export default function Home() {
           <div className="home-header__left">
             <h1 className="home-title">Inicio</h1>
             <div className="home-count">
-              <span className="home-count__label">ETLs</span>
+              <span className="home-count__label">Transformaciones</span>
               <span className="home-count__badge">{etls.length}</span>
             </div>
             <div className="home-count">

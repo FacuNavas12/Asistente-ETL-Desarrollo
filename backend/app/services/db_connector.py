@@ -357,6 +357,95 @@ def get_columns(conn: Connection, table_name: str) -> list[ColumnInfo]:
 
 
 
+def get_foreign_keys(
+    conn: Connection,
+    tables: list[str],
+) -> dict[str, list]:
+    """
+    Retrieves FK relationships for the given tables.
+
+    Args:
+        tables: list of "schema.table" strings (format returned by list_tables).
+
+    Returns:
+        dict keyed by "schema.table" → list[ForeignKeyRef].
+        Tables with no FKs map to an empty list.
+
+    Query is scoped to the provided tables only — no full-schema scan.
+    Uses information_schema.referential_constraints (ANSI; compatible with PG and SQL Server).
+    """
+    from app.schemas.canonical import ForeignKeyRef
+
+    result: dict[str, list] = {t: [] for t in tables}
+    if not tables:
+        return result
+
+    engine = build_engine(conn, read_only=True)
+    try:
+        with engine.connect() as c:
+            for qualified_name in tables:
+                if "." in qualified_name:
+                    schema, table = qualified_name.split(".", 1)
+                else:
+                    schema = _resolve_schema(c, qualified_name)
+                    table  = qualified_name
+
+                rows = c.execute(
+                    text("""
+                        SELECT
+                            tc.constraint_name              AS fk_name,
+                            kcu_fk.column_name              AS fk_column,
+                            kcu_pk.table_schema             AS ref_schema,
+                            kcu_pk.table_name               AS ref_table,
+                            kcu_pk.column_name              AS ref_column
+                        FROM information_schema.table_constraints tc
+                        JOIN information_schema.key_column_usage kcu_fk
+                          ON  tc.constraint_name   = kcu_fk.constraint_name
+                          AND tc.constraint_schema = kcu_fk.constraint_schema
+                        JOIN information_schema.referential_constraints rc
+                          ON  tc.constraint_name   = rc.constraint_name
+                          AND tc.constraint_schema = rc.constraint_schema
+                        JOIN information_schema.key_column_usage kcu_pk
+                          ON  rc.unique_constraint_name   = kcu_pk.constraint_name
+                          AND rc.unique_constraint_schema = kcu_pk.constraint_schema
+                          AND kcu_fk.ordinal_position     = kcu_pk.ordinal_position
+                        WHERE tc.constraint_type = 'FOREIGN KEY'
+                          AND tc.table_schema    = :schema
+                          AND tc.table_name      = :table
+                        ORDER BY tc.constraint_name, kcu_fk.ordinal_position
+                    """),
+                    {"schema": schema, "table": table},
+                ).fetchall()
+
+                # Group rows by constraint_name (a composite FK spans multiple rows).
+                fk_groups: dict[str, dict] = {}
+                for row in rows:
+                    fk_name, fk_col, ref_schema, ref_table, ref_col = (
+                        row[0], row[1], row[2], row[3], row[4]
+                    )
+                    if fk_name not in fk_groups:
+                        fk_groups[fk_name] = {
+                            "fields":         [],
+                            "reference_resource": f"{ref_schema}.{ref_table}",
+                            "reference_fields": [],
+                        }
+                    fk_groups[fk_name]["fields"].append(fk_col)
+                    fk_groups[fk_name]["reference_fields"].append(ref_col)
+
+                result[qualified_name] = [
+                    ForeignKeyRef(
+                        fields=g["fields"],
+                        reference_resource=g["reference_resource"],
+                        reference_fields=g["reference_fields"],
+                    )
+                    for g in fk_groups.values()
+                ]
+    finally:
+        engine.dispose()
+
+    return result
+
+
 def get_sample_rows(
     conn: Connection,
     schema: str,

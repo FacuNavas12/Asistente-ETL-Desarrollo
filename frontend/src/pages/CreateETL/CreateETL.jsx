@@ -174,7 +174,7 @@ export default function CreateETL() {
 
       <div className="etl-page">
         <div className="etl-page__header">
-          <h1 className="etl-title">Crear ETL</h1>
+          <h1 className="etl-title">Crear Transformación</h1>
           {step === STEP.FORM && (
             <div className="etl-header-actions">
               <button

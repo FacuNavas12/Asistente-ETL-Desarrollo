@@ -2,14 +2,50 @@ import { createContext, useContext, useState } from "react";
 
 const EtlContext = createContext();
 
-const DRAFT_KEY  = "etl_draft";
-const ETLS_KEY   = "etl_list";
-const JOBS_KEY   = "job_list";
-const DRAFT_TTL  = 2 * 60 * 60 * 1000;
+const DRAFT_KEY      = "etl_draft";
+const ETLS_KEY       = "etl_list";
+const JOBS_KEY       = "job_list";
+const DRAFT_TTL      = 2 * 60 * 60 * 1000;
+const SCHEMA_VERSION = "1.0";
+
+/**
+ * Validate that file-sourced tables in a saved ETL entry use the current schema_version.
+ * If any table has a canonical_schema with a version other than SCHEMA_VERSION, the entry
+ * is considered stale and must be discarded rather than silently used.
+ *
+ * Tables from DB connections (connection_id set) have no canonical_schema and are always valid.
+ * Tables from files (canonical_schema set) must carry schema_version === SCHEMA_VERSION.
+ * Tables with no canonical_schema (manual form entry) are always valid.
+ *
+ * Returns true if the entry is valid, false if it should be discarded.
+ */
+function isSchemaVersionValid(formData) {
+  const tables = formData?.origenTables ?? [];
+  for (const t of tables) {
+    if (t.canonical_schema != null) {
+      if (t.canonical_schema.schema_version !== SCHEMA_VERSION) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 function loadItems(key) {
-  try { return JSON.parse(localStorage.getItem(key)) || []; }
-  catch { return []; }
+  try {
+    const items = JSON.parse(localStorage.getItem(key)) || [];
+    // Filter out items with stale schema versions; show a console warning.
+    return items.filter(item => {
+      if (!isSchemaVersionValid(item.formData)) {
+        console.warn(
+          `[EtlContext] Entrada descartada (schema_version obsoleto): "${item.name}". ` +
+          "Volvé a cargar los archivos para regenerar el esquema."
+        );
+        return false;
+      }
+      return true;
+    });
+  } catch { return []; }
 }
 
 function loadDraft() {
@@ -18,6 +54,14 @@ function loadDraft() {
     if (!raw) return null;
     if (Date.now() - raw.savedAt > DRAFT_TTL) {
       sessionStorage.removeItem(DRAFT_KEY);
+      return null;
+    }
+    if (!isSchemaVersionValid(raw.data)) {
+      sessionStorage.removeItem(DRAFT_KEY);
+      console.warn(
+        "[EtlContext] Borrador descartado (schema_version obsoleto). " +
+        "Volvé a cargar los archivos para regenerar el esquema."
+      );
       return null;
     }
     return raw.data;

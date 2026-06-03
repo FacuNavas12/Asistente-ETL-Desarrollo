@@ -62,3 +62,15 @@ export async function getColumns(id, tableName) {
   const res = await fetch(`${BASE}/api/connections/${id}/schema/tables/${encodeURIComponent(tableName)}/columns`);
   return parseResponse(res);
 }
+
+/**
+ * Returns a CanonicalSchema for the table: structural info (types, PK, FK)
+ * + statistical profile (null_pct, distinct_count, format_hint).
+ * No raw row values are included in the response.
+ */
+export async function getTableProfile(id, tableName) {
+  const res = await fetch(
+    `${BASE}/api/connections/${id}/schema/tables/${encodeURIComponent(tableName)}/profile`,
+  );
+  return parseResponse(res);
+}

@@ -24,41 +24,105 @@ Backend reads env vars from `backend/.env`. Currently uses Google Gemini (`GOOGL
 
 ## Architecture
 
-React SPA with Auth0 auth talking to FastAPI backend. Backend proxies Claude AI via Anthropic SDK. No database — ETL state persists to `localStorage` (permanent) and `sessionStorage` (draft, 2h TTL) via `EtlContext`.
+React SPA with Auth0 auth talking to FastAPI backend. Backend proxies LLM (Gemini / Anthropic) and manages schema extraction. No database — ETL state persists to `localStorage` (permanent) and `sessionStorage` (draft, 2h TTL) via `EtlContext`.
+
+**Principio de diseño NO negociable:** al LLM solo se le envía la ESTRUCTURA de las tablas (esquema, tipos, formatos, reglas), nunca filas de datos.
 
 **Frontend structure:**
 ```
 src/
-  routes/AppRouter.jsx      — PrivateRoute wraps auth-gated pages
-  context/EtlContext.jsx    — ETL CRUD + draft persistence
-  context/ThemeContext.jsx  — dark/light toggle
-  views/CreateETL.jsx       — main ETL form wizard
-  views/EtlDetail.jsx       — result display + chart
-  components/etl/           — form section components
-  validation/               — form validation + string utilities
+  routes/AppRouter.jsx          — PrivateRoute wraps auth-gated pages
+  context/EtlContext.jsx        — ETL CRUD + draft persistence + schema_version validation
+  context/ThemeContext.jsx      — dark/light toggle
+  api/connections.js            — clientes HTTP para /api/connections/*
+  api/schema.js                 — inferSchema(), parseDDL(), canonicalSchemaToTablaOrigen()
+  pages/CreateETL/              — main ETL form wizard
+    components/Input/
+      InputForm.jsx             — selector de modo (formulario/CSV/Excel/Conexiones/DDL)
+      InputCSV.jsx              — sube archivo → POST /api/schema/infer → CanonicalSchema
+      InputExcel.jsx            — ídem para .xlsx/.xls
+      InputConnection.jsx       — conexión BD → GET /profile → CanonicalSchema + PK/FK badges
+      InputDDL.jsx              — textarea DDL → POST /api/schema/from-ddl → CanonicalSchema[]
+      InputFormulario.jsx       — entrada manual de columnas
+  pages/EtlDetail/              — result display + chart
+  validation/                   — form validation + string utilities
 ```
 
 **Backend structure:**
 ```
 app/
-  main.py                   — FastAPI app, mounts routers
-  routers/ai.py             — POST /api/ai/chat
-  services/claude_service.py — ask_claude() wrapper
-  core/config.py            — pydantic-settings (reads .env)
+  main.py                         — FastAPI app, mounts routers (ai, connections, schema)
+  routers/
+    ai.py                         — POST /api/ai/chat (ETL generation)
+    connections.py                — CRUD /api/connections/* + schema explorer
+    schema.py                     — POST /api/schema/infer (CSV/Excel via Frictionless)
+                                    POST /api/schema/from-ddl (DDL via sqlglot)
+  schemas/
+    canonical.py                  — CanonicalSchema, CanonicalField, CanonicalType (central)
+    etl_schemas.py                — ETLRequest, TablaOrigen (con canonical_schema), ColumnaOrigen
+    connection.py                 — ColumnInfo (DTO interno), ConnectionRead, etc.
+    context_schemas.py            — ColumnProfile, ModelContext (prompt layer)
+  services/
+    context_builder.py            — build_model_context() → 4 paths → ModelContext → prompt
+    file_schema.py                — infer_file_schema() via Frictionless (CSV/Excel)
+    type_mappings.py              — map_sql_type() PG/MSSQL string → CanonicalType
+    db_connector.py               — get_columns(), get_foreign_keys(), get_sample_rows()
+    profiler.py                   — fetch_column_stats(), profile_columns() → ColumnProfile
+    adapters/
+      db_adapter.py               — list[ColumnInfo] → CanonicalSchema
+      frictionless_adapter.py     — frictionless.Schema → CanonicalSchema
+      ddl_adapter.py              — sqlglot AST → list[CanonicalSchema]
+      schema_to_context.py        — list[CanonicalSchema] → ModelContext
+  core/config.py                  — pydantic-settings (reads .env)
 ```
+
+## Canonical Schema — flujo de extracción
+
+Todos los orígenes convergen en `CanonicalSchema` antes de llegar al LLM:
+
+```
+CSV/Excel   → POST /api/schema/infer     → frictionless_adapter → CanonicalSchema
+BD viva     → GET  /profile              → db_adapter           → CanonicalSchema (con perfil)
+DDL paste   → POST /api/schema/from-ddl  → ddl_adapter          → CanonicalSchema[]
+Formulario  → (local)                    → _schema_from_columnas_origen → CanonicalSchema
+                                                    ↓
+                                        canonical_to_model_context()
+                                                    ↓
+                                        format_model_context_for_prompt()  ← ÚNICO exit point
+                                                    ↓
+                                                  LLM
+```
+
+**Invariante:** `format_model_context_for_prompt()` es el único punto de salida al prompt. Solo serializa campos de `ColumnProfile` (whitelist). Nunca incluye filas de datos crudos.
+
+**`TablaOrigen`** (en `ETLRequest.origenTables`) tiene campo `canonical_schema: Optional[CanonicalSchema]`:
+- CSV/Excel/DDL: poblado por el frontend tras llamar a `/infer` o `/from-ddl`
+- BD: poblado por `InputConnection` tras llamar a `/profile`
+- Formulario: `None` — `context_builder` genera un `CanonicalSchema` mínimo
+
+**`EtlContext.jsx`** valida `schema_version == "1.0"` al cargar drafts del localStorage. Formato antiguo → descarte explícito con mensaje al usuario (nunca silencioso).
 
 ## ETL Form Data Flow
 
 `CreateETL.jsx` owns all form state. Four sections feed into a single `validateForm()` call before `addEtl()`:
 
 ```
-origenTables  → OrigenInput.jsx     (source tables + columns + sample data)
-stagingDef    → StagingForm.jsx     (transformation rules per column)
-dwhModel      → DwhModel.jsx        (dimension/fact table schema)
-reglasNegocio → ReglasNegocio.jsx   (free-text business rules)
+origenTables  → OrigenInput.jsx / InputForm.jsx  (5 modos de entrada)
+stagingDef    → StagingForm.jsx                  (transformation rules per column)
+dwhModel      → DwhModel.jsx                     (dimension/fact table schema)
+reglasNegocio → ReglasNegocio.jsx                (free-text business rules)
 ```
 
-`StagingForm` links to `origenTables` — its column picker populates from the selected origin table. Schema: `{ tableName, origenVinculado, columns: [{nombre, tipo, regla, datoNoValido}] }`.
+`StagingForm` links to `origenTables` — its column picker populates from the selected origin table.
+
+## API endpoints de esquema (nuevos)
+
+| Endpoint | Descripción |
+|---|---|
+| `POST /api/schema/infer` | Sube CSV o Excel, devuelve `CanonicalSchema` con tipos + perfil estadístico |
+| `POST /api/schema/from-ddl` | Parsea DDL (CREATE TABLE), devuelve `list[CanonicalSchema]` |
+| `GET /api/connections/{id}/schema/tables/{t}/profile` | Esquema BD + perfil estadístico → `CanonicalSchema` |
+| `GET /api/connections/{id}/schema/tables/{t}/columns` | Solo estructura → `list[CanonicalField]` |
 
 ## Key Shared Utilities
 

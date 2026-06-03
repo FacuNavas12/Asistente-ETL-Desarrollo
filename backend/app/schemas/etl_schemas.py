@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
@@ -9,9 +11,10 @@ class ColumnaOrigen(BaseModel):
     dataType: str
     dataFormat: str = ""
     role: str = "atributo"
-    # Raw sample values from CSV/Excel. Ignored for DB sources (re-queried by
-    # the profiler). Never passed directly to the model — goes through profiler.
-    data: List[str] = []
+    # Deprecated since Fase 2: raw sample values are no longer transported.
+    # CSV/Excel sources now embed stats in TablaOrigen.canonical_schema.profile.
+    # Kept as Optional for backward compatibility with stored drafts.
+    data: Optional[List[str]] = None
 
 
 class TablaOrigen(BaseModel):
@@ -21,6 +24,10 @@ class TablaOrigen(BaseModel):
     # Used by context_builder to re-query via db_connector. Never sent to model.
     connection_id: Optional[str] = None
     schema_name: Optional[str] = None
+    # Set by the frontend when the table comes from a file (CSV/Excel).
+    # Contains the CanonicalSchema returned by POST /api/schema/infer.
+    # context_builder uses this to build ModelContext without re-reading the file.
+    canonical_schema: Optional[CanonicalSchema] = None  # type: ignore[type-arg]
 
 
 # ─── INPUT — Staging ──────────────────────────────────────────────────────────
@@ -167,3 +174,10 @@ class ETLFromInferenceRequest(BaseModel):
     stg_definition: str             # DDL STG confirmado por el usuario
     dwh_model: str                  # DDL DWH confirmado por el usuario
     reglasNegocio: str
+
+
+# Resolve forward reference CanonicalSchema in TablaOrigen.
+# Import here (not at top) to avoid circular imports; canonical.py does not
+# import from etl_schemas.py.
+from app.schemas.canonical import CanonicalSchema  # noqa: E402
+TablaOrigen.model_rebuild()

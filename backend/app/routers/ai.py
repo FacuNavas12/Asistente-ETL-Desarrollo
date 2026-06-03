@@ -131,19 +131,17 @@ async def generate_from_inference(
 
 
 # ── Flujo de generación de Jobs PDI (.kjb) ────────────────────────────────────
-# job_analyzer is out of scope for the context-safety refactor.
-# It continues using gemini_client.call_main / call_secondary internally,
-# which now build a fresh client per call (no module-level singleton).
 
 @router.post("/api/v1/job/analyze", response_model=JobAnalyzeResponse)
 async def analyze_job(
     ktr_files:        List[UploadFile] = File(...),
     job_description:  str              = Form(...),
     business_rules:   Optional[str]    = Form(None),
+    main_llm:         BaseLLM          = Depends(get_main_llm),
 ):
     """Parsea N archivos .ktr, infiere el orden lógico y devuelve el plan del job para revisión."""
     try:
-        return await job_analyzer.analyze_job(ktr_files, job_description, business_rules)
+        return await job_analyzer.analyze_job(ktr_files, job_description, business_rules, main_llm)
     except json.JSONDecodeError as e:
         logger.error("JSON parse error en analyze_job: %s", str(e))
         raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
@@ -153,10 +151,13 @@ async def analyze_job(
 
 
 @router.post("/api/v1/job/refine", response_model=JobAnalyzeResponse)
-async def refine_job(req: JobRefineRequest):
+async def refine_job(
+    req:      JobRefineRequest,
+    main_llm: BaseLLM = Depends(get_main_llm),
+):
     """Incorpora una corrección en lenguaje natural y regenera el plan del job con historial acumulado."""
     try:
-        return await job_analyzer.refine_job(req)
+        return await job_analyzer.refine_job(req, main_llm)
     except json.JSONDecodeError as e:
         logger.error("JSON parse error en refine_job: %s", str(e))
         raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
@@ -166,10 +167,13 @@ async def refine_job(req: JobRefineRequest):
 
 
 @router.post("/api/v1/job/generate", response_model=JobGenerateResponse)
-async def generate_job(req: JobGenerateRequest):
+async def generate_job(
+    req:           JobGenerateRequest,
+    secondary_llm: BaseLLM = Depends(get_secondary_llm),
+):
     """Toma el JobPlan confirmado y genera el XML .kjb final + explicación en lenguaje natural."""
     try:
-        return await job_analyzer.generate_job(req.session_id, req.job_plan)
+        return await job_analyzer.generate_job(req.session_id, req.job_plan, secondary_llm)
     except json.JSONDecodeError as e:
         logger.error("JSON parse error en generate_job: %s", str(e))
         raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")

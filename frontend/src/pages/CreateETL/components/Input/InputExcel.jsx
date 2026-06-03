@@ -1,10 +1,34 @@
 import { useRef, useState } from "react";
-import { excelToTables } from "../../utils/excelToTables";
+import * as XLSX from "xlsx";
+import { inferSchema, canonicalSchemaToTablaOrigen } from "@/api/schema";
 import TableConfirmPanel from "../Tables/TableConfirmPanel";
 import "../../css/shared.css";
 import "../../css/inputOrigin.css";
 import "../../css/inputConnection.css";
 import "../../css/tableConfirmPanel.css";
+
+// XLSX is kept for rendering the data preview only (sheet names + row preview).
+// Schema extraction (types, stats) is done by the backend via POST /api/schema/infer.
+function parsePreview(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb  = XLSX.read(e.target.result, { type: "array" });
+        const sheets = {};
+        wb.SheetNames.forEach(name => {
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "" });
+          sheets[name] = rows.slice(0, 21);   // header + 20 rows max
+        });
+        resolve(sheets);
+      } catch (err) {
+        reject(new Error(err.message));
+      }
+    };
+    reader.onerror = () => reject(new Error("Error al leer el archivo"));
+    reader.readAsArrayBuffer(file);
+  });
+}
 
 export default function OrigenInputExcel({ value = [], onChange, onSwitchMode }) {
   const inputRef = useRef();
@@ -18,9 +42,22 @@ export default function OrigenInputExcel({ value = [], onChange, onSwitchMode })
     setLoading(true);
     setError("");
     try {
-      const tables = await excelToTables(file);
-      if (tables.length === 0) throw new Error("El archivo no contiene hojas con datos.");
-      setCandidates(tables);
+      // 1. Backend infers schema + stats for the whole workbook.
+      //    /infer returns a single CanonicalSchema (first sheet or merged).
+      //    For multi-sheet workbooks this creates one candidate per call.
+      const canonicalSchema = await inferSchema(file);
+      const tabla = canonicalSchemaToTablaOrigen(canonicalSchema);
+
+      // 2. XLSX provides a lightweight preview for the UI (no schema inference).
+      try {
+        const sheets = await parsePreview(file);
+        tabla._previewSheets = sheets;   // UI-only, never sent to backend
+      } catch {
+        // Preview failure is non-fatal.
+      }
+
+      if (!tabla.columns.length) throw new Error("El archivo no contiene columnas detectables.");
+      setCandidates([tabla]);
     } catch (err) {
       setError(err.message ?? "Error al procesar el archivo");
     } finally {
@@ -49,7 +86,7 @@ export default function OrigenInputExcel({ value = [], onChange, onSwitchMode })
         <>
           <p className="origen-file-zone__hint">
             Seleccioná un archivo <strong>.xlsx</strong> o <strong>.xls</strong>.
-            Cada hoja del libro se convierte en una tabla. La primera fila de cada hoja debe ser el encabezado.
+            El servidor detecta automáticamente tipos de columnas y fechas seriales.
           </p>
           <button
             className="origen-file-btn"
@@ -75,6 +112,17 @@ export default function OrigenInputExcel({ value = [], onChange, onSwitchMode })
               — clic en el nombre para previsualizar · confirmar para usar en el ETL
             </span>
           </p>
+          {candidates.map(t => {
+            const schema = t.canonical_schema;
+            if (!schema) return null;
+            const sampledFields = (schema.fields ?? []).filter(f => f.inferred_by === "frictionless");
+            if (!sampledFields.length) return null;
+            return (
+              <p key={t.tableName} className="conn-catalog-hint" style={{ marginBottom: "6px" }}>
+                Tipos inferidos por muestra ({sampledFields.length} columnas) — revisar antes de confirmar.
+              </p>
+            );
+          })}
           <TableConfirmPanel
             candidates={candidates}
             value={value}

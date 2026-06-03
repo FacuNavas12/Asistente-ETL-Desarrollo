@@ -5,14 +5,15 @@ import OrigenInputFormulario from "./InputFormulario";
 import OrigenInputCSV        from "./InputCSV";
 import OrigenInputExcel      from "./InputExcel";
 import InputConection        from "./InputConnection";
-import TablesPopupButton     from "../Tables/TablesPopupButton";
-import TableDataPreview      from "../Tables/TableDataPreview";
+import InputDDL              from "./InputDDL";
+import ConfirmedTablesList   from "../Tables/TableManagement/ConfirmedTablesList";
 
 const MODOS = [
   { id: "formulario",  label: "Formulario" },
   { id: "csv",         label: "CSV"        },
   { id: "excel",       label: "Excel"      },
   { id: "connections", label: "Conexiones" },
+  { id: "ddl",         label: "DDL"        },
 ];
 
 export default function OrigenInput({ value, onChange }) {
@@ -81,16 +82,11 @@ export default function OrigenInput({ value, onChange }) {
       {modo === "connections" && (
         <InputConection value={value} onChange={onChange} />
       )}
-
-      {Array.isArray(value) && value.length > 0 && (
-        <div className="origen-previews">
-          <div className="origen-previews__header">
-            <p className="origen-previews__label">Vista previa de datos cargados</p>
-            <TablesPopupButton tables={value} />
-          </div>
-          {value.map((t, i) => <TableDataPreview key={i} table={t} />)}
-        </div>
+      {modo === "ddl" && (
+        <InputDDL value={value} onChange={onChange} />
       )}
+
+      <ConfirmedTablesList tables={Array.isArray(value) ? value : []} onChange={onChange} />
     </div>
   );
 }
