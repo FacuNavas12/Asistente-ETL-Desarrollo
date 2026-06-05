@@ -10,7 +10,7 @@ import pytest
 
 from app.schemas.context_schemas import ColumnStats
 from app.services.profiler import (
-    compute_stats_from_memory,
+    compute_file_column_stats,
     profile_columns,
 )
 
@@ -148,31 +148,31 @@ def test_masked_examples_email_high_cardinality():
                 assert v not in ex, "Unmasked value in masked_examples"
 
 
-# ─── compute_stats_from_memory ────────────────────────────────────────────────
+# ─── compute_file_column_stats ────────────────────────────────────────────────
 
 def test_memory_stats_null_count():
     rows  = [["A"], [None], ["B"], [""], ["C"]]
-    stats = compute_stats_from_memory(["col"], rows)
+    stats = compute_file_column_stats(["col"], rows)
     assert stats["col"].null_count    == 2    # None and ""
     assert stats["col"].total_count   == 5
 
 
 def test_memory_stats_distinct():
     rows  = [["A"], ["B"], ["A"], ["C"]]
-    stats = compute_stats_from_memory(["col"], rows)
+    stats = compute_file_column_stats(["col"], rows)
     assert stats["col"].distinct_count == 3
 
 
 def test_memory_stats_min_max_length():
     rows  = [["hi"], ["hello"], ["bye"]]
-    stats = compute_stats_from_memory(["col"], rows)
+    stats = compute_file_column_stats(["col"], rows)
     assert stats["col"].min_length == 2
     assert stats["col"].max_length == 5
 
 
 def test_memory_stats_multi_column():
     rows  = [["A", "1"], ["B", "22"], ["C", "333"]]
-    stats = compute_stats_from_memory(["name", "code"], rows)
+    stats = compute_file_column_stats(["name", "code"], rows)
     assert stats["name"].distinct_count == 3
     assert stats["code"].max_length     == 3
 

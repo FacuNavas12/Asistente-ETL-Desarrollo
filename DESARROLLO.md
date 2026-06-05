@@ -1,6 +1,6 @@
 # Registro de desarrollo — Asistente ETL con IA
 
-Última actualización: 2026-05-13
+Última actualización: 2026-06-05
 
 ---
 
@@ -60,7 +60,7 @@ Frontend: vista EtlDetail
 | `app/services/etl_generator.py` | Servicio principal: construye prompt, llama Gemini, parsea respuesta |
 | `app/services/ktr_builder.py` | Serializa el JSON `ktr` del modelo a XML `.ktr` válido para Spoon |
 | `app/schemas/etl_schemas.py` | Modelos Pydantic de entrada (`ETLRequest`) y salida (`ETLGenerateResponse`) |
-| `app/models/gemini_client.py` | Cliente Gemini: `call_main()` con JSON forzado y `thinking_budget=0` |
+| `app/models/gemini_llm.py` | Cliente Gemini: `GeminiLLM(BaseLLM)` — retries 4× con backoff exponencial en 429/503, logging de latencia/tokens |
 | `app/core/config.py` | Variables de entorno; `main_max_tokens=16384` (crítico para no truncar el JSON) |
 | `prompts/system_etl.txt` | System prompt: steps PDI válidos, reglas de negocio (R1–R11), formato JSON, instrucciones KTR (K1–K10) |
 

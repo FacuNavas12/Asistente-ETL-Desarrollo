@@ -32,9 +32,3 @@ def build_llm(settings: Settings, role: str = "main") -> BaseLLM:
         temperature=temperature,
         max_tokens=max_tokens,
     )
-
-
-def get_llm() -> BaseLLM:
-    """Compatibility shim for call sites that cannot use FastAPI Depends."""
-    from app.core.config import settings as _settings
-    return build_llm(_settings, role="main")

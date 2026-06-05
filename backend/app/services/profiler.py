@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # ─── Level 1: Population stats via SQL (DB sources) ──────────────────────────
 
-def fetch_column_stats(
+def fetch_db_column_stats(
     conn: Connection,
     schema: str,
     table: str,
@@ -67,7 +67,7 @@ def fetch_column_stats(
             )
         return result
     except Exception as exc:
-        logger.warning("fetch_column_stats failed for %s.%s: %s", schema, table, exc)
+        logger.warning("fetch_db_column_stats failed for %s.%s: %s", schema, table, exc)
         return {col: ColumnStats(total_count=0, null_count=0, distinct_count=0)
                 for col in col_names}
     finally:
@@ -76,7 +76,7 @@ def fetch_column_stats(
 
 # ─── Level 1: Population stats from memory (CSV/Excel sources) ───────────────
 
-def compute_stats_from_memory(
+def compute_file_column_stats(
     col_names: list[str],
     all_rows: list[list],
 ) -> dict[str, ColumnStats]:

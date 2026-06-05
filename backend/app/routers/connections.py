@@ -246,7 +246,7 @@ def schema_profile_table(
         fk_refs = fk_map.get(qualified, [])
 
         col_names     = [c.name for c in col_infos]
-        stats         = profiler_svc.fetch_column_stats(conn, schema, table, col_names)
+        stats         = profiler_svc.fetch_db_column_stats(conn, schema, table, col_names)
         sample_result = get_sample_rows(conn, schema, table, limit=20)
         logger.debug("sample bias for %s: %s", qualified, sample_result.bias)
         profiles = profiler_svc.profile_columns(col_names, stats, sample_result.rows)

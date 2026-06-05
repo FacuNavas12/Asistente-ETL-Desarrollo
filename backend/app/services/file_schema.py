@@ -41,7 +41,7 @@ def infer_file_schema(path: str | Path, source_name: str) -> CanonicalSchema:
       2. Collect resource.sample (raw string rows already in memory).
       3. Build CanonicalSchema via frictionless_adapter (structural layer).
       4. Compute null_pct and distinct_count per column from the sample
-         using the existing profiler.compute_stats_from_memory() (statistical layer).
+         using the existing profiler.compute_file_column_stats() (statistical layer).
       5. Embed stats as TableProfile inside the returned CanonicalSchema.
 
     Never stores or returns raw row values.
@@ -123,7 +123,7 @@ def _compute_profile(col_names: list[str], data_rows: list[list]) -> TableProfil
         ]
         return TableProfile(column_profiles=profiles)
 
-    stats        = profiler_svc.compute_stats_from_memory(col_names, data_rows)
+    stats        = profiler_svc.compute_file_column_stats(col_names, data_rows)
     sample_rows  = data_rows[:20]
     profiles     = profiler_svc.profile_columns(col_names, stats, sample_rows)
     return TableProfile(

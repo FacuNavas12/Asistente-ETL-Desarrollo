@@ -76,7 +76,7 @@ def test_stats_sql_mssql_uses_len_cast():
 
 @pytest.mark.parametrize("db_type, _", _ALL_ENGINES)
 def test_stats_sql_four_exprs_per_column(db_type, _):
-    # Parser in fetch_column_stats relies on base = 1 + i*4.
+    # Parser in fetch_db_column_stats relies on base = 1 + i*4.
     # Verify that for N cols there are 1 + N*4 alias markers in the SQL.
     cols = ["a", "b", "c"]
     sql  = get_dialect(db_type).population_stats_sql('"s"."t"', cols)

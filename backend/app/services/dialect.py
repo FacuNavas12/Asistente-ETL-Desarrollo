@@ -211,7 +211,7 @@ class FakeDialect:
 
     quote() uses generic double-quotes so quoting tests can assert on the format.
     population_stats_sql() returns a no-op SELECT; tests drive profiling directly
-    through profile_columns() without going through fetch_column_stats().
+    through profile_columns() without going through fetch_db_column_stats().
     """
 
     def quote(self, identifier: str) -> str:

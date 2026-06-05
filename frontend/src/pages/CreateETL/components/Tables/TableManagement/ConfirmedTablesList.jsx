@@ -1,5 +1,5 @@
 import TableDataPreview from "../TableDataPreview";
-import TablesPopupButton from "../TablesPopupButton";
+import TablesPopupButton from "../TablesPopup";
 import "../../../css/shared.css";
 import "../../../css/inputOrigin.css";
 

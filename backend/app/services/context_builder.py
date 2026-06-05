@@ -92,7 +92,7 @@ def _profile_from_db(table, db: Session) -> CanonicalSchema:
         fk_refs   = fk_map.get(qualified, [])
 
         col_names     = [ci.name for ci in col_infos]
-        stats         = profiler_svc.fetch_column_stats(conn, schema, tname, col_names)
+        stats         = profiler_svc.fetch_db_column_stats(conn, schema, tname, col_names)
         sample_result = get_sample_rows(conn, schema, tname, limit=20)
         logger.debug("sample bias for %s: %s", qualified, sample_result.bias)
         profiles = profiler_svc.profile_columns(col_names, stats, sample_result.rows)

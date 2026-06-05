@@ -109,7 +109,7 @@ class TestProfileEndpointReturnsCanonicalSchema:
     def _setup_mocks(self, monkeypatch):
         monkeypatch.setattr("app.routers.connections.get_columns",       lambda *a, **k: _COL_INFOS)
         monkeypatch.setattr("app.routers.connections.get_foreign_keys",  lambda *a, **k: {"public.orders": []})
-        monkeypatch.setattr("app.services.profiler.fetch_column_stats",  lambda *a, **k: {})
+        monkeypatch.setattr("app.services.profiler.fetch_db_column_stats",  lambda *a, **k: {})
         monkeypatch.setattr("app.routers.connections.get_sample_rows",   lambda *a, **k: MagicMock(rows=[], bias="row_level"))
         monkeypatch.setattr("app.services.profiler.profile_columns",     lambda *a, **k: _PROFILES)
 
@@ -214,7 +214,7 @@ class TestProfileEndpointReturnsCanonicalSchema:
         }
         monkeypatch.setattr("app.routers.connections.get_columns",      lambda *a, **k: _COL_INFOS)
         monkeypatch.setattr("app.routers.connections.get_foreign_keys", lambda *a, **k: fk_data)
-        monkeypatch.setattr("app.services.profiler.fetch_column_stats", lambda *a, **k: {})
+        monkeypatch.setattr("app.services.profiler.fetch_db_column_stats", lambda *a, **k: {})
         monkeypatch.setattr("app.routers.connections.get_sample_rows",  lambda *a, **k: MagicMock(rows=[], bias="row_level"))
         monkeypatch.setattr("app.services.profiler.profile_columns",    lambda *a, **k: _PROFILES)
         mock_engine = MagicMock()
