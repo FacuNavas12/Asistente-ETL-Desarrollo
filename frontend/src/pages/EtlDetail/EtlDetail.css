@@ -1,7 +1,7 @@
 .etl-detail {
   flex: 1;
   padding: 40px 40px 60px;
-  max-width: 900px;
+  max-width: 1280px; /* ← ajustá este valor para cambiar los márgenes de ambas pestañas */
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -77,6 +77,77 @@
   cursor: pointer;
   text-decoration: underline;
   font-size: 16px;
+}
+
+
+/* ── Page-level tabs (Resultado / Linaje) ────────────────────────────────── */
+.etl-page-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+
+.etl-page-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 20px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 6px 6px 0 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.etl-page-tab:hover:not(:disabled) {
+  color: var(--text-h);
+  background: var(--accent-bg);
+}
+
+.etl-page-tab.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.etl-page-tab:disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.etl-page-tab__hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+  font-style: italic;
+}
+
+/* Lineage tab body */
+.etl-lineage-body {
+  padding-bottom: 40px;
+}
+
+.etl-lineage-loading {
+  padding: 60px 0;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+.etl-lineage-error {
+  padding: 24px 20px;
+  border-radius: 10px;
+  background: #ef444418;
+  border: 1px solid #ef444440;
+  color: #ef4444;
+  font-size: 14px;
 }
 
 /* Generic section card */

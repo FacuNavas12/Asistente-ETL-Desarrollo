@@ -16,6 +16,7 @@ from app.models.llm_base import BaseLLM, LLMResponse
 from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse
 from app.services import context_builder
 from app.services.ktr_builder import build_ktr
+from app.services.lineage_builder import build_lineage
 
 
 def _load_system(filename: str) -> str:
@@ -78,7 +79,8 @@ Verifica la consistencia de tipos y nombres entre las tres capas.
 def _build_response(resp: LLMResponse) -> ETLGenerateResponse:
     data = json.loads(resp.content)
     process_name = data.get("proceso_etl", {}).get("nombre", "")
-    ktr_xml, ktr_filename = build_ktr(data.get("ktr", {}), process_name)
+    ktr_data = data.get("ktr", {})
+    ktr_xml, ktr_filename = build_ktr(ktr_data, process_name)
     return ETLGenerateResponse(
         proceso_etl=data["proceso_etl"],
         validaciones=data.get("validaciones", []),
@@ -87,6 +89,7 @@ def _build_response(resp: LLMResponse) -> ETLGenerateResponse:
         dwh_sample=data.get("dwh_sample", {}),
         ktr_xml=ktr_xml,
         ktr_filename=ktr_filename,
+        lineage=build_lineage(ktr_data),
         metadata={
             "modelo_usado": resp.model,
             "tokens_input": resp.input_tokens,

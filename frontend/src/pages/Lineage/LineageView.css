@@ -1,0 +1,140 @@
+/* ── Wrapper ─────────────────────────────────────────────────────────────── */
+.lineage-view-wrapper {
+  width: 100%;
+}
+
+/* ── Toolbar (reset button) ──────────────────────────────────────────────── */
+.ln-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.ln-reset-btn {
+  padding: 6px 14px;
+  border-radius: 7px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.ln-reset-btn:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+/* ── React Flow canvas — height is set via inline style from JS ──────────── */
+.lineage-view {
+  width: 100%;
+  min-height: 300px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── Node card ───────────────────────────────────────────────────────────── */
+.ln-node {
+  width: 220px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  font-family: inherit;
+}
+
+.ln-node--origen  { border-color: #22c55e66; }
+.ln-node--staging { border-color: #f59e0b66; }
+.ln-node--dwh     { border-color: #6366f166; }
+
+.ln-node__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ln-node__badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.ln-node__badge--origen  { background: #22c55e22; color: #16a34a; border: 1px solid #22c55e55; }
+.ln-node__badge--staging { background: #f59e0b22; color: #b45309; border: 1px solid #f59e0b55; }
+.ln-node__badge--dwh     { background: #6366f122; color: #4f46e5; border: 1px solid #6366f155; }
+
+.ln-node__tipo {
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ln-node__name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-h);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ln-node__tabla {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.75;
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Handles ─────────────────────────────────────────────────────────────── */
+.ln-handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: var(--accent) !important;
+  border: 2px solid var(--surface) !important;
+}
+
+/* ── React Flow overrides ────────────────────────────────────────────────── */
+.lineage-view .react-flow__controls {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.lineage-view .react-flow__controls-button {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+  fill: var(--text);
+}
+
+.lineage-view .react-flow__controls-button:hover {
+  background: var(--bg);
+}
+
+.lineage-view .react-flow__minimap {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
