@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -42,7 +42,7 @@ function LineageNodeCard({ data }) {
 
 const nodeTypes = { lineageNode: LineageNodeCard };
 
-function buildFlowData(lineage) {
+function buildFlowData(lineage, stepsMap = {}) {
   const byLayer = { origen: [], staging: [], dwh: [] };
   for (const n of lineage.nodes) {
     const bucket = byLayer[n.capa] ?? byLayer.staging;
@@ -63,7 +63,13 @@ function buildFlowData(lineage) {
         id: n.step_name,
         type: "lineageNode",
         position: { x: colX, y: i * (NODE_H + ROW_GAP) },
-        data: { label: n.step_name, tipo: n.tipo_step, tabla: n.tabla ?? null, capa },
+        data: {
+          label: n.step_name,
+          tipo: n.tipo_step,
+          tabla: n.tabla ?? null,
+          capa,
+          stepInfo: stepsMap[n.step_name] ?? null,
+        },
         style: { width: NODE_W },
       });
     });
@@ -82,8 +88,14 @@ function buildFlowData(lineage) {
   return { nodes, edges };
 }
 
-export default function LineageView({ lineage }) {
-  const flowData = useMemo(() => buildFlowData(lineage), [lineage]);
+export default function LineageView({ lineage, steps = [] }) {
+  const stepsMap = useMemo(
+    () => Object.fromEntries(steps.map(s => [s.nombre, s])),
+    [steps]
+  );
+  const [hoveredStep, setHoveredStep] = useState(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const flowData = useMemo(() => buildFlowData(lineage, stepsMap), [lineage, stepsMap]);
   const [nodes, setNodes, onNodesChange] = useNodesState(flowData.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowData.edges);
   const rfInstance = useRef(null);
@@ -101,7 +113,7 @@ export default function LineageView({ lineage }) {
   }, [flowData.nodes]);
 
   const handleReset = () => {
-    const { nodes: freshNodes, edges: freshEdges } = buildFlowData(lineage);
+    const { nodes: freshNodes, edges: freshEdges } = buildFlowData(lineage, stepsMap);
     setNodes(freshNodes);
     setEdges(freshEdges);
     setTimeout(() => {
@@ -110,7 +122,10 @@ export default function LineageView({ lineage }) {
   };
 
   return (
-    <div className="lineage-view-wrapper">
+    <div
+      className="lineage-view-wrapper"
+      onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
+    >
       <div className="ln-toolbar">
         <button className="ln-reset-btn" onClick={handleReset}>
           Restablecer orden
@@ -130,6 +145,8 @@ export default function LineageView({ lineage }) {
           nodesConnectable={false}
           elementsSelectable={true}
           onInit={(instance) => { rfInstance.current = instance; }}
+          onNodeMouseEnter={(_, node) => setHoveredStep(node.data.stepInfo ?? null)}
+          onNodeMouseLeave={() => setHoveredStep(null)}
         >
           <Background gap={24} size={1} color="var(--border)" />
           <Controls showInteractive={false} />
@@ -144,6 +161,21 @@ export default function LineageView({ lineage }) {
           />
         </ReactFlow>
       </div>
+
+      {hoveredStep && (
+        <div
+          className="ln-step-panel"
+          style={{ left: mousePos.x + 18, top: mousePos.y + 18 }}
+        >
+          <span className="ln-step-panel__orden">Step {hoveredStep.orden}</span>
+          <p className="ln-step-panel__desc">{hoveredStep.descripcion}</p>
+          {hoveredStep.justificacion && (
+            <p className="ln-step-panel__just">
+              <strong>Por qué:</strong> {hoveredStep.justificacion}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
