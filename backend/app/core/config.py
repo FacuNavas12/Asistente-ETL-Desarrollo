@@ -11,7 +11,7 @@ ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=str(ENV_PATH))
+    model_config = SettingsConfigDict(env_file=str(ENV_PATH), extra="ignore")
 
     # ── Proveedor LLM ─────────────────────────────────────────────────────────
     # "gemini" | "anthropic" — cambiar solo en .env para switchear proveedor
@@ -30,6 +30,10 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("gemini_model", "google_model_main"),
     )
     anthropic_model: str = "claude-sonnet-4-20250514"
+    # Residencia geográfica de inferencia (Ley 18.331 / AGESIC 5.0).
+    # "ca" → Canadá (adecuación equivalente a Uruguay). Requiere Claude Enterprise o acuerdo de DPA.
+    # Referencia: https://docs.anthropic.com/en/api/getting-started#geographic-routing
+    anthropic_inference_region: str = "ca"
 
     # ── Base de datos ─────────────────────────────────────────────────────────
     # Dev local: sqlite:///./app.db (default). Prod: postgresql+psycopg://...
@@ -39,7 +43,7 @@ class Settings(BaseSettings):
     # CSV de claves Fernet. La primera es la activa; las demás solo desencriptan.
     # NoDecode evita que pydantic-settings JSON-decodifique el valor antes del validator.
     # Generar: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-    credentials_encryption_keys: Annotated[list[str], NoDecode]
+    credentials_encryption_keys: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # ── Driver ODBC SQL Server ────────────────────────────────────────────────
     mssql_odbc_driver: str = "ODBC Driver 18 for SQL Server"

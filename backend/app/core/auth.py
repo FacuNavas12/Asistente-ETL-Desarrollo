@@ -20,7 +20,10 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-import jwt
+try:
+    import jwt
+except ImportError:
+    jwt = None  # type: ignore[assignment]  — solo requerido cuando AUTH_REQUIRED=true
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -33,14 +36,19 @@ _bearer = HTTPBearer(auto_error=False)
 # Singleton de PyJWKClient — se inicializa la primera vez que AUTH_REQUIRED=true.
 # PyJWKClient gestiona su propio cache de claves públicas (cache_jwk_set=True,
 # lifespan=600 s). No se necesita cache manual adicional.
-_jwks_client: Optional[jwt.PyJWKClient] = None
+_jwks_client = None
 
 
-def _get_jwks_client() -> jwt.PyJWKClient:
+def _get_jwks_client():
     global _jwks_client
     if _jwks_client is not None:
         return _jwks_client
 
+    if jwt is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="PyJWT no está instalado. Ejecutar: pip install PyJWT==2.10.1",
+        )
     if not settings.auth_jwks_url:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
