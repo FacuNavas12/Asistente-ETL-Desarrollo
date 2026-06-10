@@ -1,0 +1,22 @@
+/* ── TablesPopup — ventana emergente de tablas (solo lectura) ───────────────── */
+
+.popup-window-root {
+  background: #f3f4f6;
+  min-height: 100vh;
+  padding: 28px 24px;
+  font-family: Outfit, sans-serif;
+  box-sizing: border-box;
+}
+
+.popup-window-title {
+  margin: 0 0 20px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-h, #111827);
+}
+
+.popup-window-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

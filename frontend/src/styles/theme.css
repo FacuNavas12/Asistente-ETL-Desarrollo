@@ -1,0 +1,63 @@
+.app-dark,
+.app-light {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* ── Tema oscuro ── */
+.app-dark {
+  --bg-base:       #080e1a;
+  --bg-panel:      #0d1626;
+  --bg-card:       #111e33;
+  --border:        rgba(255, 255, 255, 0.06);
+  --text-1:        #eaf0fb;
+  --text-2:        #7a8fa8;
+  --text-3:        #3d5068;
+  --accent:        #e8501a;
+  --accent-bg:     rgba(232, 80, 26, 0.12);
+  --accent-border: rgba(232, 80, 26, 0.45);
+  --accent-shadow: rgba(232, 80, 26, 0.3);
+  --shadow:        0 8px 32px rgba(0, 0, 0, 0.5);
+  --avatar-grad:   linear-gradient(135deg, #2d7ef7, #388bfd);
+  --avatar-border: #388bfd;
+  --avatar-glow:   rgba(45, 126, 247, 0.15);
+
+  /* Aliases backward-compat */
+  --bg:      var(--bg-base);
+  --surface: var(--bg-card);
+  --text-h:  var(--text-1);
+  --text:    var(--text-2);
+
+  background: var(--bg-base);
+  color: var(--text-2);
+}
+
+/* ── Tema claro (ivory) ── */
+.app-light {
+  --bg-base:       #f4efe4;
+  --bg-panel:      #ece6d9;
+  --bg-card:       #e5deca;
+  --border:        rgba(0, 0, 0, 0.07);
+  --text-1:        #1c1c2e;
+  --text-2:        #4e5870;
+  --text-3:        #9199a8;
+  --accent:        #e8501a;
+  --accent-bg:     rgba(232, 80, 26, 0.08);
+  --accent-border: rgba(232, 80, 26, 0.35);
+  --accent-shadow: rgba(232, 80, 26, 0.25);
+  --shadow:        0 8px 32px rgba(0, 0, 0, 0.1);
+  --avatar-grad:   linear-gradient(135deg, #2d7ef7, #388bfd);
+  --avatar-border: #388bfd;
+  --avatar-glow:   rgba(45, 126, 247, 0.12);
+
+  /* Aliases backward-compat */
+  --bg:      var(--bg-base);
+  --surface: var(--bg-card);
+  --text-h:  var(--text-1);
+  --text:    var(--text-2);
+
+  background: var(--bg-base);
+  color: var(--text-2);
+}

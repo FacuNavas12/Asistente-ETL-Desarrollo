@@ -1,0 +1,201 @@
+import json
+import logging
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.dependencies import get_main_llm, get_secondary_llm
+from app.models.llm_base import BaseLLM
+from app.schemas.etl_schemas import (
+    ETLDocumentRequest,
+    ETLDocumentResponse,
+    ETLFromInferenceRequest,
+    ETLGenerateResponse,
+    ETLRequest,
+    ETLValidateRequest,
+    ETLValidateResponse,
+    InferRequest,
+    InferResponse,
+    RefineRequest,
+)
+from app.services.etl_generator import generate_etl, generate_etl_from_inference
+from app.services.validator import validate_etl
+from app.services.documenter import document_etl
+from app.services.structure_inferrer import infer_structures, refine_structures
+from app.services.lineage_builder import build_lineage_from_xml
+from app.schemas.lineage import Lineage
+from app.schemas.job_schemas import (
+    JobAnalyzeResponse,
+    JobGenerateRequest,
+    JobGenerateResponse,
+    JobRefineRequest,
+)
+from app.services import job_analyzer
+
+router = APIRouter(tags=["ETL"])
+logger = logging.getLogger(__name__)
+
+
+async def _handle(fn, *args):
+    try:
+        return await fn(*args)
+    except json.JSONDecodeError as e:
+        logger.error("JSON parse error: %s", str(e))
+        raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
+    except Exception as e:
+        logger.error("Service error: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _validate_etl_request(req: ETLRequest):
+    if not req.origenTables:
+        raise HTTPException(status_code=422, detail="origenTables no puede estar vacío.")
+    if not req.stagingDef:
+        raise HTTPException(status_code=422, detail="stagingDef no puede estar vacío.")
+    if not req.dwhModel.tables:
+        raise HTTPException(status_code=422, detail="dwhModel.tables no puede estar vacío.")
+
+
+# ── ETL — endpoints principales ───────────────────────────────────────────────
+
+@router.post("/api/ai/etl", response_model=ETLGenerateResponse)
+async def etl_from_frontend(
+    req: ETLRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
+    """Recibe el payload del formulario y genera el proceso ETL completo."""
+    _validate_etl_request(req)
+    return await _handle(generate_etl, req, llm, db)
+
+
+@router.post("/api/v1/etl/generate", response_model=ETLGenerateResponse)
+async def generate(
+    req: ETLRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
+    """RF5, RF6, RF7, RF14 — Genera el proceso ETL completo."""
+    _validate_etl_request(req)
+    return await _handle(generate_etl, req, llm, db)
+
+
+@router.post("/api/v1/etl/validate", response_model=ETLValidateResponse)
+async def validate(
+    req: ETLValidateRequest,
+    llm: BaseLLM = Depends(get_secondary_llm),
+):
+    """RF8, RF9 — Valida calidad y malas prácticas."""
+    return await _handle(validate_etl, req, llm)
+
+
+@router.post("/api/v1/etl/document", response_model=ETLDocumentResponse)
+async def document(
+    req: ETLDocumentRequest,
+    llm: BaseLLM = Depends(get_secondary_llm),
+):
+    """RF11, RF12, RF13 — Genera documentación en lenguaje natural."""
+    return await _handle(document_etl, req, llm)
+
+
+# ── Flujo de inferencia automática ────────────────────────────────────────────
+
+@router.post("/api/v1/etl/infer-structures", response_model=InferResponse)
+async def infer(
+    req: InferRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
+    """Infiere automáticamente la tabla STG y el modelo DWH a partir de los 3 campos del usuario."""
+    return await _handle(infer_structures, req, llm, db)
+
+
+@router.post("/api/v1/etl/infer-structures/refine", response_model=InferResponse)
+async def refine(
+    req: RefineRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
+    """Incorpora una corrección en lenguaje natural y regenera las estructuras con contexto acumulado."""
+    return await _handle(refine_structures, req, llm, db)
+
+
+@router.post("/api/v1/etl/generate-from-inference", response_model=ETLGenerateResponse)
+async def generate_from_inference(
+    req: ETLFromInferenceRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
+    """Genera el proceso ETL completo usando estructuras STG/DWH inferidas por el modelo."""
+    return await _handle(generate_etl_from_inference, req, llm, db)
+
+
+# ── Linaje de datos ───────────────────────────────────────────────────────────
+
+class _KtrXmlBody(BaseModel):
+    ktr_xml: str
+
+@router.post("/api/ai/lineage-from-ktr", response_model=Lineage)
+async def lineage_from_ktr(body: _KtrXmlBody):
+    """Parsea un .ktr XML ya serializado y devuelve el grafo de linaje. Sin llamada al modelo."""
+    if not body.ktr_xml:
+        raise HTTPException(status_code=422, detail="ktr_xml no puede estar vacío.")
+    return build_lineage_from_xml(body.ktr_xml)
+
+
+# ── Flujo de generación de Jobs PDI (.kjb) ────────────────────────────────────
+
+@router.post("/api/v1/job/analyze", response_model=JobAnalyzeResponse)
+async def analyze_job(
+    ktr_files:        List[UploadFile] = File(...),
+    job_description:  str              = Form(...),
+    business_rules:   Optional[str]    = Form(None),
+    main_llm:         BaseLLM          = Depends(get_main_llm),
+):
+    """Parsea N archivos .ktr, infiere el orden lógico y devuelve el plan del job para revisión."""
+    try:
+        return await job_analyzer.analyze_job(ktr_files, job_description, business_rules, main_llm)
+    except json.JSONDecodeError as e:
+        logger.error("JSON parse error en analyze_job: %s", str(e))
+        raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
+    except Exception as e:
+        logger.error("Error en analyze_job: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/job/refine", response_model=JobAnalyzeResponse)
+async def refine_job(
+    req:      JobRefineRequest,
+    main_llm: BaseLLM = Depends(get_main_llm),
+):
+    """Incorpora una corrección en lenguaje natural y regenera el plan del job con historial acumulado."""
+    try:
+        return await job_analyzer.refine_job(req, main_llm)
+    except json.JSONDecodeError as e:
+        logger.error("JSON parse error en refine_job: %s", str(e))
+        raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
+    except Exception as e:
+        logger.error("Error en refine_job: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/job/generate", response_model=JobGenerateResponse)
+async def generate_job(
+    req:           JobGenerateRequest,
+    secondary_llm: BaseLLM = Depends(get_secondary_llm),
+):
+    """Toma el JobPlan confirmado y genera el XML .kjb final + explicación en lenguaje natural."""
+    try:
+        return await job_analyzer.generate_job(req.session_id, req.job_plan, secondary_llm)
+    except json.JSONDecodeError as e:
+        logger.error("JSON parse error en generate_job: %s", str(e))
+        raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
+    except FileNotFoundError as e:
+        logger.error("Sesión no encontrada: %s", str(e))
+        raise HTTPException(status_code=404, detail="Sesión expirada o no encontrada. Volvé a subir los archivos .ktr.")
+    except Exception as e:
+        logger.error("Error en generate_job: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))

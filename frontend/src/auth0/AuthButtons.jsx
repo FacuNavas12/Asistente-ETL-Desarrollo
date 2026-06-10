@@ -1,5 +1,5 @@
-import { useAuth0 } from "@auth0/auth0-react";
-import "../css/authButtons.css";
+﻿import { useAuth0 } from "@auth0/auth0-react";
+import "../styles/authButtons.css";
 
 export default function AuthButtons() {
   const {

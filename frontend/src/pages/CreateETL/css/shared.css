@@ -1,0 +1,144 @@
+/* ── Shared form primitives ──────────────────────────────────────────────── */
+
+.form-section {
+  margin-bottom: 26px;
+}
+
+.form-section__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-h);
+  margin-bottom: 12px;
+}
+
+.dropzone {
+  border: 2px dashed var(--accent-border);
+  border-radius: 14px;
+  padding: 28px;
+  text-align: center;
+  background: var(--accent-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.form-field input,
+.form-field select,
+.origen-textarea {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.origen-textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+/* ── Shared staging table primitives ─────────────────────────────────────── */
+
+.staging-table-name {
+  margin-bottom: 16px;
+}
+
+.staging-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+
+.staging-add-row .form-field {
+  flex: 1 1 160px;
+}
+
+.staging-add-btn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: flex-end;
+  transition: opacity 0.2s;
+}
+
+.staging-add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.staging-table-wrapper {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.staging-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.staging-table th,
+.staging-table td {
+  padding: 9px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.staging-table th {
+  font-weight: 700;
+  color: var(--text-h);
+  background: var(--accent-bg);
+}
+
+.staging-table tr:last-child td {
+  border-bottom: none;
+}
+
+.staging-remove-btn,
+.staging-edit-btn {
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.5;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: opacity 0.2s;
+}
+
+.staging-remove-btn:hover,
+.staging-edit-btn:hover {
+  opacity: 1;
+}

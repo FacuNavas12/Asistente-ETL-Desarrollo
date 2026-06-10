@@ -1,0 +1,12 @@
+.layout {
+  min-height: 100vh;
+  width: 100%;
+  background: var(--bg);
+}
+
+.layout__content {
+  margin-left: 60px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}

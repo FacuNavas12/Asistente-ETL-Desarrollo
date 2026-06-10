@@ -1,0 +1,17 @@
+{
+<<<<<<< HEAD
+  "dependencies": {
+    "recharts": "^3.8.1"
+=======
+  "name": "asistente-etl-promptfoo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "eval": "promptfoo eval --config promptfoo/promptfooconfig.yaml",
+    "eval:view": "promptfoo view"
+  },
+  "devDependencies": {
+    "promptfoo": "latest"
+>>>>>>> models
+  }
+}

@@ -1,0 +1,161 @@
+/* ── Chart sub-tabs (Datos limpios / Estadísticas) ───────────────────────── */
+.etl-chart-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.etl-chart-tab {
+  padding: 6px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.etl-chart-tab:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.etl-chart-tab.is-active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Steps ───────────────────────────────────────────────────────────────── */
+.etl-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.etl-step-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--bg);
+}
+
+.etl-step-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.etl-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.etl-step-type {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  white-space: nowrap;
+}
+
+.etl-step-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.etl-step-desc {
+  font-size: 13px;
+  color: var(--text);
+  margin: 0 0 6px;
+  line-height: 1.5;
+}
+
+.etl-step-just {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.75;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Validaciones ────────────────────────────────────────────────────────── */
+.etl-validations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.etl-validation {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.etl-validation--error   { background: #ef444418; border-color: #ef444440; }
+.etl-validation--warning { background: #f59e0b18; border-color: #f59e0b40; }
+.etl-validation--info    { background: #3b82f618; border-color: #3b82f640; }
+
+.etl-validation__badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.etl-validation--error   .etl-validation__badge { background: #ef4444; color: #fff; }
+.etl-validation--warning .etl-validation__badge { background: #f59e0b; color: #fff; }
+.etl-validation--info    .etl-validation__badge { background: #3b82f6; color: #fff; }
+
+.etl-validation__campo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  flex-shrink: 0;
+}
+
+.etl-validation__msg {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+/* ── Advertencias buenas prácticas ───────────────────────────────────────── */
+.etl-warnings-list {
+  margin: 0;
+  padding: 0 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.etl-warnings-list li {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5;
+}
