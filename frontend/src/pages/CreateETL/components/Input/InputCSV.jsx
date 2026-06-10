@@ -58,7 +58,6 @@ export default function OrigenInputCSV({ value = [], onChange, onSwitchMode }) {
 
   const handleReset = () => {
     setCandidates(null);
-    onChange([]);
   };
 
   const handleEditInForm = () => {

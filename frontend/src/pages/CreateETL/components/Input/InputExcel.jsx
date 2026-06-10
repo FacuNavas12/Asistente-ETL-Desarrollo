@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
-import * as XLSX from "xlsx";
+// default export returns Array<{ sheet: string, data: Row[] }> — all sheets at once.
+// Named exports: readSheet, parseSheetData. NO readXlsxFile or readSheetNames named exports.
+import readXlsxFileBrowser from "read-excel-file/browser";
 import { inferSchema, canonicalSchemaToTablaOrigen } from "@/api/schema";
 import TableConfirmPanel from "../Tables/TableConfirmPanel";
 import "../../css/shared.css";
@@ -7,27 +9,16 @@ import "../../css/inputOrigin.css";
 import "../../css/inputConnection.css";
 import "../../css/tableConfirmPanel.css";
 
-// XLSX is kept for rendering the data preview only (sheet names + row preview).
-// Schema extraction (types, stats) is done by the backend via POST /api/schema/infer.
-function parsePreview(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const wb  = XLSX.read(e.target.result, { type: "array" });
-        const sheets = {};
-        wb.SheetNames.forEach(name => {
-          const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "" });
-          sheets[name] = rows.slice(0, 21);   // header + 20 rows max
-        });
-        resolve(sheets);
-      } catch (err) {
-        reject(new Error(err.message));
-      }
-    };
-    reader.onerror = () => reject(new Error("Error al leer el archivo"));
-    reader.readAsArrayBuffer(file);
-  });
+// Preview only (.xlsx). Schema inference stays in backend via POST /api/schema/infer.
+async function parsePreview(file) {
+  const sheetsData = await readXlsxFileBrowser(file);
+  const sheets = {};
+  for (const { sheet, data } of sheetsData) {
+    sheets[sheet] = data.slice(0, 21).map(row =>
+      row.map(cell => (cell === null ? "" : String(cell)))
+    );
+  }
+  return sheets;
 }
 
 export default function OrigenInputExcel({ value = [], onChange, onSwitchMode }) {
@@ -42,16 +33,12 @@ export default function OrigenInputExcel({ value = [], onChange, onSwitchMode })
     setLoading(true);
     setError("");
     try {
-      // 1. Backend infers schema + stats for the whole workbook.
-      //    /infer returns a single CanonicalSchema (first sheet or merged).
-      //    For multi-sheet workbooks this creates one candidate per call.
       const canonicalSchema = await inferSchema(file);
       const tabla = canonicalSchemaToTablaOrigen(canonicalSchema);
 
-      // 2. XLSX provides a lightweight preview for the UI (no schema inference).
       try {
         const sheets = await parsePreview(file);
-        tabla._previewSheets = sheets;   // UI-only, never sent to backend
+        tabla._previewSheets = sheets;
       } catch {
         // Preview failure is non-fatal.
       }
@@ -68,7 +55,6 @@ export default function OrigenInputExcel({ value = [], onChange, onSwitchMode })
 
   const handleReset = () => {
     setCandidates(null);
-    onChange([]);
   };
 
   const handleEditInForm = () => {

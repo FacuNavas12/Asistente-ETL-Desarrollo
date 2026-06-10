@@ -1,4 +1,18 @@
 const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+const TIMEOUT_MS = 15_000;
+
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("El servidor no respondió (timeout). Verificá que el backend esté corriendo.");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function parseResponse(res) {
   if (res.ok) return res.json();
@@ -28,7 +42,7 @@ async function parseResponse(res) {
 export async function inferSchema(file) {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${BASE}/api/schema/infer`, {
+  const res = await fetchWithTimeout(`${BASE}/api/schema/infer`, {
     method: "POST",
     body: form,
   });
@@ -44,7 +58,7 @@ export async function inferSchema(file) {
  * @returns {Promise<import("../types/canonical").CanonicalSchema[]>}
  */
 export async function parseDDL(ddl, dialect = "ansi") {
-  const res = await fetch(`${BASE}/api/schema/from-ddl`, {
+  const res = await fetchWithTimeout(`${BASE}/api/schema/from-ddl`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ddl, dialect }),
