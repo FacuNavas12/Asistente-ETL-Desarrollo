@@ -1,7 +1,7 @@
 import time
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 from google import genai
 from google.genai import types
@@ -20,14 +20,61 @@ def _is_retryable(exc: APIError) -> bool:
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
     return isinstance(exc, ServerError) or code in (429, 503)
 
+
 _client: Optional[genai.Client] = None
 
 
 def get_client() -> genai.Client:
+    """
+    Retorna un cliente Gemini singleton configurado según GEMINI_PROVIDER.
+
+    google-ai-studio (default / desarrollo):
+        Usa GOOGLE_API_KEY. Procesa en EE.UU. No tiene control de región.
+
+    vertex-ai (producción):
+        Usa Application Default Credentials o Service Account de GCP.
+        Procesa en GCP_LOCATION — por defecto northamerica-northeast1 (Canadá),
+        jurisdicción con adecuación GDPR equivalente a Uruguay (PIPEDA).
+        Requiere GCP_PROJECT_ID y que la cuenta tenga el rol Vertex AI User.
+        Setup: https://cloud.google.com/vertex-ai/docs/authentication
+    """
     global _client
-    if _client is None:
+    if _client is not None:
+        return _client
+
+    if settings.gemini_provider == "vertex-ai":
+        if not settings.gcp_project_id:
+            raise ValueError(
+                "GCP_PROJECT_ID es requerido cuando GEMINI_PROVIDER=vertex-ai. "
+                "Agregar al .env y reiniciar."
+            )
+        _client = genai.Client(
+            vertexai=True,
+            project=settings.gcp_project_id,
+            location=settings.gcp_location,
+        )
+        logger.info(
+            "Gemini client — proveedor: Vertex AI | proyecto: %s | región: %s",
+            settings.gcp_project_id,
+            settings.gcp_location,
+        )
+    else:
+        if not settings.google_api_key:
+            raise ValueError(
+                "GOOGLE_API_KEY es requerido cuando GEMINI_PROVIDER=google-ai-studio. "
+                "Agregar al .env y reiniciar."
+            )
         _client = genai.Client(api_key=settings.google_api_key)
+        logger.info("Gemini client — proveedor: Google AI Studio (EE.UU.)")
+
     return _client
+
+
+def get_region_label() -> str:
+    """Etiqueta de región real para incluir en MetadataResponse."""
+    if settings.gemini_provider == "vertex-ai":
+        return settings.gcp_location
+    return "us (Google AI Studio)"
 
 
 def _load_prompt(filename: str) -> str:

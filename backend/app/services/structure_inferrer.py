@@ -12,7 +12,7 @@ y el servicio regenera las estructuras manteniendo el historial de correcciones.
 import json
 import logging
 
-from app.models.gemini_client import call_main
+from app.models.gemini_client import call_main, get_region_label
 from app.schemas.etl_schemas import InferRequest, RefineRequest, InferResponse
 from app.core.config import settings
 
@@ -22,12 +22,25 @@ _SYSTEM_PROMPT = "system_inference.txt"
 _MAX_HISTORY_FULL = 10
 
 
+def _sanitize_source(source: str) -> str:
+    """Elimina el campo 'data' de cada columna del JSON de origen.
+    Impide que valores de filas de producción lleguen al modelo (Ley 18.331)."""
+    try:
+        tables = json.loads(source)
+        for table in tables:
+            for col in table.get("columns", []):
+                col.pop("data", None)
+        return json.dumps(tables, ensure_ascii=False, indent=2)
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return source  # si el JSON es inválido, pasa tal cual sin bloquear
+
+
 def _build_infer_prompt(req: InferRequest) -> str:
     return f"""A partir de la siguiente información, generá la definición de la tabla de Staging (STG) \
 y el modelo de Data Warehouse (DWH) destino.
 
 ESTRUCTURA DE ORIGEN:
-{req.source_structure}
+{_sanitize_source(req.source_structure)}
 
 DESCRIPCIÓN DEL PROCESO / OBJETIVO:
 {req.process_description}
@@ -61,7 +74,7 @@ DWH:
 {req.current_dwh}
 
 CONTEXTO ORIGINAL:
-Estructura de origen: {req.source_structure}
+Estructura de origen: {_sanitize_source(req.source_structure)}
 Descripción del proceso: {req.process_description}
 Reglas de negocio: {req.business_rules}
 
@@ -95,7 +108,7 @@ def _parse_response(raw: str, usage) -> InferResponse:
             "modelo_usado": settings.google_model_main,
             "tokens_input": usage.prompt_token_count or 0,
             "tokens_output": usage.candidates_token_count or 0,
-            "region_inferencia": "google-cloud",
+            "region_inferencia": get_region_label(),
         },
     )
 

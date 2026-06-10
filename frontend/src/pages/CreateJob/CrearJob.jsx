@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
+import { useAuthFetch } from "@/hooks/useAuthFetch";
 import Layout from "@/components/layout/Layout";
 import EtlChecks from "../CreateETL/components/EtlChecks";
 import HomeModal from "../CreateETL/components/HomeModal";
@@ -22,6 +23,7 @@ const STEP = {
 export default function CrearJob() {
   const navigate = useNavigate();
   const { jobs, addJob, savePendingJob } = useEtl();
+  const authFetch = useAuthFetch();
 
   const [step, setStep]           = useState(STEP.FORM);
   const [showModal, setShowModal] = useState(false);
@@ -85,7 +87,7 @@ export default function CrearJob() {
       formData.append("job_description", jobDescription);
       if (businessRules.trim()) formData.append("business_rules", businessRules);
 
-      const res = await fetch(`${API}/api/v1/job/analyze`, {
+      const res = await authFetch(`${API}/api/v1/job/analyze`, {
         method: "POST",
         body: formData,
       });
@@ -108,7 +110,7 @@ export default function CrearJob() {
   const handleRefine = async (correction) => {
     setIsRefining(true);
     try {
-      const res = await fetch(`${API}/api/v1/job/refine`, {
+      const res = await authFetch(`${API}/api/v1/job/refine`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -143,7 +145,7 @@ export default function CrearJob() {
     setStep(STEP.GENERATING);
 
     try {
-      const res = await fetch(`${API}/api/v1/job/generate`, {
+      const res = await authFetch(`${API}/api/v1/job/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

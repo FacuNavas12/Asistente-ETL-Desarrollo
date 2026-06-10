@@ -6,10 +6,26 @@ const DRAFT_KEY  = "etl_draft";
 const ETLS_KEY   = "etl_list";
 const JOBS_KEY   = "job_list";
 const DRAFT_TTL  = 2 * 60 * 60 * 1000;
+// Retención localStorage: 30 días (Ley 18.331 — Limitación de conservación).
+// Los metadatos de esquema (nombres de tablas/columnas) son datos personales
+// indirectos y no deben conservarse indefinidamente en el cliente.
+const LIST_TTL   = 30 * 24 * 60 * 60 * 1000;
 
 function loadItems(key) {
-  try { return JSON.parse(localStorage.getItem(key)) || []; }
-  catch { return []; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(key));
+    if (!raw) return [];
+    // Formato con envoltorio TTL: { data: [...], savedAt: timestamp }
+    if (raw.savedAt !== undefined) {
+      if (Date.now() - raw.savedAt > LIST_TTL) {
+        localStorage.removeItem(key);
+        return [];
+      }
+      return raw.data ?? [];
+    }
+    // Compatibilidad con registros anteriores sin envoltorio (migración transparente).
+    return Array.isArray(raw) ? raw : [];
+  } catch { return []; }
 }
 
 function loadDraft() {
@@ -26,7 +42,16 @@ function loadDraft() {
 
 function persist(key, list, setter) {
   setter(list);
-  localStorage.setItem(key, JSON.stringify(list));
+  localStorage.setItem(key, JSON.stringify({ data: list, savedAt: Date.now() }));
+}
+
+/** Elimina todos los datos del usuario del almacenamiento local y de sesión.
+ *  Debe llamarse en el logout para cumplir el principio de minimización de
+ *  datos de la Ley 18.331. */
+export function clearAllStoredData() {
+  localStorage.removeItem(ETLS_KEY);
+  localStorage.removeItem(JOBS_KEY);
+  sessionStorage.removeItem(DRAFT_KEY);
 }
 
 export function EtlProvider({ children }) {
@@ -110,10 +135,18 @@ export function EtlProvider({ children }) {
     persist(JOBS_KEY, updated, setJobs);
   };
 
+  const clearAll = () => {
+    clearAllStoredData();
+    setEtls([]);
+    setJobs([]);
+    setDraftState(null);
+  };
+
   return (
     <EtlContext.Provider value={{
       etls, draft, saveDraft, clearDraft, addEtl, savePendingEtl,
       jobs, addJob, savePendingJob,
+      clearAll,
     }}>
       {children}
     </EtlContext.Provider>

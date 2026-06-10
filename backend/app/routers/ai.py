@@ -2,8 +2,9 @@ import json
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from app.core.auth import require_auth
 from app.schemas.etl_schemas import (
     ETLRequest,
     ETLGenerateResponse,
@@ -28,7 +29,7 @@ from app.schemas.job_schemas import (
 )
 from app.services import job_analyzer
 
-router = APIRouter(tags=["ETL"])
+router = APIRouter(tags=["ETL"], dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 

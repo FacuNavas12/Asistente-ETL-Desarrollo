@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,12 +12,25 @@ _log_dir = Path(__file__).resolve().parent.parent / "logs"
 _log_dir.mkdir(exist_ok=True)
 
 _fmt = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
+# Rotación diaria; retención 90 días (Ley 18.331 — Limitación de conservación).
+# Los archivos rotan a medianoche UTC y se nombran generaciones.log.YYYY-MM-DD.
+_file_handler = TimedRotatingFileHandler(
+    _log_dir / "generaciones.log",
+    when="midnight",
+    interval=1,
+    backupCount=90,
+    encoding="utf-8",
+    utc=True,
+)
+_file_handler.setFormatter(logging.Formatter(_fmt))
+
 logging.basicConfig(
     level=logging.INFO,
     format=_fmt,
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(_log_dir / "generaciones.log", encoding="utf-8"),
+        _file_handler,
     ],
 )
 logging.getLogger().addFilter(PasswordFilter())

@@ -8,7 +8,7 @@ Motor: Gemini 2.5 Flash (principal)
 """
 import json
 
-from app.models.gemini_client import call_main
+from app.models.gemini_client import call_main, get_region_label
 from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse
 from app.services.ktr_builder import build_ktr
 from app.core.config import settings
@@ -23,7 +23,7 @@ def _build_prompt(req: ETLRequest) -> str:
             f"    - {c.name} | tipo: {c.dataType}"
             + (f" | formato: {c.dataFormat}" if c.dataFormat else "")
             + f" | rol: {c.role}"
-            + (f" | datos ejemplo: {', '.join(c.data[:5])}" if c.data else "")
+            # c.data no se incluye: podría contener valores reales de producción (Ley 18.331)
             for c in t.columns
         )
         origen_txt += f"\n  Tabla: {t.tableName}\n{cols}\n"
@@ -97,7 +97,7 @@ def _build_response(raw: str, usage) -> ETLGenerateResponse:
             "modelo_usado": settings.google_model_main,
             "tokens_input": usage.prompt_token_count or 0,
             "tokens_output": usage.candidates_token_count or 0,
-            "region_inferencia": "google-cloud",
+            "region_inferencia": get_region_label(),
         },
     )
 
@@ -119,7 +119,7 @@ def generate_etl_from_inference(req: ETLFromInferenceRequest) -> ETLGenerateResp
             f"    - {c.name} | tipo: {c.dataType}"
             + (f" | formato: {c.dataFormat}" if c.dataFormat else "")
             + f" | rol: {c.role}"
-            + (f" | datos ejemplo: {', '.join(c.data[:5])}" if c.data else "")
+            # c.data no se incluye: podría contener valores reales de producción (Ley 18.331)
             for c in t.columns
         )
         origen_txt += f"\n  Tabla: {t.tableName}\n{cols}\n"

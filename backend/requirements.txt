@@ -53,6 +53,9 @@ python-dotenv==1.2.2       # transitive de pydantic-settings; carga backend/.env
 cryptography==48.0.0
 cffi==2.0.0                # transitive de cryptography (bindings C)
 pycparser==3.0             # transitive de cffi
+# Validación de JWT para autenticación de la API (AUTH_REQUIRED=true en producción)
+# Usa el backend "cryptography" ya instalado para RS256; no requiere deps adicionales.
+PyJWT==2.10.1
 
 # ─── HTTP / Networking ───────────────────────────────────────────────────────
 httpx==0.28.1              # transitive de google-genai (HTTP transport)

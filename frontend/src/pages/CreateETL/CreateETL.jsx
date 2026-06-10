@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
+import { useAuthFetch } from "@/hooks/useAuthFetch";
 import Layout from "@/components/layout/Layout";
 import OrigenInput from "./components/Input/InputForm";
 import EtlChecks from "./components/EtlChecks";
@@ -34,6 +35,7 @@ function isDirty(origenTables, reglasNegocio, descripcionObjetivo) {
 export default function CreateETL() {
   const navigate   = useNavigate();
   const { draft, saveDraft, clearDraft, addEtl, savePendingEtl, etls } = useEtl();
+  const authFetch  = useAuthFetch();
 
   const [step, setStep]       = useState(STEP.FORM);
   const [showModal, setShowModal] = useState(false);
@@ -94,7 +96,7 @@ export default function CreateETL() {
     setStep(STEP.INFERRING);
 
     try {
-      const res = await fetch(`${API}/api/v1/etl/infer-structures`, {
+      const res = await authFetch(`${API}/api/v1/etl/infer-structures`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -121,7 +123,7 @@ export default function CreateETL() {
   const handleRefine = async (correction) => {
     setIsRefining(true);
     try {
-      const res = await fetch(`${API}/api/v1/etl/infer-structures/refine`, {
+      const res = await authFetch(`${API}/api/v1/etl/infer-structures/refine`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -157,7 +159,7 @@ export default function CreateETL() {
     setStep(STEP.PROCESSING);
 
     try {
-      const res = await fetch(`${API}/api/v1/etl/generate-from-inference`, {
+      const res = await authFetch(`${API}/api/v1/etl/generate-from-inference`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

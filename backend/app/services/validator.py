@@ -6,7 +6,7 @@ Motor: Claude Haiku 3.5
 """
 import json
 
-from app.models.gemini_client import call_secondary
+from app.models.gemini_client import call_secondary, get_region_label
 from app.schemas.etl_schemas import ETLValidateRequest, ETLValidateResponse
 from app.core.config import settings
 
@@ -29,6 +29,6 @@ def validate_etl(req: ETLValidateRequest) -> ETLValidateResponse:
             "modelo_usado": settings.google_model_secondary,
             "tokens_input": usage.prompt_token_count or 0,
             "tokens_output": usage.candidates_token_count or 0,
-            "region_inferencia": "google-cloud",
+            "region_inferencia": get_region_label(),
         },
     )
