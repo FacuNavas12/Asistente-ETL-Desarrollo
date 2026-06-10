@@ -124,6 +124,7 @@ class ETLGenerateResponse(BaseModel):
     dwh_sample: Dict[str, List[Dict[str, Any]]] = {}
     ktr_xml: str = ""
     ktr_filename: str = ""
+    lineage: Optional["Lineage"] = None
     metadata: MetadataResponse
 
 
@@ -176,8 +177,9 @@ class ETLFromInferenceRequest(BaseModel):
     reglasNegocio: str
 
 
-# Resolve forward reference CanonicalSchema in TablaOrigen.
-# Import here (not at top) to avoid circular imports; canonical.py does not
-# import from etl_schemas.py.
+# Resolve forward references.
+# Imports at bottom to avoid circular imports.
 from app.schemas.canonical import CanonicalSchema  # noqa: E402
+from app.schemas.lineage import Lineage  # noqa: E402
 TablaOrigen.model_rebuild()
+ETLGenerateResponse.model_rebuild()

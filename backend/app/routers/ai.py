@@ -3,6 +3,7 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -24,6 +25,8 @@ from app.services.etl_generator import generate_etl, generate_etl_from_inference
 from app.services.validator import validate_etl
 from app.services.documenter import document_etl
 from app.services.structure_inferrer import infer_structures, refine_structures
+from app.services.lineage_builder import build_lineage_from_xml
+from app.schemas.lineage import Lineage
 from app.schemas.job_schemas import (
     JobAnalyzeResponse,
     JobGenerateRequest,
@@ -128,6 +131,19 @@ async def generate_from_inference(
 ):
     """Genera el proceso ETL completo usando estructuras STG/DWH inferidas por el modelo."""
     return await _handle(generate_etl_from_inference, req, llm, db)
+
+
+# ── Linaje de datos ───────────────────────────────────────────────────────────
+
+class _KtrXmlBody(BaseModel):
+    ktr_xml: str
+
+@router.post("/api/ai/lineage-from-ktr", response_model=Lineage)
+async def lineage_from_ktr(body: _KtrXmlBody):
+    """Parsea un .ktr XML ya serializado y devuelve el grafo de linaje. Sin llamada al modelo."""
+    if not body.ktr_xml:
+        raise HTTPException(status_code=422, detail="ktr_xml no puede estar vacío.")
+    return build_lineage_from_xml(body.ktr_xml)
 
 
 # ── Flujo de generación de Jobs PDI (.kjb) ────────────────────────────────────

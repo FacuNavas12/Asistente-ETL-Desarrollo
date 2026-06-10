@@ -1,0 +1,183 @@
+.etl-detail {
+  flex: 1;
+  padding: 40px 40px 60px;
+  max-width: 1280px; /* ajustar para cambiar márgenes de ambas pestañas */
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.etl-detail__header {
+  margin-bottom: 36px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.etl-detail__title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.etl-detail__date {
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-3);
+}
+
+.etl-detail__actions {
+  margin-left: auto;
+}
+
+.ktr-download-btn {
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1.5px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.ktr-download-btn:hover {
+  opacity: 0.85;
+}
+
+.ktr-unavailable {
+  font-size: 13px;
+  color: #ef4444;
+  opacity: 0.8;
+}
+
+.etl-detail__body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.etl-detail-notfound {
+  padding: 100px 32px;
+  color: var(--text);
+  font-size: 16px;
+  text-align: center;
+}
+
+.etl-detail-notfound button {
+  margin-left: 8px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 16px;
+}
+
+
+/* ── Page-level tabs (Resultado / Linaje) ────────────────────────────────── */
+.etl-page-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+
+.etl-page-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 20px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 6px 6px 0 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.etl-page-tab:hover:not(:disabled) {
+  color: var(--text-h);
+  background: var(--accent-bg);
+}
+
+.etl-page-tab.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.etl-page-tab:disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.etl-page-tab__hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+  font-style: italic;
+}
+
+/* ── Lineage tab body ────────────────────────────────────────────────────── */
+.etl-lineage-body {
+  padding-bottom: 40px;
+}
+
+.etl-lineage-loading {
+  padding: 60px 0;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+.etl-lineage-error {
+  padding: 24px 20px;
+  border-radius: 10px;
+  background: #ef444418;
+  border: 1px solid #ef444440;
+  color: #ef4444;
+  font-size: 14px;
+}
+
+/* ── Generic section card (Result + futuras pestañas) ────────────────────── */
+.etl-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px 28px;
+  box-shadow: var(--shadow);
+}
+
+.etl-section__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0 0 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.etl-section__text {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  margin: 0;
+}
+
+.etl-doc p {
+  margin: 0 0 12px;
+}
+.etl-doc p:last-child {
+  margin-bottom: 0;
+}
