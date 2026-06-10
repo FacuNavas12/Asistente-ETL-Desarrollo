@@ -1,4 +1,6 @@
 ﻿import { STAGING_METADATA_ENABLED, getAutoSourceSystem } from "./stagingMetadata";
+import "../../css/shared.css";
+import "../../css/stagingForm.css";
 
 export function StagingMetadataSection({ meta, origenVinculado, onChange }) {
   if (!STAGING_METADATA_ENABLED) return null;

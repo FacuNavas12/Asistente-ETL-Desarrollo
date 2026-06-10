@@ -1,0 +1,239 @@
+/* ── StagingForm ─────────────────────────────────────────────────────────── */
+
+.stg-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-h);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+/* Column list */
+.stg-col-list {
+  margin-bottom: 16px;
+}
+
+.stg-col-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.stg-col-item--editing {
+  border-color: var(--accent);
+}
+
+.stg-col-item__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+  flex-wrap: wrap;
+}
+
+.stg-col-item__name {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-h);
+  min-width: 90px;
+}
+
+.stg-tipo-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.stg-tipo-badge--sm {
+  font-size: 10px;
+}
+
+.stg-col-item__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+}
+
+.stg-regla-tag {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #7c3aed22;
+  color: #a78bfa;
+  border: 1px solid #7c3aed44;
+  white-space: nowrap;
+}
+
+.stg-dato-tag {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #0ea5e922;
+  color: #38bdf8;
+  border: 1px solid #0ea5e944;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.stg-col-inline-edit {
+  padding: 12px 10px;
+  background: var(--accent-bg);
+  border-top: 1px solid var(--border);
+}
+
+/* Reglas de tabla */
+.stg-reglas-tabla {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 16px;
+  background: var(--bg);
+}
+
+.stg-subsection {
+  margin-bottom: 14px;
+}
+
+.stg-subsection:last-child {
+  margin-bottom: 0;
+}
+
+.stg-subsection-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 8px;
+}
+
+/* Metadatos */
+.stg-metadata-section {
+  margin-bottom: 16px;
+}
+
+.stg-metadata-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.stg-meta-auto-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--accent-bg);
+  flex: 0 0 auto;
+}
+
+.stg-meta-auto-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #16a34a22;
+  color: #4ade80;
+  border: 1px solid #16a34a44;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stg-meta-field-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.stg-meta-field-desc {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.stg-meta-source-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1 1 220px;
+}
+
+.stg-meta-source-item .stg-meta-field-name {
+  padding-top: 10px;
+  white-space: nowrap;
+}
+
+.stg-meta-hint {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.6;
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* Saved table display */
+.stg-saved-cols {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stg-saved-col {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: var(--bg);
+  flex-wrap: wrap;
+}
+
+.stg-saved-col__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  min-width: 80px;
+}
+
+.stg-saved-col__reglas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.stg-saved-meta {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.stg-saved-meta-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #16a34a22;
+  color: #4ade80;
+  border: 1px solid #16a34a44;
+}
+
+.stg-saved-meta-badge--source {
+  background: var(--accent-bg);
+  color: var(--text);
+  border-color: var(--border);
+}

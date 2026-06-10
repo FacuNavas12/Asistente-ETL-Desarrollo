@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { createConnection, testConnection, listTables } from "@/api/connections";
-import "../etlForm.css";
+import "../../css/shared.css";
+import "../../css/inputConnection.css";
+import TableCatalogConnection from "../Tables/TableCatalogConnection";
 
-const SSL_MODES = ["disable", "require", "verify-ca", "verify-full"];
+const SSL_MODES = ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"];
 
 const PORT_DEFAULTS = { postgresql: 5432, sqlserver: 1433 };
 
@@ -14,7 +16,7 @@ const EMPTY_FORM = {
   database: "",
   username: "",
   password: "",
-  ssl_mode: "require",
+  ssl_mode: "prefer",
   trustServerCert: false,
 };
 
@@ -29,14 +31,15 @@ const STATUS_LABELS = {
 
 const BUSY = new Set(["creating", "testing", "loadingTables"]);
 
-export default function InputConection() {
+export default function InputConection({ value, onChange }) {
   const [form, setForm]     = useState(EMPTY_FORM);
   const [status, setStatus] = useState("idle");
   const [error, setError]   = useState("");
   const [tables, setTables] = useState([]);
+  const [connId, setConnId] = useState(null);
 
-  const set = (field, value) =>
-    setForm(prev => ({ ...prev, [field]: value }));
+  const set = (field, v) =>
+    setForm(prev => ({ ...prev, [field]: v }));
 
   const handleDbType = (newType) => {
     const currentPort = Number(form.port);
@@ -52,6 +55,7 @@ export default function InputConection() {
     setStatus("creating");
     setError("");
     setTables([]);
+    setConnId(null);
     try {
       const base = {
         db_type:  form.db_type,
@@ -63,16 +67,14 @@ export default function InputConection() {
         password: form.password,
       };
 
-      let payload;
-      if (form.db_type === "postgresql") {
-        payload = { ...base, ssl_mode: form.ssl_mode };
-      } else {
-        payload = form.trustServerCert
+      const payload = form.db_type === "postgresql"
+        ? { ...base, ssl_mode: form.ssl_mode }
+        : form.trustServerCert
           ? { ...base, extra_options: { trust_server_certificate: true } }
           : { ...base };
-      }
 
       const conn = await createConnection(payload);
+      setConnId(conn.id);
 
       setStatus("testing");
       const testResult = await testConnection(conn.id);
@@ -94,8 +96,8 @@ export default function InputConection() {
 
   return (
     <div>
-      {/* Tipo de motor y nombre */}
-      <div className="form-grid" style={{ marginBottom: "18px" }}>
+      {/* Motor y nombre */}
+      <div className="form-grid form-grid--mb">
         <div className="form-field">
           <label>Motor de base de datos</label>
           <select value={form.db_type} onChange={e => handleDbType(e.target.value)}>
@@ -115,7 +117,7 @@ export default function InputConection() {
       </div>
 
       {/* Host, puerto, base de datos */}
-      <div className="form-grid" style={{ marginBottom: "18px" }}>
+      <div className="form-grid form-grid--mb">
         <div className="form-field">
           <label>Host</label>
           <input
@@ -143,8 +145,8 @@ export default function InputConection() {
         </div>
       </div>
 
-      {/* Credenciales y opciones específicas por motor */}
-      <div className="form-grid" style={{ marginBottom: "18px" }}>
+      {/* Credenciales y opciones por motor */}
+      <div className="form-grid form-grid--mb">
         <div className="form-field">
           <label>Usuario</label>
           <input
@@ -173,7 +175,7 @@ export default function InputConection() {
 
         {form.db_type === "sqlserver" && (
           <div className="form-field" style={{ justifyContent: "flex-end" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+            <label className="conn-checkbox-label">
               <input
                 type="checkbox"
                 checked={form.trustServerCert}
@@ -194,41 +196,16 @@ export default function InputConection() {
       </button>
 
       {status === "error" && error && (
-        <p style={{ marginTop: "12px", color: "var(--error, #e55)", fontSize: "14px" }}>
-          {error}
-        </p>
+        <p className="conn-status-error">{error}</p>
       )}
 
       {status === "success" && (
-        <div style={{ marginTop: "20px" }}>
-          <p style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-h)", marginBottom: "8px" }}>
-            Tablas disponibles ({tables.length})
-          </p>
-          {tables.length === 0 ? (
-            <p style={{ fontSize: "14px", color: "var(--text)" }}>
-              La conexión no expone tablas accesibles.
-            </p>
-          ) : (
-            <div className="staging-table-wrapper">
-              <table className="staging-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Tabla</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tables.map((t, i) => (
-                    <tr key={t}>
-                      <td style={{ opacity: 0.5, width: "40px" }}>{i + 1}</td>
-                      <td style={{ fontFamily: "monospace" }}>{t}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <TableCatalogConnection
+          tables={tables}
+          connId={connId}
+          value={value}
+          onChange={onChange}
+        />
       )}
     </div>
   );

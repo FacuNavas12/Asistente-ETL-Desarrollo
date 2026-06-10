@@ -1,61 +1,20 @@
-﻿import { useState, useRef, useEffect } from "react";
-import "../etlForm.css";
+import { useState, useRef, useEffect } from "react";
+import "../../css/shared.css";
+import "../../css/inputOrigin.css";
 import OrigenInputFormulario from "./InputFormulario";
 import OrigenInputCSV        from "./InputCSV";
 import OrigenInputExcel      from "./InputExcel";
-import InputConection        from "./InputConection";
+import InputConection        from "./InputConnection";
+import InputDDL              from "./InputDDL";
+import ConfirmedTablesList   from "../Tables/TableManagement/ConfirmedTablesList";
 
 const MODOS = [
   { id: "formulario",  label: "Formulario" },
   { id: "csv",         label: "CSV"        },
   { id: "excel",       label: "Excel"      },
   { id: "connections", label: "Conexiones" },
+  { id: "ddl",         label: "DDL"        },
 ];
-
-function TableDataPreview({ table }) {
-  const [open, setOpen] = useState(false);
-  const cols    = table.columns ?? [];
-  const maxRows = cols.length > 0 ? Math.max(...cols.map(c => c.data?.length ?? 0)) : 0;
-  if (maxRows === 0) return null;
-
-  return (
-    <div className="origen-preview">
-      <div className="origen-preview__header">
-        <span className="origen-preview__name">{table.tableName}</span>
-        <span className="origen-preview__meta">{cols.length} col · {maxRows} fil</span>
-        <button className="origen-preview__toggle" onClick={() => setOpen(o => !o)}>
-          {open ? "Ocultar tabla" : "Ver como tabla"}
-        </button>
-      </div>
-      {open && (
-        <div className="origen-preview__wrap">
-          <table className="origen-preview__table">
-            <thead>
-              <tr>
-                <th className="origen-preview__rn">#</th>
-                {cols.map((c, i) => <th key={i}>{c.name}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: maxRows }, (_, rowIdx) => (
-                <tr key={rowIdx}>
-                  <td className="origen-preview__rn">{rowIdx + 1}</td>
-                  {cols.map((c, ci) => (
-                    <td key={ci}>
-                      {c.data?.[rowIdx] !== undefined
-                        ? c.data[rowIdx]
-                        : <span className="origen-preview__empty">-</span>}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function OrigenInput({ value, onChange }) {
   const [modo, setModo]   = useState("formulario");
@@ -123,15 +82,11 @@ export default function OrigenInput({ value, onChange }) {
       {modo === "connections" && (
         <InputConection value={value} onChange={onChange} />
       )}
-
-      {Array.isArray(value) && value.length > 0 && (
-        <div className="origen-previews">
-          <p className="origen-previews__label">Vista previa de datos cargados</p>
-          {value.map((t, i) => <TableDataPreview key={i} table={t} />)}
-        </div>
+      {modo === "ddl" && (
+        <InputDDL value={value} onChange={onChange} />
       )}
+
+      <ConfirmedTablesList tables={Array.isArray(value) ? value : []} onChange={onChange} />
     </div>
   );
 }
-
-

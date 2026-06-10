@@ -2,29 +2,52 @@ import { createContext, useContext, useState } from "react";
 
 const EtlContext = createContext();
 
-const DRAFT_KEY  = "etl_draft";
-const ETLS_KEY   = "etl_list";
-const JOBS_KEY   = "job_list";
-const DRAFT_TTL  = 2 * 60 * 60 * 1000;
+const DRAFT_KEY      = "etl_draft";
+const ETLS_KEY       = "etl_list";
+const JOBS_KEY       = "job_list";
+const DRAFT_TTL      = 2 * 60 * 60 * 1000;
 // Retención localStorage: 30 días (Ley 18.331 — Limitación de conservación).
-// Los metadatos de esquema (nombres de tablas/columnas) son datos personales
-// indirectos y no deben conservarse indefinidamente en el cliente.
-const LIST_TTL   = 30 * 24 * 60 * 60 * 1000;
+const LIST_TTL       = 30 * 24 * 60 * 60 * 1000;
+const SCHEMA_VERSION = "1.0";
+
+function isSchemaVersionValid(formData) {
+  const tables = formData?.origenTables ?? [];
+  for (const t of tables) {
+    if (t.canonical_schema != null) {
+      if (t.canonical_schema.schema_version !== SCHEMA_VERSION) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 function loadItems(key) {
   try {
     const raw = JSON.parse(localStorage.getItem(key));
     if (!raw) return [];
     // Formato con envoltorio TTL: { data: [...], savedAt: timestamp }
+    let items;
     if (raw.savedAt !== undefined) {
       if (Date.now() - raw.savedAt > LIST_TTL) {
         localStorage.removeItem(key);
         return [];
       }
-      return raw.data ?? [];
+      items = raw.data ?? [];
+    } else {
+      // Compatibilidad con registros anteriores sin envoltorio (migración transparente).
+      items = Array.isArray(raw) ? raw : [];
     }
-    // Compatibilidad con registros anteriores sin envoltorio (migración transparente).
-    return Array.isArray(raw) ? raw : [];
+    return items.filter(item => {
+      if (!isSchemaVersionValid(item.formData)) {
+        console.warn(
+          `[EtlContext] Entrada descartada (schema_version obsoleto): "${item.name}". ` +
+          "Volvé a cargar los archivos para regenerar el esquema."
+        );
+        return false;
+      }
+      return true;
+    });
   } catch { return []; }
 }
 
@@ -34,6 +57,14 @@ function loadDraft() {
     if (!raw) return null;
     if (Date.now() - raw.savedAt > DRAFT_TTL) {
       sessionStorage.removeItem(DRAFT_KEY);
+      return null;
+    }
+    if (!isSchemaVersionValid(raw.data)) {
+      sessionStorage.removeItem(DRAFT_KEY);
+      console.warn(
+        "[EtlContext] Borrador descartado (schema_version obsoleto). " +
+        "Volvé a cargar los archivos para regenerar el esquema."
+      );
       return null;
     }
     return raw.data;

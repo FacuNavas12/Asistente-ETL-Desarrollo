@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
@@ -9,12 +11,23 @@ class ColumnaOrigen(BaseModel):
     dataType: str
     dataFormat: str = ""
     role: str = "atributo"
-    data: List[str] = []
+    # Deprecated since Fase 2: raw sample values are no longer transported.
+    # CSV/Excel sources now embed stats in TablaOrigen.canonical_schema.profile.
+    # Kept as Optional for backward compatibility with stored drafts.
+    data: Optional[List[str]] = None
 
 
 class TablaOrigen(BaseModel):
     tableName: str
     columns: List[ColumnaOrigen]
+    # Set by the frontend when the table comes from a DB connection.
+    # Used by context_builder to re-query via db_connector. Never sent to model.
+    connection_id: Optional[str] = None
+    schema_name: Optional[str] = None
+    # Set by the frontend when the table comes from a file (CSV/Excel).
+    # Contains the CanonicalSchema returned by POST /api/schema/infer.
+    # context_builder uses this to build ModelContext without re-reading the file.
+    canonical_schema: Optional[CanonicalSchema] = None  # type: ignore[type-arg]
 
 
 # ─── INPUT — Staging ──────────────────────────────────────────────────────────
@@ -111,6 +124,7 @@ class ETLGenerateResponse(BaseModel):
     dwh_sample: Dict[str, List[Dict[str, Any]]] = {}
     ktr_xml: str = ""
     ktr_filename: str = ""
+    lineage: Optional["Lineage"] = None
     metadata: MetadataResponse
 
 
@@ -161,3 +175,11 @@ class ETLFromInferenceRequest(BaseModel):
     stg_definition: str             # DDL STG confirmado por el usuario
     dwh_model: str                  # DDL DWH confirmado por el usuario
     reglasNegocio: str
+
+
+# Resolve forward references.
+# Imports at bottom to avoid circular imports.
+from app.schemas.canonical import CanonicalSchema  # noqa: E402
+from app.schemas.lineage import Lineage  # noqa: E402
+TablaOrigen.model_rebuild()
+ETLGenerateResponse.model_rebuild()

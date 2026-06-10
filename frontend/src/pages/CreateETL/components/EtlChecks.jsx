@@ -1,4 +1,4 @@
-import "./etlProcessing.css";
+import "../css/etlProcessing.css";
 
 const DEFAULT_CHECKS = [
   "Validando campos...",

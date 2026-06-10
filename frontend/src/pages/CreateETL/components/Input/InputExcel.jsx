@@ -1,46 +1,85 @@
-﻿import { useRef, useState } from "react";
-import { excelToTables } from "../../utils/excelToTables";
+import { useRef, useState } from "react";
+// default export returns Array<{ sheet: string, data: Row[] }> — all sheets at once.
+// Named exports: readSheet, parseSheetData. NO readXlsxFile or readSheetNames named exports.
+import readXlsxFileBrowser from "read-excel-file/browser";
+import { inferSchema, canonicalSchemaToTablaOrigen } from "@/api/schema";
+import TableConfirmPanel from "../Tables/TableConfirmPanel";
+import "../../css/shared.css";
+import "../../css/inputOrigin.css";
+import "../../css/inputConnection.css";
+import "../../css/tableConfirmPanel.css";
 
-export default function OrigenInputExcel({ onChange, onSwitchMode }) {
+// Preview only (.xlsx). Schema inference stays in backend via POST /api/schema/infer.
+async function parsePreview(file) {
+  const sheetsData = await readXlsxFileBrowser(file);
+  const sheets = {};
+  for (const { sheet, data } of sheetsData) {
+    sheets[sheet] = data.slice(0, 21).map(row =>
+      row.map(cell => (cell === null ? "" : String(cell)))
+    );
+  }
+  return sheets;
+}
+
+export default function OrigenInputExcel({ value = [], onChange, onSwitchMode }) {
   const inputRef = useRef();
-  const [status, setStatus] = useState(null);
-  const [error, setError]   = useState("");
+  const [candidates, setCandidates] = useState(null);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setStatus("loading");
+    setLoading(true);
     setError("");
     try {
-      const tables = await excelToTables(file);
-      if (tables.length === 0) throw new Error("El archivo no contiene hojas con datos.");
-      onChange(tables);
-      setStatus({ tables });
+      const canonicalSchema = await inferSchema(file);
+      const tabla = canonicalSchemaToTablaOrigen(canonicalSchema);
+
+      try {
+        const sheets = await parsePreview(file);
+        tabla._previewSheets = sheets;
+      } catch {
+        // Preview failure is non-fatal.
+      }
+
+      if (!tabla.columns.length) throw new Error("El archivo no contiene columnas detectables.");
+      setCandidates([tabla]);
     } catch (err) {
       setError(err.message ?? "Error al procesar el archivo");
-      setStatus("error");
+    } finally {
+      setLoading(false);
     }
     e.target.value = "";
   };
 
-  const totalCols = status?.tables
-    ? status.tables.reduce((acc, t) => acc + t.columns.length, 0)
-    : 0;
+  const handleReset = () => {
+    setCandidates(null);
+  };
+
+  const handleEditInForm = () => {
+    if (candidates) {
+      const confirmedNames = new Set((value || []).map(t => t.tableName));
+      const toAdd = candidates.filter(t => !confirmedNames.has(t.tableName));
+      if (toAdd.length > 0) onChange([...(value || []), ...toAdd]);
+    }
+    onSwitchMode?.("formulario");
+  };
 
   return (
     <div className="origen-file-zone">
-      {!status?.tables ? (
+      {!candidates ? (
         <>
           <p className="origen-file-zone__hint">
             Seleccioná un archivo <strong>.xlsx</strong> o <strong>.xls</strong>.
-            Cada hoja del libro se convierte en una tabla. La primera fila de cada hoja debe ser el encabezado.
+            El servidor detecta automáticamente tipos de columnas y fechas seriales.
           </p>
           <button
             className="origen-file-btn"
             onClick={() => inputRef.current?.click()}
-            disabled={status === "loading"}
+            disabled={loading}
           >
-            {status === "loading" ? "Procesando…" : "Seleccionar archivo Excel"}
+            {loading ? "Procesando…" : "Seleccionar archivo Excel"}
           </button>
           <input
             ref={inputRef}
@@ -52,36 +91,42 @@ export default function OrigenInputExcel({ onChange, onSwitchMode }) {
           {error && <p className="origen-file-zone__error">{error}</p>}
         </>
       ) : (
-        <div className="origen-file-loaded">
-          <span className="origen-file-loaded__icon">✓</span>
-          <div className="origen-file-loaded__info">
-            <strong>
-              {status.tables.length} tabla{status.tables.length !== 1 ? "s" : ""} cargada{status.tables.length !== 1 ? "s" : ""}
-            </strong>
-            <span>{totalCols} columna{totalCols !== 1 ? "s" : ""} en total</span>
-            <ul className="origen-file-loaded__list">
-              {status.tables.map((t) => (
-                <li key={t.tableName}>
-                  <strong>{t.tableName}</strong> — {t.columns.length} col.
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="origen-file-loaded__actions">
-            <button className="staging-add-btn" onClick={() => onSwitchMode("formulario")}>
+        <>
+          <p className="tpc-catalog-header">
+            {candidates.length} tabla{candidates.length !== 1 ? "s" : ""} detectada{candidates.length !== 1 ? "s" : ""}
+            <span className="conn-catalog-hint">
+              — clic en el nombre para previsualizar · confirmar para usar en el ETL
+            </span>
+          </p>
+          {candidates.map(t => {
+            const schema = t.canonical_schema;
+            if (!schema) return null;
+            const sampledFields = (schema.fields ?? []).filter(f => f.inferred_by === "frictionless");
+            if (!sampledFields.length) return null;
+            return (
+              <p key={t.tableName} className="conn-catalog-hint" style={{ marginBottom: "6px" }}>
+                Tipos inferidos por muestra ({sampledFields.length} columnas) — revisar antes de confirmar.
+              </p>
+            );
+          })}
+          <TableConfirmPanel
+            candidates={candidates}
+            value={value}
+            onChange={onChange}
+          />
+          <div className="origen-file-loaded__actions" style={{ marginTop: "12px" }}>
+            <button className="staging-add-btn" onClick={handleEditInForm}>
               Editar en formulario
             </button>
             <button
               className="staging-remove-btn origen-cancel-btn"
-              onClick={() => { setStatus(null); onChange([]); }}
+              onClick={handleReset}
             >
               Cargar otro
             </button>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
 }
-
-

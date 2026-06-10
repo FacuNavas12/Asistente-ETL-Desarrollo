@@ -18,8 +18,20 @@ def _get_engine() -> Engine:
     global _engine
     if _engine is None:
         from app.core.config import settings
-        _engine = create_engine(settings.database_url, pool_pre_ping=True)
+        connect_args: dict = {}
+        if settings.database_url.startswith("sqlite"):
+            connect_args["check_same_thread"] = False
+        _engine = create_engine(
+            settings.database_url,
+            pool_pre_ping=True,
+            connect_args=connect_args,
+        )
     return _engine
+
+
+def create_tables() -> None:
+    import app.models.connection  # noqa: F401 — registers Connection model with Base
+    Base.metadata.create_all(bind=_get_engine())
 
 
 def _get_session_factory() -> sessionmaker:

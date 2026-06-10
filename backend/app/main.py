@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
@@ -6,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.log_filters import PasswordFilter
-from app.routers import ai, connections
+from app.routers import ai, connections, schema
 
 _log_dir = Path(__file__).resolve().parent.parent / "logs"
 _log_dir.mkdir(exist_ok=True)
@@ -35,7 +36,15 @@ logging.basicConfig(
 )
 logging.getLogger().addFilter(PasswordFilter())
 
-app = FastAPI(title="Acelerador ETL — API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from app.core.database import create_tables
+    create_tables()
+    yield
+
+
+app = FastAPI(title="Acelerador ETL — API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,6 +56,7 @@ app.add_middleware(
 
 app.include_router(ai.router)
 app.include_router(connections.router)
+app.include_router(schema.router)
 
 
 @app.get("/")

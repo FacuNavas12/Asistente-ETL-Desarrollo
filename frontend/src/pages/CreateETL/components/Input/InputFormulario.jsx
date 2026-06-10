@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { useTableEditor, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "../tableUtils";
+import { useTableEditor, TablePanel, SaveTableButton } from "../Tables/tableUtils";
+import "../../css/shared.css";
+import "../../css/inputOrigin.css";
 import { formatInputName } from "../../validation/stringCleaners";
 
 const TIPOS    = ["string", "int", "float", "bool", "date"];
@@ -7,35 +9,20 @@ const FORMATOS = ["", "dd/MM/yyyy", "ISO8601", "decimal(10,2)"];
 const ROLES    = ["PK", "FK", "clave natural", "atributo"];
 
 const EMPTY_TABLE = { tableName: "", columns: [] };
-const EMPTY_COL   = { name: "", dataType: "string", dataFormat: "", role: "atributo", data: [] };
+const EMPTY_COL   = { name: "", dataType: "string", dataFormat: "", role: "atributo" };
 
 function CollapseRow({ col, onRemove, onEdit }) {
-  const [open, setOpen] = useState(false);
-  const hasData = col.data.length > 0;
-
   return (
     <div className="origen-col-collapse">
       <div className="origen-col-collapse__header">
-        {hasData
-          ? <button className="origen-col-toggle" onClick={() => setOpen(o => !o)}>{open ? "▲" : "▼"}</button>
-          : <span className="origen-col-toggle--placeholder" />
-        }
+        <span className="origen-col-toggle--placeholder" />
         <span className="origen-col-name">{col.name}</span>
         <span className="origen-col-meta">
           {col.dataType}{col.dataFormat ? ` · ${col.dataFormat}` : ""} · {col.role}
         </span>
-        {hasData && (
-          <span className="origen-col-count">{col.data.length} dato{col.data.length !== 1 ? "s" : ""}</span>
-        )}
         {onEdit   && <button className="staging-edit-btn"   onClick={onEdit}>✎</button>}
         {onRemove && <button className="staging-remove-btn" onClick={onRemove}>✕</button>}
       </div>
-
-      {open && hasData && (
-        <div className="origen-col-collapse__body">
-          {col.data.map((d, i) => <span key={i} className="origen-dato-tag">{d}</span>)}
-        </div>
-      )}
     </div>
   );
 }
@@ -44,7 +31,6 @@ export { CollapseRow };
 
 export default function OrigenInputFormulario({ value, onChange }) {
   const tables = Array.isArray(value) ? value : [];
-  const [currentDato,   setCurrentDato]   = useState("");
   const [editingColIdx, setEditingColIdx] = useState(null);
 
   const ed = useTableEditor({
@@ -54,15 +40,6 @@ export default function OrigenInputFormulario({ value, onChange }) {
     setTables:  onChange,
     columnsKey: "columns",
   });
-
-  const handleAddDato = () => {
-    if (!currentDato.trim()) return;
-    ed.setCurrentCol(c => ({ ...c, data: [...c.data, currentDato.trim()] }));
-    setCurrentDato("");
-  };
-
-  const handleRemoveDato = (i) =>
-    ed.setCurrentCol(c => ({ ...c, data: c.data.filter((_, idx) => idx !== i) }));
 
   const handleAddColumn = () => {
     if (!ed.currentCol.name.trim()) return;
@@ -75,32 +52,22 @@ export default function OrigenInputFormulario({ value, onChange }) {
     } else {
       ed.addColumn(ed.currentCol);
     }
-    setCurrentDato("");
   };
 
   const handleCancelColEdit = () => {
     setEditingColIdx(null);
     ed.setCurrentCol(EMPTY_COL);
-    setCurrentDato("");
   };
 
   const handleEditColumn = (i) => {
     ed.setCurrentCol({ ...ed.currentTable.columns[i] });
     setEditingColIdx(i);
-    setCurrentDato("");
-  };
-
-  const handleEditTable = (i) => {
-    ed.editTable(i);
-    setEditingColIdx(null);
-    setCurrentDato("");
   };
 
   const handleSaveTable = () => {
     if (!ed.currentTable.tableName.trim() || ed.currentTable.columns.length === 0) return;
     ed.saveTable(t => ({ ...t, tableName: formatInputName(t.tableName) }));
     setEditingColIdx(null);
-    setCurrentDato("");
   };
 
   const canAddTable  = ed.currentTable.tableName.trim() && ed.currentTable.columns.length > 0;
@@ -166,32 +133,6 @@ export default function OrigenInputFormulario({ value, onChange }) {
             </div>
           </div>
 
-          <div className="origen-dato-section">
-            <label className="origen-dato-label">Datos</label>
-            <div className="origen-dato-input-row">
-              <input
-                type="text"
-                placeholder="Ingrese un dato y presione +"
-                value={currentDato}
-                onChange={(e) => setCurrentDato(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddDato(); } }}
-              />
-              <button className="staging-add-btn" onClick={handleAddDato} disabled={!currentDato.trim()}>
-                +
-              </button>
-            </div>
-            {ed.currentCol.data.length > 0 && (
-              <div className="origen-dato-tags">
-                {ed.currentCol.data.map((d, i) => (
-                  <span key={i} className="origen-dato-tag">
-                    {d}
-                    <button className="origen-dato-remove" onClick={() => handleRemoveDato(i)}>✕</button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
           <div className="staging-add-row" style={{ marginBottom: 0 }}>
             <button className="staging-add-btn" onClick={handleAddColumn} disabled={!ed.currentCol.name.trim()}>
               {isEditingCol ? "Actualizar columna" : "+ Columna"}
@@ -225,24 +166,6 @@ export default function OrigenInputFormulario({ value, onChange }) {
         />
       </TablePanel>
 
-      {/* ── Tablas guardadas ── */}
-      <SavedTablesList
-        tables={tables}
-        renderCard={(table, i) => (
-          <>
-            <TableCardHeader
-              name={table.tableName}
-              onEdit={() => handleEditTable(i)}
-              onRemove={() => ed.removeAt(i)}
-            />
-            <div className="origen-saved-cols">
-              {table.columns.map((col, j) => (
-                <CollapseRow key={j} col={col} />
-              ))}
-            </div>
-          </>
-        )}
-      />
     </div>
   );
 }

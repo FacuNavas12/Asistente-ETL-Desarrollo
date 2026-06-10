@@ -1,6 +1,8 @@
 ﻿import { useState } from "react";
-import "../etlForm.css";
-import { useTableEditor, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "../tableUtils";
+import "../../css/shared.css";
+import "../../css/inputOrigin.css";
+import "../../css/stagingForm.css";
+import { useTableEditor, TablePanel, SaveTableButton, TableCardHeader, SavedTablesList } from "../Tables/tableUtils";
 import { EMPTY_METADATA } from "./stagingMetadata";
 import { StagingMetadataSection, StagingMetaBadges } from "./StagingMetadataSection";
 import { formatStagingName } from "../../validation/stringCleaners";

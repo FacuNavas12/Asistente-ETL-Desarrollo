@@ -1,4 +1,4 @@
-﻿import "./homeModal.css";
+﻿import "../css/homeModal.css";
 
 export default function HomeModal({ onConfirm, onCancel }) {
   return (

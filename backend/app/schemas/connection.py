@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.models.connection import DbType, TestStatus
 
-_SslMode = Optional[Literal["disable", "require", "verify-ca", "verify-full"]]
+_SslMode = Optional[Literal["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]]
 
 
 class ConnectionBase(BaseModel):
@@ -27,7 +27,7 @@ class ConnectionBase(BaseModel):
 class PostgresConnectionCreate(ConnectionBase):
     db_type: Literal[DbType.postgresql] = DbType.postgresql
     password: str = Field(..., min_length=1)
-    ssl_mode: _SslMode = None
+    ssl_mode: _SslMode = "prefer"
     extra_options: Optional[dict] = None
 
 
@@ -92,3 +92,13 @@ class ColumnInfo(BaseModel):
     nullable: bool
     primary_key: bool
     default: Optional[str] = None
+
+
+class TableDataResponse(BaseModel):
+    columns: list[str]
+    rows: list[list[Any]]
+    total_count: int          # -1 cuando las estadísticas no están disponibles
+    page: int
+    page_size: int
+    total_pages: int          # -1 cuando total_count == -1
+    count_is_estimate: bool

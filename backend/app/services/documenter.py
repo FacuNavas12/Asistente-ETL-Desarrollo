@@ -2,19 +2,23 @@
 RF11 — Generación de documentación automática
 RF12 — Explicación del flujo en lenguaje natural
 RF13 — Estructuración de resultados para persistencia
-
-Motor: Claude Haiku 3.5
 """
+from __future__ import annotations
+
 import json
+from pathlib import Path
 
-from app.models.gemini_client import call_secondary, get_region_label
+from app.models.llm_base import BaseLLM
 from app.schemas.etl_schemas import ETLDocumentRequest, ETLDocumentResponse
-from app.core.config import settings
 
-_DOCUMENT_SYSTEM = "system_validator.txt"  # reutiliza el prompt secundario base
+_DOCUMENT_SYSTEM = "system_validator.txt"
 
 
-def document_etl(req: ETLDocumentRequest) -> ETLDocumentResponse:
+def _load_system(filename: str) -> str:
+    return (Path(__file__).resolve().parent.parent.parent / "prompts" / filename).read_text(encoding="utf-8")
+
+
+async def document_etl(req: ETLDocumentRequest, llm: BaseLLM) -> ETLDocumentResponse:
     prompt = f"""Genera documentación técnica en lenguaje natural para el siguiente proceso ETL.
 
 La documentación debe:
@@ -34,16 +38,15 @@ Proceso ETL a documentar:
 {json.dumps(req.proceso_etl, ensure_ascii=False, indent=2)}
 ```
 """
-    raw, usage = call_secondary(prompt, _DOCUMENT_SYSTEM)
-
-    data = json.loads(raw)
+    resp = await llm.complete(prompt, _load_system(_DOCUMENT_SYSTEM))
+    data = json.loads(resp.content)
 
     return ETLDocumentResponse(
         documentacion=data.get("documentacion", ""),
         metadata={
-            "modelo_usado": settings.google_model_secondary,
-            "tokens_input": usage.prompt_token_count or 0,
-            "tokens_output": usage.candidates_token_count or 0,
-            "region_inferencia": get_region_label(),
+            "modelo_usado": resp.model,
+            "tokens_input": resp.input_tokens,
+            "tokens_output": resp.output_tokens,
+            "region_inferencia": resp.provider,
         },
     )

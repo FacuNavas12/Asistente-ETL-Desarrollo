@@ -1,34 +1,37 @@
 """
 RF8 — Verificación de calidad del flujo ETL
 RF9 — Detección de malas prácticas ETL
-
-Motor: Claude Haiku 3.5
 """
+from __future__ import annotations
+
 import json
+from pathlib import Path
 
-from app.models.gemini_client import call_secondary, get_region_label
+from app.models.llm_base import BaseLLM
 from app.schemas.etl_schemas import ETLValidateRequest, ETLValidateResponse
-from app.core.config import settings
 
 
-def validate_etl(req: ETLValidateRequest) -> ETLValidateResponse:
+def _load_system(filename: str) -> str:
+    return (Path(__file__).resolve().parent.parent.parent / "prompts" / filename).read_text(encoding="utf-8")
+
+
+async def validate_etl(req: ETLValidateRequest, llm: BaseLLM) -> ETLValidateResponse:
     prompt = f"""Analiza el siguiente proceso ETL y detecta problemas de calidad y malas prácticas:
 
 ```json
 {json.dumps(req.proceso_etl, ensure_ascii=False, indent=2)}
 ```
 """
-    raw, usage = call_secondary(prompt, "system_validator.txt")
-
-    data = json.loads(raw)
+    resp = await llm.complete(prompt, _load_system("system_validator.txt"))
+    data = json.loads(resp.content)
 
     return ETLValidateResponse(
         validaciones=data.get("validaciones", []),
         advertencias_buenas_practicas=data.get("advertencias_buenas_practicas", []),
         metadata={
-            "modelo_usado": settings.google_model_secondary,
-            "tokens_input": usage.prompt_token_count or 0,
-            "tokens_output": usage.candidates_token_count or 0,
-            "region_inferencia": get_region_label(),
+            "modelo_usado": resp.model,
+            "tokens_input": resp.input_tokens,
+            "tokens_output": resp.output_tokens,
+            "region_inferencia": resp.provider,
         },
     )
