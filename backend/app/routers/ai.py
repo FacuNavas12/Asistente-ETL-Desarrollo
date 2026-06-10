@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_auth
 from app.core.database import get_db
 from app.core.dependencies import get_main_llm, get_secondary_llm
 from app.models.llm_base import BaseLLM
@@ -35,7 +36,7 @@ from app.schemas.job_schemas import (
 )
 from app.services import job_analyzer
 
-router = APIRouter(tags=["ETL"])
+router = APIRouter(tags=["ETL"], dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 

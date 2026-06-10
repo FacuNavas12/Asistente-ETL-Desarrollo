@@ -23,8 +23,21 @@ class AnthropicLLM(BaseLLM):
 
     def _get_client(self) -> anthropic.AsyncAnthropic:
         if self._client is None:
-            self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+            # anthropic-geography: controla en qué región procesa Anthropic la inferencia.
+            # "ca" → Canadá (PIPEDA / adecuación equivalente Ley 18.331). AGESIC 5.0 — Proteger.
+            # Requiere Claude Enterprise o DPA firmado con Anthropic.
+            self._client = anthropic.AsyncAnthropic(
+                api_key=settings.anthropic_api_key,
+                default_headers={"anthropic-geography": settings.anthropic_inference_region},
+            )
+            logger.info(
+                "Anthropic client — región de inferencia: %s",
+                settings.anthropic_inference_region,
+            )
         return self._client
+
+    def _region_label(self) -> str:
+        return f"anthropic ({settings.anthropic_inference_region})"
 
     async def complete(self, prompt: str, system: str) -> LLMResponse:
         client = self._get_client()
@@ -53,7 +66,7 @@ class AnthropicLLM(BaseLLM):
                     model=self._model,
                     input_tokens=response.usage.input_tokens,
                     output_tokens=response.usage.output_tokens,
-                    provider="anthropic",
+                    provider=self._region_label(),
                 )
             except (anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APIConnectionError) as e:
                 wait = _BACKOFF_BASE ** attempt

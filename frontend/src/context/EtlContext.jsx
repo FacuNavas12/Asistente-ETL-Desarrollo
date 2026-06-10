@@ -6,19 +6,10 @@ const DRAFT_KEY      = "etl_draft";
 const ETLS_KEY       = "etl_list";
 const JOBS_KEY       = "job_list";
 const DRAFT_TTL      = 2 * 60 * 60 * 1000;
+// Retención localStorage: 30 días (Ley 18.331 — Limitación de conservación).
+const LIST_TTL       = 30 * 24 * 60 * 60 * 1000;
 const SCHEMA_VERSION = "1.0";
 
-/**
- * Validate that file-sourced tables in a saved ETL entry use the current schema_version.
- * If any table has a canonical_schema with a version other than SCHEMA_VERSION, the entry
- * is considered stale and must be discarded rather than silently used.
- *
- * Tables from DB connections (connection_id set) have no canonical_schema and are always valid.
- * Tables from files (canonical_schema set) must carry schema_version === SCHEMA_VERSION.
- * Tables with no canonical_schema (manual form entry) are always valid.
- *
- * Returns true if the entry is valid, false if it should be discarded.
- */
 function isSchemaVersionValid(formData) {
   const tables = formData?.origenTables ?? [];
   for (const t of tables) {
@@ -33,8 +24,20 @@ function isSchemaVersionValid(formData) {
 
 function loadItems(key) {
   try {
-    const items = JSON.parse(localStorage.getItem(key)) || [];
-    // Filter out items with stale schema versions; show a console warning.
+    const raw = JSON.parse(localStorage.getItem(key));
+    if (!raw) return [];
+    // Formato con envoltorio TTL: { data: [...], savedAt: timestamp }
+    let items;
+    if (raw.savedAt !== undefined) {
+      if (Date.now() - raw.savedAt > LIST_TTL) {
+        localStorage.removeItem(key);
+        return [];
+      }
+      items = raw.data ?? [];
+    } else {
+      // Compatibilidad con registros anteriores sin envoltorio (migración transparente).
+      items = Array.isArray(raw) ? raw : [];
+    }
     return items.filter(item => {
       if (!isSchemaVersionValid(item.formData)) {
         console.warn(
@@ -70,7 +73,16 @@ function loadDraft() {
 
 function persist(key, list, setter) {
   setter(list);
-  localStorage.setItem(key, JSON.stringify(list));
+  localStorage.setItem(key, JSON.stringify({ data: list, savedAt: Date.now() }));
+}
+
+/** Elimina todos los datos del usuario del almacenamiento local y de sesión.
+ *  Debe llamarse en el logout para cumplir el principio de minimización de
+ *  datos de la Ley 18.331. */
+export function clearAllStoredData() {
+  localStorage.removeItem(ETLS_KEY);
+  localStorage.removeItem(JOBS_KEY);
+  sessionStorage.removeItem(DRAFT_KEY);
 }
 
 export function EtlProvider({ children }) {
@@ -154,10 +166,18 @@ export function EtlProvider({ children }) {
     persist(JOBS_KEY, updated, setJobs);
   };
 
+  const clearAll = () => {
+    clearAllStoredData();
+    setEtls([]);
+    setJobs([]);
+    setDraftState(null);
+  };
+
   return (
     <EtlContext.Provider value={{
       etls, draft, saveDraft, clearDraft, addEtl, savePendingEtl,
       jobs, addJob, savePendingJob,
+      clearAll,
     }}>
       {children}
     </EtlContext.Provider>

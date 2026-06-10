@@ -30,9 +30,40 @@ class GeminiLLM(BaseLLM):
         self._client: Optional[genai.Client] = None
 
     def _get_client(self) -> genai.Client:
-        if self._client is None:
+        if self._client is not None:
+            return self._client
+
+        if settings.gemini_provider == "vertex-ai":
+            if not settings.gcp_project_id:
+                raise RuntimeError(
+                    "GCP_PROJECT_ID es requerido cuando GEMINI_PROVIDER=vertex-ai. "
+                    "Agregar al .env y reiniciar."
+                )
+            self._client = genai.Client(
+                vertexai=True,
+                project=settings.gcp_project_id,
+                location=settings.gcp_location,
+            )
+            logger.info(
+                "Gemini client — Vertex AI | proyecto: %s | región: %s",
+                settings.gcp_project_id,
+                settings.gcp_location,
+            )
+        else:
+            if not settings.google_api_key:
+                raise RuntimeError(
+                    "GOOGLE_API_KEY es requerido cuando GEMINI_PROVIDER=google-ai-studio. "
+                    "Agregar al .env y reiniciar."
+                )
             self._client = genai.Client(api_key=settings.google_api_key)
+            logger.info("Gemini client — Google AI Studio (EE.UU.)")
+
         return self._client
+
+    def _region_label(self) -> str:
+        if settings.gemini_provider == "vertex-ai":
+            return settings.gcp_location
+        return "us (Google AI Studio)"
 
     async def complete(self, prompt: str, system: str) -> LLMResponse:
         return await asyncio.to_thread(self._complete_sync, prompt, system)
@@ -74,7 +105,7 @@ class GeminiLLM(BaseLLM):
                     model=self._model,
                     input_tokens=usage.prompt_token_count or 0,
                     output_tokens=usage.candidates_token_count or 0,
-                    provider="gemini",
+                    provider=self._region_label(),
                 )
             except APIError as e:
                 if not _is_retryable(e):

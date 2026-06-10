@@ -1,7 +1,7 @@
 import base64
 
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 from pydantic import Field, AliasChoices, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -11,7 +11,7 @@ ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=str(ENV_PATH))
+    model_config = SettingsConfigDict(env_file=str(ENV_PATH), extra="ignore")
 
     # ── Proveedor LLM ─────────────────────────────────────────────────────────
     # "gemini" | "anthropic" — cambiar solo en .env para switchear proveedor
@@ -30,6 +30,10 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("gemini_model", "google_model_main"),
     )
     anthropic_model: str = "claude-sonnet-4-20250514"
+    # Residencia geográfica de inferencia (Ley 18.331 / AGESIC 5.0).
+    # "ca" → Canadá (adecuación equivalente a Uruguay). Requiere Claude Enterprise o acuerdo de DPA.
+    # Referencia: https://docs.anthropic.com/en/api/getting-started#geographic-routing
+    anthropic_inference_region: str = "ca"
 
     # ── Base de datos ─────────────────────────────────────────────────────────
     # Dev local: sqlite:///./app.db (default). Prod: postgresql+psycopg://...
@@ -39,7 +43,7 @@ class Settings(BaseSettings):
     # CSV de claves Fernet. La primera es la activa; las demás solo desencriptan.
     # NoDecode evita que pydantic-settings JSON-decodifique el valor antes del validator.
     # Generar: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-    credentials_encryption_keys: Annotated[list[str], NoDecode]
+    credentials_encryption_keys: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # ── Driver ODBC SQL Server ────────────────────────────────────────────────
     mssql_odbc_driver: str = "ODBC Driver 18 for SQL Server"
@@ -63,9 +67,9 @@ class Settings(BaseSettings):
     @field_validator("credentials_encryption_keys", mode="after")
     @classmethod
     def _validate_keys(cls, v: list[str]) -> list[str]:
-        """Valida que haya al menos una clave y que cada una decodifique a 32 bytes exactos."""
+        """Valida formato de claves Fernet si están configuradas; si no, permite lista vacía."""
         if not v:
-            raise ValueError("CREDENTIALS_ENCRYPTION_KEYS no puede estar vacía")
+            return v  # no configurado — el módulo de conexiones lo rechazará en runtime
         for i, k in enumerate(v):
             try:
                 key_bytes = base64.urlsafe_b64decode(k)
@@ -79,6 +83,35 @@ class Settings(BaseSettings):
                     f"(obtenido: {len(key_bytes)})"
                 )
         return v
+
+    # ── Proveedor Gemini (compliance) ─────────────────────────────────────────
+    # "google-ai-studio" (default, free, procesa en EE.UU.)
+    # "vertex-ai"        (producción, región configurable, requiere GCP project)
+    gemini_provider: str = "google-ai-studio"
+
+    # Requeridos cuando gemini_provider=vertex-ai.
+    # gcp_location controla en qué región física Google procesa las inferencias.
+    # Canada (Ley 18.331): northamerica-northeast1 (Montréal) | northamerica-northeast2 (Toronto)
+    # UE (GDPR):           europe-west4 (Países Bajos)
+    gcp_project_id: str = ""
+    gcp_location: str = "northamerica-northeast1"
+
+    # ── Autenticación de la API (Marco AGESIC 5.0 — función Proteger) ─────────
+    # Cuando auth_required=False (default dev) no se valida ningún token.
+    # En producción: AUTH_REQUIRED=true + configurar las tres vars siguientes.
+    auth_required: bool = False
+
+    # URL del endpoint JWKS del proveedor de identidad.
+    # Auth0 (prototipo):  https://<tenant>.auth0.com/.well-known/jwks.json
+    # Azure AD / Entra:   https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys
+    auth_jwks_url: str = ""
+
+    # Identificador de la API registrado en el proveedor (claim "aud" del JWT).
+    auth_audience: str = ""
+
+    # Issuer del token (claim "iss" del JWT).
+    # Auth0: https://<tenant>.auth0.com/
+    auth_issuer: str = ""
 
 
 settings = Settings()

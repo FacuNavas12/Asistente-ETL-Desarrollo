@@ -11,6 +11,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_auth
 from app.core.crypto import encrypt_password
 from app.core.database import get_db
 from app.core.sanitize import sanitize_error
@@ -36,7 +37,7 @@ from app.services.db_connector import (
 from app.services import profiler as profiler_svc
 from app.services import context_builder
 
-router = APIRouter(prefix="/api/connections", tags=["connections"])
+router = APIRouter(prefix="/api/connections", tags=["connections"], dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 # Tipo discriminado para el body de creación.

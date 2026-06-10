@@ -20,8 +20,6 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.schemas.canonical import CanonicalSchema
-from app.services.adapters.ddl_adapter import parse_ddl
-from app.services.file_schema import infer_file_schema
 
 router = APIRouter(prefix="/api/schema", tags=["schema"])
 logger = logging.getLogger(__name__)
@@ -68,6 +66,14 @@ async def infer_schema(file: UploadFile) -> CanonicalSchema:
                     )
                 tmp.write(chunk)
 
+        try:
+            from app.services.file_schema import infer_file_schema
+        except ImportError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Dependencia no instalada para inferencia de archivos: {exc}. "
+                       "Instalar con: pip install frictionless[excel]",
+            )
         schema = infer_file_schema(tmp_path, source_name)
         return schema
 
@@ -110,6 +116,14 @@ def from_ddl(body: DdlRequest) -> list[CanonicalSchema]:
 
     sqlglot_dialect = None if body.dialect == "ansi" else body.dialect
 
+    try:
+        from app.services.adapters.ddl_adapter import parse_ddl
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Dependencia no instalada para parseo de DDL: {exc}. "
+                   "Instalar con: pip install sqlglot",
+        )
     try:
         schemas = parse_ddl(ddl, sqlglot_dialect)
     except ValueError as exc:

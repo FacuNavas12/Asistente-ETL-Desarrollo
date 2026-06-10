@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
+import { useAuthFetch } from "@/hooks/useAuthFetch";
 import Layout from "@/components/layout/Layout";
 import EtlChecks from "../CreateETL/components/EtlChecks";
 import HomeModal from "../CreateETL/components/HomeModal";
@@ -21,6 +22,7 @@ const STEP = {
 export default function CrearJob() {
   const navigate = useNavigate();
   const { jobs, addJob, savePendingJob } = useEtl();
+  const authFetch = useAuthFetch();
 
   const [step, setStep]           = useState(STEP.FORM);
   const [showModal, setShowModal] = useState(false);
