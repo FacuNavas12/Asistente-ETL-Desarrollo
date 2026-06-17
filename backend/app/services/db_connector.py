@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
@@ -145,10 +145,12 @@ def _connect_args(db_type: DbType, *, read_only: bool = False) -> dict[str, Any]
 def _build_url(conn: Connection, *, read_only: bool = False) -> str:
     """Construye la URL de conexión SQLAlchemy. Password se descifra aquí."""
     password = decrypt_password(conn.encrypted_password)
+    safe_user = quote(conn.username, safe="")
+    safe_pass = quote(password, safe="")
 
     if conn.db_type == DbType.postgresql:
         base = (
-            f"postgresql+psycopg://{conn.username}:{password}"
+            f"postgresql+psycopg://{safe_user}:{safe_pass}"
             f"@{conn.host}:{conn.port}/{conn.database}"
         )
         params: dict[str, str] = {}
@@ -166,16 +168,20 @@ def _build_url(conn: Connection, *, read_only: bool = False) -> str:
 
     else:  # sqlserver
         base = (
-            f"mssql+pyodbc://{conn.username}:{password}"
+            f"mssql+pyodbc://{safe_user}:{safe_pass}"
             f"@{conn.host}:{conn.port}/{conn.database}"
         )
         params = {"driver": settings.mssql_odbc_driver}
 
-        # ssl_mode → Encrypt
+        # ssl_mode → Encrypt.
+        # Driver 18 changed default from no→yes; explicit "no" restores Driver 17 behavior
+        # when no ssl_mode is configured (SQL Server schema has no ssl_mode field).
         if conn.ssl_mode == "disable":
             params["Encrypt"] = "no"
         elif conn.ssl_mode is not None:
             params["Encrypt"] = "yes"
+        else:
+            params["Encrypt"] = "no"
 
         # extra_options: trust_server_certificate + pares string
         if conn.extra_options:
