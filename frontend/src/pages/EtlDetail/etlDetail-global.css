@@ -31,6 +31,32 @@
 
 .etl-detail__actions {
   margin-left: auto;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.superset-export-btn {
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.superset-export-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.superset-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .ktr-download-btn {
