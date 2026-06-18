@@ -75,8 +75,6 @@ export default function OrigenInputFormulario({ value, onChange }) {
 
   return (
     <div className="form-section">
-      <h2 className="form-section__title">Datos de origen</h2>
-
       <TablePanel editingIndex={ed.editingIndex}>
 
         <div className="staging-add-row">
