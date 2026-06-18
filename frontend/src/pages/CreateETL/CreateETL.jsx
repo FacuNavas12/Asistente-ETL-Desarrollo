@@ -5,7 +5,7 @@ import { useAuthFetch } from "@/hooks/useAuthFetch";
 import Layout from "@/components/layout/Layout";
 import OrigenInput from "./components/Input/InputForm";
 import EtlChecks from "./components/EtlChecks";
-import BusinessRulesDrawer from "./components/BussinesRules/BusinessRulesDrawer";
+import BusinessRules from "./components/BussinesRules/BusinessRules";
 import DescripcionObjetivo from "./components/Goal/GoalDescription";
 import HomeModal from "./components/HomeModal";
 import InferenceReview from "./components/InferenceReview/InferenceReview";
@@ -236,13 +236,11 @@ export default function CreateETL() {
                 </div>
               )}
             </div>
+
+            <BusinessRules value={reglasNegocio} onChange={setReglasNegocio} />
           </div>
         )}
       </div>
-
-      {step === STEP.FORM && (
-        <BusinessRulesDrawer value={reglasNegocio} onChange={setReglasNegocio} />
-      )}
     </Layout>
   );
 }
