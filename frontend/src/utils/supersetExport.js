@@ -51,9 +51,10 @@ const metadataYaml = () => dump({
   timestamp: new Date().toISOString(),
 });
 
-const databaseYaml = (dbUuid) => dump({
+// FIX 4: sqlalchemyUri como parámetro; extra como dict YAML (no JSON string)
+const databaseYaml = (dbUuid, sqlalchemyUri) => dump({
   database_name: DB_NAME,
-  sqlalchemy_uri: "postgresql://user:password@host:5432/dwh",
+  sqlalchemy_uri: sqlalchemyUri,
   cache_timeout: null,
   expose_in_sqllab: true,
   allow_run_async: false,
@@ -61,7 +62,12 @@ const databaseYaml = (dbUuid) => dump({
   allow_cvas: false,
   allow_dml: false,
   allow_file_upload: false,
-  extra: JSON.stringify({ allows_virtual_table_explore: true }),
+  extra: {
+    allows_virtual_table_explore: true,
+    schemas_allowed_for_csv_upload: [],
+    engine_params: {},
+    metadata_params: {},
+  },
   uuid: dbUuid,
   version: VERSION,
 });
@@ -113,45 +119,47 @@ const datasetYaml = (table, dsUuid, dbUuid) => dump({
   database_uuid: dbUuid,
 });
 
+// FIX 2: expressionType "SQL" con sqlExpression evita el error
+// "Cannot compile Column object until its 'name' is assigned" de SQLAlchemy
 const countMetric = {
   label: "COUNT(*)",
-  expressionType: "SIMPLE",
-  column: null,
-  aggregate: "COUNT",
+  expressionType: "SQL",
+  sqlExpression: "COUNT(*)",
   hasCustomLabel: false,
-  sqlExpression: null,
-  isNew: false,
   optionName: "metric_count",
 };
 
-const barChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
+// FIX 1: params como objeto directo (YAML dict), no JSON string
+const tableChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
   const params = {
     datasource: `${dsUuid}__table`,
-    viz_type: "dist_bar",
-    slice_id: null,
+    viz_type: "table",
     url_params: {},
-    granularity_sqla: null,
     time_grain_sqla: null,
     time_range: "No filter",
-    metrics: [countMetric],
-    adhoc_filters: [],
+    query_mode: "aggregate",
     groupby: [columnName],
-    columns: [],
+    metrics: [countMetric],
+    all_columns: [],
+    percent_metrics: [],
+    adhoc_filters: [],
+    order_by_cols: [],
+    order_desc: true,
     row_limit: 10000,
-    color_scheme: "supersetColors",
-    show_legend: true,
-    rich_tooltip: true,
-    bar_stacked: false,
-    y_axis_format: "SMART_NUMBER",
+    include_time: false,
+    show_cell_bars: true,
+    align_pn: false,
+    page_length: 25,
+    include_search: true,
     extra_form_data: {},
   };
   return dump({
-    slice_name: `${tableName} - ${columnName} (Barras)`,
+    slice_name: `${tableName} - ${columnName} (Tabla)`,
     description: null,
     certified_by: null,
     certification_details: null,
-    viz_type: "dist_bar",
-    params: JSON.stringify(params),
+    viz_type: "table",
+    params,
     query_context: null,
     cache_timeout: null,
     uuid: chartUuid,
@@ -162,14 +170,12 @@ const barChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
   });
 };
 
+// FIX 1: params como objeto directo (YAML dict), no JSON string
 const pieChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
   const params = {
     datasource: `${dsUuid}__table`,
     viz_type: "pie",
-    slice_id: null,
     url_params: {},
-    granularity_sqla: null,
-    time_grain_sqla: null,
     time_range: "No filter",
     metric: countMetric,
     adhoc_filters: [],
@@ -189,7 +195,7 @@ const pieChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
     certified_by: null,
     certification_details: null,
     viz_type: "pie",
-    params: JSON.stringify(params),
+    params,
     query_context: null,
     cache_timeout: null,
     uuid: chartUuid,
@@ -251,7 +257,7 @@ const buildDashboardConfig = ({ etlName, dashUuid, charts }) => {
 
   const metadata = {
     show_native_filters: true,
-    default_filters: "{}",
+    default_filters: "{}",  // FIX 3: string JSON, Superset llama json.loads() sobre este valor
     filter_scopes: {},
     expanded_slices: {},
     refresh_frequency: 0,
@@ -284,10 +290,11 @@ const buildDashboardConfig = ({ etlName, dashUuid, charts }) => {
 const dashboardYaml = (cfg) => dump(buildDashboardConfig(cfg));
 
 const slugify = (s) =>
-  String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  String(s).normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 60) || "etl";
 
-export async function generateSupersetZip(etl) {
+// FIX 4: sqlalchemyUri como parámetro opcional (default: placeholder)
+export async function generateSupersetZip(etl, sqlalchemyUri = "postgresql://user:password@host:5432/dwh") {
   const dwhSample = etl?.result?.dwh_sample ?? {};
   const tables = buildTables(dwhSample);
   if (!tables.length) {
@@ -303,27 +310,27 @@ export async function generateSupersetZip(etl) {
   const charts = [];
 
   folder.file("metadata.yaml", metadataYaml());
-  folder.file(`databases/${DB_NAME}.yaml`, databaseYaml(dbUuid));
+  folder.file(`databases/${DB_NAME}.yaml`, databaseYaml(dbUuid, sqlalchemyUri));
 
   for (const table of tables) {
     const dsUuid = uuid();
     folder.file(`datasets/${DB_NAME}/${table.name}.yaml`, datasetYaml(table, dsUuid, dbUuid));
 
-    const barUuid = uuid();
+    const tableUuid = uuid();
     const pieUuid = uuid();
-    const barName = `${table.name} - ${table.pickColumn.name} (Barras)`;
+    const tableName2 = `${table.name} - ${table.pickColumn.name} (Tabla)`;
     const pieName = `${table.name} - ${table.pickColumn.name} (Torta)`;
 
     folder.file(
-      `charts/${slugify(barName)}_${barUuid.slice(0, 8)}.yaml`,
-      barChartYaml({ tableName: table.name, columnName: table.pickColumn.name, dsUuid, chartUuid: barUuid }),
+      `charts/${slugify(tableName2)}_${tableUuid.slice(0, 8)}.yaml`,
+      tableChartYaml({ tableName: table.name, columnName: table.pickColumn.name, dsUuid, chartUuid: tableUuid }),
     );
     folder.file(
       `charts/${slugify(pieName)}_${pieUuid.slice(0, 8)}.yaml`,
       pieChartYaml({ tableName: table.name, columnName: table.pickColumn.name, dsUuid, chartUuid: pieUuid }),
     );
 
-    charts.push({ chartUuid: barUuid, sliceName: barName });
+    charts.push({ chartUuid: tableUuid, sliceName: tableName2 });
     charts.push({ chartUuid: pieUuid, sliceName: pieName });
   }
 
@@ -334,13 +341,12 @@ export async function generateSupersetZip(etl) {
 
   const readme = `# Dashboard Superset - ${etl.name}
 
-Antes de importar:
-1. Editar databases/${DB_NAME}.yaml y reemplazar sqlalchemy_uri por la URI real de tu DWH.
-2. En Superset: Settings -> Import Dashboards -> seleccionar este ZIP.
-3. Confirmar la base de datos cuando Superset lo solicite.
+Importar en Superset:
+1. Settings -> Import Dashboards -> seleccionar este ZIP.
+2. Si la URI de base de datos no está configurada, editar en Settings -> Database Connections -> ETL_DWH.
 
 Tablas incluidas: ${tables.map(t => t.name).join(", ")}
-Charts generados: ${charts.length} (1 barra + 1 torta por tabla).
+Charts generados: ${charts.length} (1 tabla + 1 torta por tabla).
 `;
   folder.file("README.md", readme);
 
