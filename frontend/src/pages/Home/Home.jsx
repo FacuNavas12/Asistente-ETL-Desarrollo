@@ -15,7 +15,8 @@ const FILTERS    = [
 
 function EtlCard({ etl, index, onClick }) {
   const status = ETL_STATUS[etl.status] ?? ETL_STATUS.done;
-  const action = etl.status === "pending" ? "Continuar →" : "Ver detalle →";
+  const isIncomplete = etl.status === "pending" || etl.status === "en_proceso";
+  const action = isIncomplete ? "Continuar →" : "Ver detalle →";
 
   return (
     <div className="etl-card" style={{ animationDelay: `${index * 60}ms` }} onClick={onClick}>
@@ -26,7 +27,7 @@ function EtlCard({ etl, index, onClick }) {
         {new Date(etl.createdAt).toLocaleDateString("es-AR", { dateStyle: "medium" })}
       </span>
       <span className="etl-card__status" style={{ "--status-color": status.color }}>
-        {status.label}
+        {status.label} TEST
       </span>
       <div className="etl-card__footer">
         <span className="etl-card__action">{action}</span>
@@ -59,7 +60,7 @@ function JobCard({ job, index, onClick }) {
 function EmptyState({ filter }) {
   const messages = {
     etl: {
-      text: "No hay ETLs creados todavía.",
+      text: "No hay Transformaciónes creadas todavía.",
       sub:  "Usá el botón + en la barra lateral para crear tu primer ETL.",
     },
     job: {
@@ -129,7 +130,13 @@ export default function Home() {
                 key={etl.id}
                 etl={etl}
                 index={i}
-                onClick={() => navigate(`/etl/${etl.id}`)}
+                onClick={() => {
+                  if (etl.status === "pending" || etl.status === "en_proceso") {
+                    navigate("/etl-create", { state: { initialFormData: etl.formData } });
+                  } else {
+                    navigate(`/etl/${etl.id}`);
+                  }
+                }}
               />
             ))}
             {visibleJobs.map((job, i) => (

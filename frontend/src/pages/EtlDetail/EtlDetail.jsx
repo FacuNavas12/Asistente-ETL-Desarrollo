@@ -86,6 +86,16 @@ export default function EtlDetail() {
             {new Date(etl.createdAt).toLocaleDateString("es-AR", { dateStyle: "long" })}
           </span>
           <div className="etl-detail__actions">
+            {etl.status === "done" && (
+              <button
+                className="etl-reuse-btn"
+                onClick={() => navigate("/etl-create", {
+                  state: { initialFormData: { ...etl.formData, etlName: etl.name } },
+                })}
+              >
+                Reutilizar
+              </button>
+            )}
             {ktr_xml ? (
               <button className="ktr-download-btn" onClick={handleDownloadKtr}>
                 Descargar .ktr para Pentaho PDI

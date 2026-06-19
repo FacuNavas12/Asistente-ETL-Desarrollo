@@ -4,7 +4,7 @@ import { useEtl } from "@/context/EtlContext";
 import { useAuthFetch } from "@/hooks/useAuthFetch";
 import Layout from "@/components/layout/Layout";
 import EtlChecks from "../CreateETL/components/EtlChecks";
-import HomeModal from "../CreateETL/components/HomeModal";
+import HomeModal from "../CreateETL/components/UnsavedChangesModal";
 import JobForm from "./components/JobForm";
 import JobReview from "./components/JobReview";
 import JobResult from "./components/JobResult";

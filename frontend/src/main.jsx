@@ -1,15 +1,16 @@
 ﻿import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
-import { BrowserRouter } from "react-router-dom";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import AuthProvider from "./auth0/AuthProvider.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
 import { EtlProvider } from "./context/EtlContext.jsx";
 import "@/styles/theme.css";
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <BrowserRouter>
+const router = createBrowserRouter([
+  {
+    path: "*",
+    element: (
       <AuthProvider>
         <ThemeProvider>
           <EtlProvider>
@@ -17,7 +18,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           </EtlProvider>
         </ThemeProvider>
       </AuthProvider>
-    </BrowserRouter>
+    ),
+  },
+]);
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <RouterProvider router={router} />
   </React.StrictMode>
 );
 

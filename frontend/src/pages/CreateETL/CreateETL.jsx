@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation, useBlocker } from "react-router-dom";
+import { useForm, useWatch } from "react-hook-form";
 import { useEtl } from "@/context/EtlContext";
-import { useAuthFetch } from "@/hooks/useAuthFetch";
 import Layout from "@/components/layout/Layout";
 import OrigenInput from "./components/Input/InputForm";
 import EtlChecks from "./components/EtlChecks";
 import BusinessRules from "./components/BussinesRules/BusinessRules";
 import DescripcionObjetivo from "./components/Goal/GoalDescription";
-import HomeModal from "./components/HomeModal";
+import UnsavedChangesModal from "./components/UnsavedChangesModal";
 import InferenceReview from "./components/InferenceReview/InferenceReview";
 import { SAMPLE_ETL } from "./utils/sampleEtl";
 import { inferStructures, refineInference, generateFromInference } from "@/services/etlService";
@@ -23,42 +23,109 @@ const STEP = {
   PROCESSING: "processing",
 };
 
-function isDirty(origenTables, reglasNegocio, descripcionObjetivo) {
-  return (
-    origenTables.length > 0 ||
-    reglasNegocio.trim().length > 0 ||
-    descripcionObjetivo.trim().length > 0
-  );
-}
-
 export default function CreateETL() {
-  const navigate   = useNavigate();
-  const { draft, saveDraft, clearDraft, addEtl, savePendingEtl, etls } = useEtl();
-  const authFetch  = useAuthFetch();
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const { draft, saveDraft, clearDraft, addEtl, saveInProgressEtl } = useEtl();
 
-  const [step, setStep]       = useState(STEP.FORM);
-  const [showModal, setShowModal] = useState(false);
-  // Campos del formulario (3)
-  const [descripcionObjetivo, setDescripcionObjetivo] = useState(draft?.descripcionObjetivo ?? "");
-  const [origenTables,        setOrigenTables]        = useState(draft?.origenTables ?? []);
-  const [reglasNegocio,       setReglasNegocio]       = useState(draft?.reglasNegocio ?? "");
+  // fresh: true → always open blank (navbar "Nueva Transformación" button)
+  // initialFormData → load from prior ETL (Continuar / Reutilizar)
+  const initSource  = location.state?.fresh
+    ? null
+    : (location.state?.initialFormData ?? draft);
 
-  // Estado del flujo de inferencia
-  const [inferResult,      setInferResult]      = useState(null);
-  const [inferHistory,     setInferHistory]     = useState([]);
-  const [isRefining,       setIsRefining]       = useState(false);
-  const [errors,           setErrors]           = useState([]);
+  const defaultName = initSource?.etlName ?? "Nueva Transformación";
 
+  const { control, setValue, reset, getValues, formState: { isDirty } } = useForm({
+    defaultValues: {
+      etlName:             defaultName,
+      descripcionObjetivo: initSource?.descripcionObjetivo ?? "",
+      origenTables:        initSource?.origenTables        ?? [],
+      reglasNegocio:       initSource?.reglasNegocio       ?? "",
+    },
+  });
+
+  const etlName             = useWatch({ control, name: "etlName" });
+  const descripcionObjetivo = useWatch({ control, name: "descripcionObjetivo" });
+  const origenTables        = useWatch({ control, name: "origenTables" });
+  const reglasNegocio       = useWatch({ control, name: "reglasNegocio" });
+
+  const [step,           setStep]           = useState(STEP.FORM);
+  const [isEditingName,  setIsEditingName]  = useState(false);
+  const [nameInputVal,   setNameInputVal]   = useState(defaultName);
+  const [inferResult,    setInferResult]    = useState(null);
+  const [inferHistory,   setInferHistory]   = useState([]);
+  const [isRefining,     setIsRefining]     = useState(false);
+  const [errors,         setErrors]         = useState([]);
+  const pendingNavigateRef   = useRef(null);
+  const pendingClearStateRef = useRef(false);
+
+  // Block all route navigation (Back button, links, programmatic) while form is dirty
+  const blocker = useBlocker(isDirty);
+
+  // When fresh:true arrives (new mount OR same-route re-nav from Navbar after blocker),
+  // reset the form. Defer the location-state cleanup via pendingClearStateRef so it only
+  // fires once isDirty=false — calling navigate() while isDirty=true would re-trigger
+  // the blocker and show the UnsavedChangesModal a second time.
   useEffect(() => {
-    saveDraft({ descripcionObjetivo, origenTables, reglasNegocio });
-  }, [descripcionObjetivo, origenTables, reglasNegocio]);
+    if (location.state?.fresh) {
+      handleLimpiar();
+      pendingClearStateRef.current = true;
+    } else if (location.state?.initialFormData) {
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state?.fresh, location.state?.initialFormData]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const dirty = isDirty(origenTables, reglasNegocio, descripcionObjetivo);
+  // Warn on tab close / reload while dirty
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  // Navigate after reset to avoid race with useBlocker (isDirty must be false first)
+  useEffect(() => {
+    if (!isDirty) {
+      if (pendingNavigateRef.current) {
+        const dest = pendingNavigateRef.current;
+        pendingNavigateRef.current = null;
+        navigate(dest);
+      } else if (pendingClearStateRef.current) {
+        pendingClearStateRef.current = false;
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [isDirty, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Draft autosave on every change
+  useEffect(() => {
+    saveDraft({ etlName, descripcionObjetivo, origenTables, reglasNegocio });
+  }, [etlName, descripcionObjetivo, origenTables, reglasNegocio]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleNameConfirm = () => {
+    const trimmed = nameInputVal.trim();
+    if (trimmed) setValue("etlName", trimmed, { shouldDirty: true });
+    else setNameInputVal(etlName);
+    setIsEditingName(false);
+  };
+
+  const handleGuardar = () => {
+    const values = getValues();
+    saveInProgressEtl(values.etlName, values);
+    pendingNavigateRef.current = "/home";
+    reset(values); // isDirty → false → useEffect fires → navigate
+  };
 
   const handleLimpiar = () => {
-    setDescripcionObjetivo("");
-    setOrigenTables([]);
-    setReglasNegocio("");
+    const empty = {
+      etlName:             "Nueva Transformación",
+      descripcionObjetivo: "",
+      origenTables:        [],
+      reglasNegocio:       "",
+    };
+    reset(empty);
+    setNameInputVal("Nueva Transformación");
     setInferResult(null);
     setInferHistory([]);
     clearDraft();
@@ -67,9 +134,9 @@ export default function CreateETL() {
   };
 
   const handleCargarEjemplo = () => {
-    setDescripcionObjetivo(SAMPLE_ETL.descripcionObjetivo);
-    setOrigenTables(SAMPLE_ETL.origenTables);
-    setReglasNegocio(SAMPLE_ETL.reglasNegocio);
+    setValue("descripcionObjetivo", SAMPLE_ETL.descripcionObjetivo, { shouldDirty: true });
+    setValue("origenTables",        SAMPLE_ETL.origenTables,        { shouldDirty: true });
+    setValue("reglasNegocio",       SAMPLE_ETL.reglasNegocio,       { shouldDirty: true });
     setErrors([]);
   };
 
@@ -147,12 +214,15 @@ export default function CreateETL() {
         reglasNegocio,
       });
       const id = addEtl({
+        etlName,
+        descripcionObjetivo,
         origenTables,
         reglasNegocio,
         stg_definition: inferResult?.stg_definition ?? "",
-        dwh_model: inferResult?.dwh_model ?? "",
-      }, apiResult);
-      navigate(`/etl/${id}`);
+        dwh_model:      inferResult?.dwh_model       ?? "",
+      }, apiResult, etlName);
+      pendingNavigateRef.current = `/etl/${id}`;
+      reset(getValues()); // isDirty → false → useEffect fires → navigate
     } catch (err) {
       setStep(STEP.REVIEW);
       setErrors([`Error al generar el ETL: ${err.message}`]);
@@ -160,23 +230,37 @@ export default function CreateETL() {
   };
 
   return (
-    <Layout onHomeClick={() => setShowModal(true)}>
-      {showModal && (
-        <HomeModal
-          onConfirm={() => {
-            if (dirty) {
-              const name = (descripcionObjetivo.trim().split("\n")[0] || `ETL #${etls.length + 1}`).slice(0, 50);
-              savePendingEtl(name, { descripcionObjetivo, origenTables, reglasNegocio });
-            }
-            navigate("/home");
-          }}
-          onCancel={() => setShowModal(false)}
+    <Layout>
+      {blocker.state === "blocked" && (
+        <UnsavedChangesModal
+          onDiscard={() => blocker.proceed()}
+          onCancel={() => blocker.reset()}
         />
       )}
 
       <div className="etl-page">
         <div className="etl-page__header">
-          <h1 className="etl-title">Crear Transformación</h1>
+          {isEditingName ? (
+            <input
+              className="etl-title-input"
+              value={nameInputVal}
+              onChange={e => setNameInputVal(e.target.value)}
+              onBlur={handleNameConfirm}
+              onKeyDown={e => {
+                if (e.key === "Enter") handleNameConfirm();
+                if (e.key === "Escape") { setNameInputVal(etlName); setIsEditingName(false); }
+              }}
+              autoFocus
+            />
+          ) : (
+            <h1
+              className="etl-title etl-title--editable"
+              onClick={() => { setNameInputVal(etlName); setIsEditingName(true); }}
+            >
+              {etlName}
+              <span className="etl-title-edit-hint">Editar</span>
+            </h1>
+          )}
           {step === STEP.FORM && (
             <div className="etl-header-actions">
               <button
@@ -186,8 +270,15 @@ export default function CreateETL() {
               >
                 Cargar ejemplo
               </button>
-              <button className="etl-clear-btn" disabled={!dirty} onClick={handleLimpiar}>
+              <button className="etl-clear-btn" disabled={!isDirty} onClick={handleLimpiar}>
                 Limpiar
+              </button>
+              <button
+                className="etl-save-btn"
+                disabled={!isDirty}
+                onClick={handleGuardar}
+              >
+                Guardar
               </button>
               <button className="etl-infer-header-btn" onClick={handleInfer}>
                 Inferir STG y DWH
@@ -227,8 +318,14 @@ export default function CreateETL() {
         {step === STEP.FORM && (
           <div className="etl-body">
             <div className="etl-form-side">
-              <DescripcionObjetivo value={descripcionObjetivo} onChange={setDescripcionObjetivo} />
-              <OrigenInput value={origenTables} onChange={setOrigenTables} />
+              <DescripcionObjetivo
+                value={descripcionObjetivo}
+                onChange={(v) => setValue("descripcionObjetivo", v, { shouldDirty: true })}
+              />
+              <OrigenInput
+                value={origenTables}
+                onChange={(v) => setValue("origenTables", v, { shouldDirty: true })}
+              />
 
               {errors.length > 0 && (
                 <div className="etl-errors-box">
@@ -237,7 +334,10 @@ export default function CreateETL() {
               )}
             </div>
 
-            <BusinessRules value={reglasNegocio} onChange={setReglasNegocio} />
+            <BusinessRules
+              value={reglasNegocio}
+              onChange={(v) => setValue("reglasNegocio", v, { shouldDirty: true })}
+            />
           </div>
         )}
       </div>

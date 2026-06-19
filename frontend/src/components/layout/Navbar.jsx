@@ -2,24 +2,15 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
-import { useEtl } from "@/context/EtlContext";
-import { ETL_STATUS } from "@/constants/status";
-import PendingModal from "./PendingModal";
 import "./navbar.css";
 
-export default function Navbar() {
+export default function Navbar({ guardNavigation }) {
   const { user, logout } = useAuth0();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
-  const { etls, jobs } = useEtl();
 
   const [avatarOpen, setAvatarOpen] = useState(false);
-  // 'etl' | 'job' | null — which pending modal is open
-  const [pendingModalType, setPendingModalType] = useState(null);
   const avatarRef = useRef(null);
-
-  const pendingEtl = etls.find(e => e.status === ETL_STATUS.pending.key);
-  const pendingJob = jobs?.find(j => j.status === ETL_STATUS.pending.key);
 
   const initials = user?.name
     ? user.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
@@ -36,23 +27,11 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handler);
   }, [avatarOpen]);
 
-  const handleNewEtl = () => {
-    if (pendingEtl) {
-      setPendingModalType("etl");
-    } else {
-      navigate("/etl-create");
-    }
+  // Route all navigation through the guard when one is provided (e.g. dirty form)
+  const go = (path, opts) => {
+    const doIt = () => navigate(path, opts);
+    guardNavigation ? guardNavigation(doIt) : doIt();
   };
-
-  const handleNewJob = () => {
-    if (pendingJob) {
-      setPendingModalType("job");
-    } else {
-      navigate("/job-create");
-    }
-  };
-
-  const closeModal = () => setPendingModalType(null);
 
   const handleLogout = () =>
     logout({ logoutParams: { returnTo: window.location.origin } });
@@ -63,7 +42,7 @@ export default function Navbar() {
         {/* Logo */}
         <button
           className="sidebar__logo"
-          onClick={() => navigate("/home")}
+          onClick={() => go("/home")}
           data-tooltip="Home"
         >
           H
@@ -88,7 +67,7 @@ export default function Navbar() {
               <span className="sidebar__popover-email">{user?.email}</span>
               <button
                 className="sidebar__popover-link"
-                onClick={() => { navigate("/profile"); setAvatarOpen(false); }}
+                onClick={() => { setAvatarOpen(false); go("/profile"); }}
               >
                 Ver Perfil
               </button>
@@ -99,10 +78,10 @@ export default function Navbar() {
         {/* Separator */}
         <div className="sidebar__sep" />
 
-        {/* Nuevo ETL */}
+        {/* Nuevo ETL — siempre abre formulario limpio */}
         <button
           className="sidebar__btn sidebar__btn--new"
-          onClick={handleNewEtl}
+          onClick={() => go("/etl-create", { state: { fresh: true } })}
           data-tooltip="Nueva Transformación"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -114,7 +93,7 @@ export default function Navbar() {
         {/* Nuevo Job */}
         <button
           className="sidebar__btn sidebar__btn--new"
-          onClick={handleNewJob}
+          onClick={() => go("/job-create")}
           data-tooltip="Nuevo Job"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -156,7 +135,7 @@ export default function Navbar() {
         {/* Configuración */}
         <button
           className="sidebar__btn"
-          onClick={() => navigate("/settings")}
+          onClick={() => go("/settings")}
           data-tooltip="Configuración"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -179,25 +158,6 @@ export default function Navbar() {
         </button>
       </aside>
 
-      {pendingModalType === "etl" && pendingEtl && (
-        <PendingModal
-          type="etl"
-          pendingItem={pendingEtl}
-          onGoTo={() => { navigate("/home"); closeModal(); }}
-          onCreateNew={() => { navigate("/etl-create"); closeModal(); }}
-          onClose={closeModal}
-        />
-      )}
-
-      {pendingModalType === "job" && pendingJob && (
-        <PendingModal
-          type="job"
-          pendingItem={pendingJob}
-          onGoTo={() => { navigate("/home"); closeModal(); }}
-          onCreateNew={() => { navigate("/job-create"); closeModal(); }}
-          onClose={closeModal}
-        />
-      )}
     </>
   );
 }

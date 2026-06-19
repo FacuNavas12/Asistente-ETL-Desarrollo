@@ -102,10 +102,10 @@ export function EtlProvider({ children }) {
   };
 
   // ── ETLs ────────────────────────────────────────────────────────────────
-  const addEtl = (formData, apiResult) => {
+  const addEtl = (formData, apiResult, name) => {
     const newEtl = {
       id: crypto.randomUUID(),
-      name: apiResult?.proceso_etl?.nombre ?? `ETL #${etls.length + 1}`,
+      name: name || `ETL #${etls.length + 1}`,
       createdAt: new Date().toISOString(),
       status: "done",
       formData,
@@ -150,6 +150,22 @@ export function EtlProvider({ children }) {
     return newJob.id;
   };
 
+  const saveInProgressEtl = (name, formData) => {
+    const existing = etls.find(e => e.status === "en_proceso");
+    const entry = {
+      id: existing?.id ?? crypto.randomUUID(),
+      name: name || `ETL #${etls.length + 1}`,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      status: "en_proceso",
+      formData,
+      result: null,
+    };
+    const updated = existing
+      ? etls.map(e => (e.id === existing.id ? entry : e))
+      : [entry, ...etls];
+    persist(ETLS_KEY, updated, setEtls);
+  };
+
   const savePendingJob = (name, formData) => {
     const existing = jobs.find(j => j.status === "pending");
     const entry = {
@@ -175,7 +191,7 @@ export function EtlProvider({ children }) {
 
   return (
     <EtlContext.Provider value={{
-      etls, draft, saveDraft, clearDraft, addEtl, savePendingEtl,
+      etls, draft, saveDraft, clearDraft, addEtl, savePendingEtl, saveInProgressEtl,
       jobs, addJob, savePendingJob,
       clearAll,
     }}>

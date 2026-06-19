@@ -43,21 +43,22 @@
   justify-content: flex-end;
 }
 
-.home-modal__cancel {
+.home-modal__leave {
   padding: 11px 22px;
   font-size: 14px;
   font-weight: 500;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: none;
-  color: var(--text-h);
+  color: var(--text);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
-.home-modal__cancel:hover {
-  background: var(--accent-bg);
-  border-color: var(--accent-border);
+.home-modal__leave:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: #ef4444;
+  color: #ef4444;
 }
 
 .home-modal__confirm {

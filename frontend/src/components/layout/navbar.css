@@ -1,3 +1,20 @@
+:root {
+  --bg-panel: #ffffff;
+  --border: #e0e0e0;
+  --accent: #4f46e5;
+  --accent-bg: rgba(79, 70, 229, 0.1);
+  --accent-border: rgba(79, 70, 229, 0.3);
+  --accent-shadow: rgba(79, 70, 229, 0.4);
+  --text-1: #111111;
+  --text-2: #555555;
+  --avatar-border: rgba(255, 255, 255, 0.8);
+  --avatar-grad: linear-gradient(135deg, #667eea, #764ba2);
+  --shadow: rgba(0, 0, 0, 0.1) 0px 4px 12px;
+
+  --hover-size: 15px;
+}
+
+
 /* ── Sidebar ── */
 .sidebar {
   position: fixed;
@@ -51,7 +68,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: var(--hover-size); /* letra de hover */
   font-weight: 500;
   font-family: 'Outfit', sans-serif;
   color: var(--text-1);
@@ -86,6 +103,8 @@
   justify-content: center;
   transition: opacity 0.2s;
   position: relative;
+
+  font-size: var(--hover-size); /* letra de hover */
 }
 
 .sidebar__avatar-btn:hover {
@@ -235,7 +254,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: var(--hover-size);
   font-weight: 500;
   font-family: 'Outfit', sans-serif;
   color: var(--text-1);

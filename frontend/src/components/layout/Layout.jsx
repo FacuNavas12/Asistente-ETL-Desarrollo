@@ -1,10 +1,10 @@
 import Navbar from "./Navbar";
 import "./layout.css";
 
-export default function Layout({ children }) {
+export default function Layout({ children, guardNavigation }) {
   return (
     <div className="layout">
-      <Navbar />
+      <Navbar guardNavigation={guardNavigation} />
       <div className="layout__content">
         {children}
       </div>
