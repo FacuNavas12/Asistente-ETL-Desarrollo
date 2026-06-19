@@ -5,6 +5,7 @@ import Layout from "@/components/layout/Layout";
 import LineageView from "@/pages/EtlDetail/Lineage/LineageView";
 import ResultView from "@/pages/EtlDetail/Result/ResultView";
 import { computeLineage } from "@/api/lineage";
+import { generateSupersetZip } from "@/utils/supersetExport";
 import "./etlDetail-global.css";
 
 export default function EtlDetail() {
@@ -15,6 +16,7 @@ export default function EtlDetail() {
   const [lineageData, setLineageData]       = useState(null);
   const [lineageLoading, setLineageLoading] = useState(false);
   const [lineageError, setLineageError]     = useState(null);
+  const [supersetBusy, setSupersetBusy]     = useState(false);
   const loadedForId = useRef(null);
 
   const etl = etls.find(e => e.id === id);
@@ -76,6 +78,25 @@ export default function EtlDetail() {
     URL.revokeObjectURL(url);
   };
 
+  const hasDwhSample = Object.keys(etl.result?.dwh_sample ?? {}).length > 0;
+
+  const handleExportSuperset = async () => {
+    setSupersetBusy(true);
+    try {
+      const blob = await generateSupersetZip(etl);
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `superset_${etl.name}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err?.message ?? "No se pudo generar el archivo Superset.");
+    } finally {
+      setSupersetBusy(false);
+    }
+  };
+
   return (
     <Layout>
       <div className="etl-detail">
@@ -102,6 +123,15 @@ export default function EtlDetail() {
               </button>
             ) : (
               <span className="ktr-unavailable">No se pudo generar el .ktr</span>
+            )}
+            {hasDwhSample && (
+              <button
+                className="superset-export-btn"
+                onClick={handleExportSuperset}
+                disabled={supersetBusy}
+              >
+                {supersetBusy ? "Generando..." : "Exportar dashboard Superset"}
+              </button>
             )}
           </div>
         </div>

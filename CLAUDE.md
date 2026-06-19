@@ -7,10 +7,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Frontend** (React 19 + Vite):
 ```bash
 cd frontend
+npm install        # after git pull si package.json cambió
 npm run dev        # dev server → http://localhost:5173
 npm run build      # production build → dist/
 npm run lint       # ESLint
 npm run preview    # preview production build
+```
+
+**Al agregar dependencia frontend:**
+```bash
+cd frontend
+npm install <paquete>          # instala y actualiza package.json + package-lock.json
+# commitear ambos: package.json Y package-lock.json
+```
+Otros devs solo necesitan `npm install` al hacer pull. No agregar paquetes sin commitear `package-lock.json`.
+
+**Al hacer `git pull` y `package.json` cambió:**
+```bash
+cd frontend && npm install     # sincronizar node_modules
 ```
 
 **Backend** (FastAPI):
