@@ -9,6 +9,7 @@ import JobForm from "./components/JobForm";
 import JobReview from "./components/JobReview";
 import JobResult from "./components/JobResult";
 import { analyzeJob, refineJob, generateJob } from "@/services/jobService";
+import { generateSupersetZip, extractDwhSchemaFromKtrs } from "@/utils/supersetExport";
 import "./crearJob.css";
 
 const STEP = {
@@ -21,7 +22,7 @@ const STEP = {
 
 export default function CrearJob() {
   const navigate = useNavigate();
-  const { jobs, addJob, savePendingJob } = useEtl();
+  const { etls, jobs, addJob, savePendingJob } = useEtl();
   const authFetch = useAuthFetch();
 
   const [step, setStep]           = useState(STEP.FORM);
@@ -39,6 +40,7 @@ export default function CrearJob() {
   const [isRefining,    setIsRefining]    = useState(false);
   const [jobResult,     setJobResult]     = useState(null);
   const [errors,        setErrors]        = useState([]);
+  const [supersetBusy,  setSupersetBusy]  = useState(false);
 
   const dirty = ktrFiles.length > 0 || jobDescription.trim().length > 0;
 
@@ -139,6 +141,54 @@ export default function CrearJob() {
     }
   };
 
+  const handleExportSuperset = async () => {
+    setSupersetBusy(true);
+    try {
+      // Matchear los KTRs del job con ETLs guardados por ktr_filename (con y sin extensión)
+      const jobFilenames = new Set(
+        (jobResult.job_plan.execution_order ?? []).flatMap(e => [
+          e.filename,
+          e.filename?.replace(/\.ktr$/i, ""),
+        ]).filter(Boolean)
+      );
+      const matchingEtls = etls.filter(e => {
+        const ktr = e.result?.ktr_filename;
+        if (!ktr) return false;
+        return jobFilenames.has(ktr) || jobFilenames.has(ktr.replace(/\.ktr$/i, ""));
+      });
+
+      let dwh_sample = matchingEtls.reduce((acc, e) => ({ ...acc, ...(e.result?.dwh_sample ?? {}) }), {});
+
+      // Fallback: extraer esquema directamente de los archivos KTR subidos
+      if (!Object.keys(dwh_sample).length && ktrFiles.length > 0) {
+        dwh_sample = await extractDwhSchemaFromKtrs(ktrFiles);
+      }
+
+      if (!Object.keys(dwh_sample).length) {
+        alert(
+          "No se encontraron tablas DWH en los archivos KTR.\n\n" +
+          "Asegurate de que los archivos KTR incluyan pasos de tipo 'Table output' con las tablas de destino configuradas."
+        );
+        return;
+      }
+
+      const blob = await generateSupersetZip({
+        name: jobResult.job_plan.job_name,
+        result: { dwh_sample },
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `superset_${jobResult.job_plan.job_name}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err?.message ?? "No se pudo generar el archivo Superset.");
+    } finally {
+      setSupersetBusy(false);
+    }
+  };
+
   return (
     <Layout onHomeClick={() => setShowModal(true)}>
       {showModal && (
@@ -207,7 +257,12 @@ export default function CrearJob() {
         )}
 
         {step === STEP.RESULT && jobResult && (
-          <JobResult result={jobResult} onNew={handleLimpiar} />
+          <JobResult
+            result={jobResult}
+            onNew={handleLimpiar}
+            onExportSuperset={handleExportSuperset}
+            supersetBusy={supersetBusy}
+          />
         )}
       </div>
     </Layout>

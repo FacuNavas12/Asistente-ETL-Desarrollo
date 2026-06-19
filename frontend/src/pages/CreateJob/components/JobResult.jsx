@@ -1,4 +1,4 @@
-export default function JobResult({ result, onNew }) {
+export default function JobResult({ result, onNew, onExportSuperset, supersetBusy }) {
   const handleDownload = () => {
     const blob = new Blob([result.kjb_xml], { type: "application/xml" });
     const url = URL.createObjectURL(blob);
@@ -23,6 +23,15 @@ export default function JobResult({ result, onNew }) {
           <button className="job-btn--primary" onClick={handleDownload}>
             Descargar {result.kjb_filename}
           </button>
+          {onExportSuperset && (
+            <button
+              className="job-btn--secondary"
+              onClick={onExportSuperset}
+              disabled={supersetBusy}
+            >
+              {supersetBusy ? "Generando..." : "Exportar dashboard Superset"}
+            </button>
+          )}
           <button className="job-btn--secondary" onClick={onNew}>
             Crear otro Job
           </button>
