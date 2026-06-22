@@ -90,12 +90,14 @@ const buildTables = (dwhSample = {}) =>
     .map(([name, rows]) => {
       if (!Array.isArray(rows) || !rows.length) return null;
       const colNames = Array.from(rows.reduce((s, row) => {
-        Object.keys(row ?? {}).forEach(k => s.add(k)); return s;
+        // Normalizar a minúsculas para compatibilidad con PostgreSQL
+        Object.keys(row ?? {}).forEach(k => s.add(k.toLowerCase())); return s;
       }, new Set()));
       const columns = colNames.map(col => ({
-        name: col,
-        values: rows.map(r => r?.[col]),
-        semanticType: inferSemanticType(col, rows.map(r => r?.[col])),
+        name: col, // ya está en minúsculas
+        // buscar el valor con la key original (mayúsculas o minúsculas)
+        values: rows.map(r => r?.[col] ?? r?.[col.toUpperCase()]),
+        semanticType: inferSemanticType(col, rows.map(r => r?.[col] ?? r?.[col.toUpperCase()])),
       }));
       const pickColumn =
         columns.find(c => isUsableColumn(c.name) && c.values.some(v => v != null && v !== "")) ??
@@ -204,17 +206,43 @@ const STEP_EXTRACTORS = {
   CombinationLookup:      extractCombinationCols,
 };
 
+// Genera un valor sintético tipado para que inferSemanticType pueda usar el valor JS
+// (detecta boolean, number, string) además del nombre de la columna.
+const _syntheticValue = (colName) => {
+  const u = colName.toUpperCase();
+
+  if (u.startsWith("SK_") || u.startsWith("FK_") ||
+      u.startsWith("ID_") || u.endsWith("_ID") || u === "ID") return 1;
+
+  const dateKW = ["FECHA","DATE","DT","INICIO","FIN","COMIENZO"];
+  if (dateKW.some(k => u.includes(k))) return "2024-01-01";
+
+  if (u.startsWith("ES_") || u.startsWith("IS_") || u.startsWith("FLAG_") ||
+      u.includes("VIGENTE") || u.includes("ACTIVO") || u.includes("CAPITAL")) return true;
+
+  const numKW = ["MONTO","TOTAL","PRECIO","CANTIDAD","QTY","AREA","POBLACION",
+                 "DENSIDAD","DURACION","DIAS","PORCENTAJE","TASA","COSTO"];
+  if (numKW.some(k => u.includes(k))) return 0.0;
+
+  const intKW = ["ANIO","MES","DIA","TRIMESTRE","YEAR","MONTH","DAY","ORDEN",
+                 "ORDER","NUMERO","NUM","COUNT"];
+  if (intKW.some(k => u.includes(k))) return 1;
+
+  return "ejemplo";
+};
+
 // Parses PDI .ktr files and returns a dwh_sample-compatible object:
-// { tableName: [{ col1: null, col2: null, ... }] }
+// { tableName: [{ col1: <syntheticValue>, ... }] }
 // Works with ALL PDI output step types; unknown types use generic column extraction.
 export async function extractDwhSchemaFromKtrs(ktrFiles) {
   const dwhSample = {};
 
   const addCols = (tableName, cols) => {
     if (!tableName || !cols.length) return;
-    const existing = dwhSample[tableName]?.[0] ?? {};
-    cols.forEach(col => { existing[col] = null; });
-    dwhSample[tableName] = [existing];
+    const name = tableName.toLowerCase();
+    const existing = dwhSample[name]?.[0] ?? {};
+    cols.forEach(col => { if (!(col in existing)) existing[col] = _syntheticValue(col); });
+    dwhSample[name] = [existing];
   };
 
   for (const file of ktrFiles) {
@@ -228,9 +256,13 @@ export async function extractDwhSchemaFromKtrs(ktrFiles) {
       const stepType = directChildText(step, "type");
       if (!stepType) continue;
 
-      // Only care about steps that write to a relational table
       const tableName = directChildText(step, "table");
       if (!tableName) continue;
+
+      // Skip reject/log/audit tables in addition to staging prefixes
+      const tl = tableName.toLowerCase();
+      if (tl.includes("rechaz") || tl.includes("reject") ||
+          tl.includes("_log")   || tl.includes("audit")) continue;
 
       const extractor = STEP_EXTRACTORS[stepType] ?? extractGenericCols;
       addCols(tableName, extractor(step));
@@ -312,7 +344,7 @@ const datasetYaml = (table, dsUuid, dbUuid) => dump({
     warning_text: null,
   }],
   columns: table.columns.map(c => ({
-    column_name: c.name,
+    column_name: c.name.toLowerCase(),
     verbose_name: null,
     is_dttm: false,
     is_active: true,
@@ -337,22 +369,22 @@ const datasetYaml = (table, dsUuid, dbUuid) => dump({
 //   echarts_timeseries_line  – Line chart (temporal or categorical x-axis)
 //   big_number_total         – KPI big number (single metric, no time axis)
 
-const tableChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
+const tableChartYaml = ({ tableName, columnName, dsUuid, chartUuid, isMetric = false }) => {
   const params = {
     datasource: `${dsUuid}__table`,
     viz_type: "table",
     url_params: {},
     time_grain_sqla: null,
     time_range: "No filter",
-    query_mode: "aggregate",
-    groupby: [columnName],
-    metrics: [countMetric],
-    all_columns: [],
+    query_mode: isMetric ? "raw" : "aggregate",
+    groupby: isMetric ? [] : [columnName],
+    metrics: isMetric ? [] : [countMetric],
+    all_columns: isMetric ? [columnName] : [],
     percent_metrics: [],
     adhoc_filters: [],
     order_by_cols: [],
     order_desc: true,
-    row_limit: 10000,
+    row_limit: 1000,
     include_time: false,
     show_cell_bars: true,
     align_pn: false,
@@ -425,6 +457,9 @@ const barChartYaml = ({ tableName, columnName, xAxis, metric, dsUuid, chartUuid 
     time_range: "No filter",
     color_scheme: "supersetColors",
     extra_form_data: {},
+    orientation: "vertical",
+    x_axis_sort_asc: true,
+    x_axis_sort_series: "name",
   };
   return dump({
     slice_name: `${tableName} - ${xAxis ?? columnName} (Barras)`,
@@ -475,11 +510,14 @@ const lineChartYaml = ({ tableName, columnName, xAxis, metric, dsUuid, chartUuid
 };
 
 // Big number KPI — big_number_total, shows a single aggregate metric prominently
-const bigNumberYaml = ({ tableName, columnName, metric, dsUuid, chartUuid }) => {
+const bigNumberYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
+  const kpiMetric = columnName
+    ? { label: `SUM(${columnName})`, expressionType: "SQL", sqlExpression: `SUM(${columnName})`, hasCustomLabel: false, optionName: `metric_sum_${columnName}` }
+    : countMetric;
   const params = {
     datasource: `${dsUuid}__table`,
     viz_type: "big_number_total",
-    metric: metric ?? countMetric,
+    metric: kpiMetric,
     adhoc_filters: [],
     time_range: "No filter",
     extra_form_data: {},
@@ -548,7 +586,7 @@ const selectChartsForTable = (table) => {
   const bestMetricObj = bestMetric ? sumMetric(bestMetric.name) : countMetric;
 
   if (isBridge) {
-    charts.push({ type: "big_number", columnName: null, metric: countMetric, label: "Total registros" });
+    charts.push({ type: "big_number", columnName: null, label: "Total registros" });
     charts.push({ type: "table", columnName: (allUsable[0] ?? table.pickColumn).name, label: "Detalle" });
     return charts;
   }
@@ -558,13 +596,12 @@ const selectChartsForTable = (table) => {
     charts.push({
       type: "big_number",
       columnName: bestMetric?.name ?? null,
-      metric: bestMetricObj,
       label: "KPI",
     });
     // Second KPI if available
     const second = realMetrics[1];
     if (second) {
-      charts.push({ type: "big_number", columnName: second.name, metric: sumMetric(second.name), label: "KPI" });
+      charts.push({ type: "big_number", columnName: second.name, label: "KPI" });
     }
     // Trend over time
     if (businessDates.length > 0 && bestMetric) {
@@ -586,33 +623,26 @@ const selectChartsForTable = (table) => {
         label: "Por categoría",
       });
     }
-    charts.push({ type: "table", columnName: (bestMetric ?? table.pickColumn).name, label: "Detalle" });
+    charts.push({ type: "table", columnName: (bestMetric ?? table.pickColumn).name, label: "Detalle", isMetric: !!bestMetric });
     return charts;
   }
 
   if (isDim) {
-    // Boolean columns → pie (true/false distribution)
-    boolCols.slice(0, 1).forEach(c =>
-      charts.push({ type: "pie", columnName: c.name, label: "Distribución" })
-    );
+    // Dimensiones: solo pie/bar de distribución + tabla de detalle
+    // NUNCA line chart — las dims no son series temporales
 
-    // Primary category distribution
-    const catCol  = catCols[0] ?? dateColumns[0] ?? table.pickColumn;
-    const catName = catCol?.name ?? table.pickColumn.name;
-    const card    = cardinality(catCol);
+    const col = catCols[0] ?? table.pickColumn;
+    const colName = col?.name ?? table.pickColumn.name;
+    const uniqueCount = new Set(
+      (col?.values ?? table.pickColumn.values).filter(v => v != null)
+    ).size;
 
-    if (card === null || card <= 15) {
-      charts.push({ type: "pie", columnName: catName, label: "Distribución" });
+    if (uniqueCount <= 15) {
+      charts.push({ type: "pie", columnName: colName, label: "Distribución" });
     } else {
-      charts.push({ type: "bar", columnName: catName, xAxis: catName, metric: countMetric, label: "Distribución" });
+      charts.push({ type: "bar", columnName: colName, xAxis: colName, label: "Distribución" });
     }
-
-    // Volume over time (if dimension has a date like a time dimension)
-    if (businessDates.length > 0) {
-      charts.push({ type: "line", columnName: "registros", xAxis: businessDates[0].name, metric: countMetric, label: "Registros por fecha" });
-    }
-
-    charts.push({ type: "table", columnName: catName, label: "Detalle" });
+    charts.push({ type: "table", columnName: colName, label: "Detalle" });
     return charts;
   }
 
@@ -690,7 +720,7 @@ const buildDashboardConfig = ({ etlName, dashUuid, charts }) => {
 const dashboardYaml = (cfg) => dump(buildDashboardConfig(cfg));
 
 const slugify = (s) =>
-  String(s).normalize("NFD").replace(/[̀-ͯ]/g, "")
+  String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 60) || "etl";
 
 // ── Main ZIP export ───────────────────────────────────────────────────────────
@@ -714,16 +744,17 @@ export async function generateSupersetZip(etl, sqlalchemyUri = "postgresql://use
 
     for (const spec of selectChartsForTable(table)) {
       const chartUuid = uuid();
-      const labelId   = spec.xAxis ?? spec.columnName ?? spec.label;
-      const chartLabel = `${table.name} - ${labelId} (${spec.label})`;
+      const chartLabel = spec.type === "line"
+        ? `${table.name} - ${spec.columnName} por ${spec.xAxis} (${spec.label})`
+        : `${table.name} - ${spec.xAxis ?? spec.columnName ?? spec.label} (${spec.label})`;
       const common = { tableName: table.name, columnName: spec.columnName, dsUuid, chartUuid };
 
       let yamlContent;
-      if      (spec.type === "table")      yamlContent = tableChartYaml(common);
+      if      (spec.type === "table")      yamlContent = tableChartYaml({ ...common, isMetric: spec.isMetric ?? false });
       else if (spec.type === "pie")        yamlContent = pieChartYaml(common);
       else if (spec.type === "bar")        yamlContent = barChartYaml({ ...common, xAxis: spec.xAxis, metric: spec.metric });
       else if (spec.type === "line")       yamlContent = lineChartYaml({ ...common, xAxis: spec.xAxis, metric: spec.metric });
-      else if (spec.type === "big_number") yamlContent = bigNumberYaml({ ...common, metric: spec.metric });
+      else if (spec.type === "big_number") yamlContent = bigNumberYaml(common);
 
       if (!yamlContent) continue;
       folder.file(`charts/${slugify(chartLabel)}_${chartUuid.slice(0, 8)}.yaml`, yamlContent);
