@@ -3,6 +3,8 @@
   flex-direction: column;
   gap: 24px;
   max-width: 900px;
+  width: 100%;
+  min-width: 0;
   margin: 0 auto;
   padding: 0 0 40px;
 }
@@ -56,6 +58,13 @@
   gap: 12px;
 }
 
+.infer-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .infer-panel__title {
   font-size: 13px;
   font-weight: 700;
@@ -63,6 +72,25 @@
   letter-spacing: 0.06em;
   color: var(--text-h);
   margin: 0;
+}
+
+.infer-panel__copy-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.infer-panel__copy-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 .infer-panel__ddl {
@@ -168,6 +196,17 @@
   background: var(--accent);
   color: #fff;
   border: 1.5px solid var(--accent);
+}
+
+.infer-btn--back {
+  background: var(--bg);
+  color: var(--text);
+  border: 1.5px solid var(--border);
+}
+
+.infer-btn--back:not(:disabled):hover {
+  border-color: var(--text);
+  opacity: 0.8;
 }
 
 .infer-btn--secondary:not(:disabled):hover,

@@ -1,4 +1,7 @@
 import logging
+import os
+import shutil
+import sys
 from contextlib import asynccontextmanager
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
@@ -14,9 +17,26 @@ _log_dir.mkdir(exist_ok=True)
 
 _fmt = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
+
+class _SafeTimedRotatingFileHandler(TimedRotatingFileHandler):
+    """On Windows, os.rename() fails when a sibling process holds the file open.
+    Fall back to copy+truncate so the active writers keep their handles intact."""
+
+    def rotate(self, source: str, dest: str) -> None:
+        if sys.platform == "win32":
+            try:
+                os.rename(source, dest)
+            except PermissionError:
+                shutil.copy2(source, dest)
+                with open(source, "w"):
+                    pass
+        else:
+            super().rotate(source, dest)
+
+
 # Rotación diaria; retención 90 días (Ley 18.331 — Limitación de conservación).
 # Los archivos rotan a medianoche UTC y se nombran generaciones.log.YYYY-MM-DD.
-_file_handler = TimedRotatingFileHandler(
+_file_handler = _SafeTimedRotatingFileHandler(
     _log_dir / "generaciones.log",
     when="midnight",
     interval=1,

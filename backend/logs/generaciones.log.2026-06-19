@@ -1,0 +1,4 @@
+2026-06-19 17:43:31,311 | INFO | app.models.anthropic_llm | Anthropic client — región de inferencia: ca
+2026-06-19 17:45:09,819 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-19 17:45:09,843 | INFO | app.models.anthropic_llm | Anthropic completado — Modelo: claude-sonnet-4-6 | Intento: 1 | Tokens enviados: 6900 | Tokens recibidos: 8192 | stop_reason: max_tokens | Tiempo: 98526 ms
+2026-06-19 17:45:09,847 | ERROR | app.routers.ai | JSON parse error: Expecting value: line 1 column 1 (char 0)

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from app.models.llm_base import BaseLLM
 from app.schemas.etl_schemas import ETLValidateRequest, ETLValidateResponse
+from app.schemas.llm_output_schemas import VALIDATOR_OUTPUT_SCHEMA
 
 
 def _load_system(filename: str) -> str:
@@ -22,8 +23,8 @@ async def validate_etl(req: ETLValidateRequest, llm: BaseLLM) -> ETLValidateResp
 {json.dumps(req.proceso_etl, ensure_ascii=False, indent=2)}
 ```
 """
-    resp = await llm.complete(prompt, _load_system("system_validator.txt"))
-    data = json.loads(resp.content)
+    resp = await llm.complete(prompt, _load_system("system_validator.txt"), schema=VALIDATOR_OUTPUT_SCHEMA)
+    data = resp.json_data
 
     return ETLValidateResponse(
         validaciones=data.get("validaciones", []),

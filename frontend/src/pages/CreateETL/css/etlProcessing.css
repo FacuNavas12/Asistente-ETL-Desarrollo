@@ -5,6 +5,91 @@
   padding: 20px;
 }
 
+/* ── Phase: waiting ─────────────────────────────────────────── */
+.checks-waiting {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.checks-waiting-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+/* ── Phase: building ─────────────────────────────────────────── */
+.checks-building-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.checks-building-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+/* ── KTR log stack ───────────────────────────────────────────── */
+.checks-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@keyframes logSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.checks-log-item {
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: monospace;
+  animation: logSlideIn 0.25s ease-out both;
+  transition: opacity 0.35s ease;
+}
+
+.checks-log-fade {
+  opacity: 0;
+}
+
+/* ── Spinner ─────────────────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.checks-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--primary, #6c63ff);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.checks-spinner--sm {
+  width: 15px;
+  height: 15px;
+  border-width: 2px;
+}
+
+/* ── Legacy (kept for INFERRING step) ───────────────────────── */
 .check-item {
   display: flex;
   align-items: center;

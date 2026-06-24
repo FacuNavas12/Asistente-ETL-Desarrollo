@@ -4,7 +4,7 @@ import { useEtl } from "@/context/EtlContext";
 import { useAuthFetch } from "@/hooks/useAuthFetch";
 import Layout from "@/components/layout/Layout";
 import EtlChecks from "../CreateETL/components/EtlChecks";
-import HomeModal from "../CreateETL/components/UnsavedChangesModal";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import JobForm from "./components/JobForm";
 import JobReview from "./components/JobReview";
 import JobResult from "./components/JobResult";
@@ -142,7 +142,11 @@ export default function CrearJob() {
   return (
     <Layout onHomeClick={() => setShowModal(true)}>
       {showModal && (
-        <HomeModal
+        <ConfirmModal
+          title="Tenés cambios sin guardar"
+          message="Si salís ahora, se descartarán todos los cambios no guardados."
+          confirmLabel="Descartar y salir"
+          cancelLabel="Cancelar"
           onConfirm={() => {
             if (dirty) {
               const name = (jobDescription.trim().split("\n")[0] || `Job #${jobs.length + 1}`).slice(0, 50);

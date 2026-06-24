@@ -286,3 +286,33 @@
 .etl-card--job:hover .etl-card__action {
   color: #6366f1;
 }
+
+.etl-card__delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  z-index: 1;
+}
+
+.etl-card:hover .etl-card__delete {
+  opacity: 1;
+}
+
+.etl-card__delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}

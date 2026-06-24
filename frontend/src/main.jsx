@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import AuthProvider from "./auth0/AuthProvider.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
 import { EtlProvider } from "./context/EtlContext.jsx";
+import { ToastProvider } from "./components/ui/Toast.jsx";
 import "@/styles/theme.css";
 
 const router = createBrowserRouter([
@@ -14,7 +15,9 @@ const router = createBrowserRouter([
       <AuthProvider>
         <ThemeProvider>
           <EtlProvider>
-            <App />
+            <ToastProvider>
+              <App />
+            </ToastProvider>
           </EtlProvider>
         </ThemeProvider>
       </AuthProvider>

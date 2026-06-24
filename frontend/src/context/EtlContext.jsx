@@ -150,8 +150,8 @@ export function EtlProvider({ children }) {
     return newJob.id;
   };
 
-  const saveInProgressEtl = (name, formData) => {
-    const existing = etls.find(e => e.status === "en_proceso");
+  const saveInProgressEtl = (name, formData, id = null) => {
+    const existing = id ? etls.find(e => e.id === id) : null;
     const entry = {
       id: existing?.id ?? crypto.randomUUID(),
       name: name || `ETL #${etls.length + 1}`,
@@ -164,6 +164,7 @@ export function EtlProvider({ children }) {
       ? etls.map(e => (e.id === existing.id ? entry : e))
       : [entry, ...etls];
     persist(ETLS_KEY, updated, setEtls);
+    return entry.id;
   };
 
   const savePendingJob = (name, formData) => {
@@ -182,6 +183,11 @@ export function EtlProvider({ children }) {
     persist(JOBS_KEY, updated, setJobs);
   };
 
+  const deleteEtl = (id) => {
+    const updated = etls.filter(e => e.id !== id);
+    persist(ETLS_KEY, updated, setEtls);
+  };
+
   const clearAll = () => {
     clearAllStoredData();
     setEtls([]);
@@ -191,7 +197,7 @@ export function EtlProvider({ children }) {
 
   return (
     <EtlContext.Provider value={{
-      etls, draft, saveDraft, clearDraft, addEtl, savePendingEtl, saveInProgressEtl,
+      etls, draft, saveDraft, clearDraft, addEtl, savePendingEtl, saveInProgressEtl, deleteEtl,
       jobs, addJob, savePendingJob,
       clearAll,
     }}>

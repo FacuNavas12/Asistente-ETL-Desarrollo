@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.models.llm_base import BaseLLM
 from app.schemas.etl_schemas import ETLDocumentRequest, ETLDocumentResponse
+from app.schemas.llm_output_schemas import DOCUMENT_OUTPUT_SCHEMA
 
 _DOCUMENT_SYSTEM = "system_validator.txt"
 
@@ -27,19 +28,14 @@ La documentación debe:
 3. Mencionar las reglas de negocio aplicadas
 4. Indicar los puntos de control de calidad del proceso
 
-Responde con un objeto JSON con la siguiente estructura:
-{{
-  "documentacion": "string — documentación completa en lenguaje natural"
-}}
-
 Proceso ETL a documentar:
 
 ```json
 {json.dumps(req.proceso_etl, ensure_ascii=False, indent=2)}
 ```
 """
-    resp = await llm.complete(prompt, _load_system(_DOCUMENT_SYSTEM))
-    data = json.loads(resp.content)
+    resp = await llm.complete(prompt, _load_system(_DOCUMENT_SYSTEM), schema=DOCUMENT_OUTPUT_SCHEMA)
+    data = resp.json_data
 
     return ETLDocumentResponse(
         documentacion=data.get("documentacion", ""),

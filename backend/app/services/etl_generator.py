@@ -6,14 +6,17 @@ RF14 — Sugerir visualizaciones para Apache Superset
 """
 from __future__ import annotations
 
-import json
+import logging
 from pathlib import Path
 from typing import Optional
+
+_log = logging.getLogger(__name__)
 
 from sqlalchemy.orm import Session
 
 from app.models.llm_base import BaseLLM, LLMResponse
 from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse
+from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
 from app.services.ktr_builder import build_ktr
 from app.services.lineage_builder import build_lineage
@@ -77,7 +80,12 @@ Verifica la consistencia de tipos y nombres entre las tres capas.
 
 
 def _build_response(resp: LLMResponse) -> ETLGenerateResponse:
-    data = json.loads(resp.content)
+    # json_data is always populated when schema= was passed to llm.complete()
+    data = resp.json_data
+    if data is None:
+        _log.error("LLM returned no json_data. raw=%r", (resp.content or "")[:200])
+        raise ValueError("LLM returned no structured data — cannot parse ETL response")
+
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_data = data.get("ktr", {})
     ktr_xml, ktr_filename = build_ktr(ktr_data, process_name)
@@ -107,7 +115,7 @@ async def generate_etl(
     ctx        = context_builder.build_model_context(req.origenTables, db)
     origen_txt = context_builder.format_model_context_for_prompt(ctx)
     prompt     = _build_prompt(req, origen_txt)
-    resp       = await llm.complete(prompt, _load_system("system_etl.txt"))
+    resp       = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
     return _build_response(resp)
 
 
@@ -115,6 +123,7 @@ async def generate_etl_from_inference(
     req: ETLFromInferenceRequest,
     llm: BaseLLM,
     db: Optional[Session] = None,
+    on_llm_done=None,
 ) -> ETLGenerateResponse:
     ctx        = context_builder.build_model_context(req.origenTables, db)
     origen_txt = context_builder.format_model_context_for_prompt(ctx)
@@ -141,5 +150,7 @@ Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
 Las estructuras STG y DWH ya fueron validadas por el usuario — usá exactamente esos nombres de tablas y columnas.
 Verifica la consistencia de tipos y nombres entre las tres capas.
 """
-    resp = await llm.complete(prompt, _load_system("system_etl.txt"))
+    resp = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
+    if on_llm_done is not None:
+        await on_llm_done()
     return _build_response(resp)

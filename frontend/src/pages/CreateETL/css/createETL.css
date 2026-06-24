@@ -163,6 +163,17 @@
   transform: scale(0.97);
 }
 
+.etl-infer-header-btn--next {
+  background: var(--bg);
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+  box-shadow: none;
+}
+
+.etl-infer-header-btn--next:hover {
+  background: var(--accent-bg);
+}
+
 /* ── Guardar button in the header row ── */
 .etl-save-btn {
   padding: 9px 18px;

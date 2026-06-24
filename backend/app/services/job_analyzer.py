@@ -23,7 +23,7 @@ from xml.etree import ElementTree as ET
 
 from fastapi import UploadFile
 
-from app.models.llm_base import BaseLLM
+from app.models.llm_base import BaseLLM, LLMResponse
 from app.schemas.job_schemas import (
     JobAnalyzeResponse,
     JobEntry,
@@ -32,6 +32,7 @@ from app.schemas.job_schemas import (
     JobRefineRequest,
     KTRMetadata,
 )
+from app.schemas.llm_output_schemas import JOB_PLAN_OUTPUT_SCHEMA, JOB_EXPLAIN_OUTPUT_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -202,8 +203,10 @@ Respondé ÚNICAMENTE con el JSON de explicación indicado en el system prompt."
 
 # ─── Response parser ──────────────────────────────────────────────────────────
 
-def _parse_job_plan(raw: str) -> JobPlan:
-    data = json.loads(raw)
+def _parse_job_plan(resp: LLMResponse) -> JobPlan:
+    data = resp.json_data
+    if data is None:
+        raise ValueError("LLM returned no structured data — json_data is None")
     if "execution_order" not in data:
         raise ValueError("La respuesta del modelo no contiene execution_order.")
     if not data["execution_order"]:
@@ -421,14 +424,8 @@ async def analyze_job(
     session_id = _save_ktr_files(files_content)
     system = _load_system_prompt(_SYSTEM_ANALYZE)
     prompt = _build_analyze_prompt(metas, job_description, business_rules)
-    resp = await main_llm.complete(prompt, system)
-
-    try:
-        job_plan = _parse_job_plan(resp.content)
-    except (ValueError, KeyError) as e:
-        logger.warning("Primer intento de análisis de job inválido (%s), reintentando...", e)
-        resp = await main_llm.complete(prompt, system)
-        job_plan = _parse_job_plan(resp.content)
+    resp = await main_llm.complete(prompt, system, schema=JOB_PLAN_OUTPUT_SCHEMA)
+    job_plan = _parse_job_plan(resp)
 
     return JobAnalyzeResponse(
         job_plan=job_plan,
@@ -441,14 +438,8 @@ async def analyze_job(
 async def refine_job(request: JobRefineRequest, main_llm: BaseLLM) -> JobAnalyzeResponse:
     system = _load_system_prompt(_SYSTEM_ANALYZE)
     prompt = _build_refine_prompt(request)
-    resp = await main_llm.complete(prompt, system)
-
-    try:
-        job_plan = _parse_job_plan(resp.content)
-    except (ValueError, KeyError) as e:
-        logger.warning("Primer intento de refinamiento de job inválido (%s), reintentando...", e)
-        resp = await main_llm.complete(prompt, system)
-        job_plan = _parse_job_plan(resp.content)
+    resp = await main_llm.complete(prompt, system, schema=JOB_PLAN_OUTPUT_SCHEMA)
+    job_plan = _parse_job_plan(resp)
 
     return JobAnalyzeResponse(
         job_plan=job_plan,
@@ -462,11 +453,10 @@ async def generate_job(session_id: str, job_plan: JobPlan, secondary_llm: BaseLL
     kjb_xml = build_kjb_xml(job_plan)
 
     explain_prompt = _build_explain_prompt(job_plan)
-    resp = await secondary_llm.complete(explain_prompt, _load_system_prompt(_SYSTEM_EXPLAIN))
-    try:
-        explanation = json.loads(resp.content).get("explanation", resp.content)
-    except (json.JSONDecodeError, AttributeError):
-        explanation = resp.content or ""
+    resp = await secondary_llm.complete(
+        explain_prompt, _load_system_prompt(_SYSTEM_EXPLAIN), schema=JOB_EXPLAIN_OUTPUT_SCHEMA
+    )
+    explanation = resp.json_data.get("explanation", "") if resp.json_data else ""
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     kjb_filename = f"{_sanitize_filename(job_plan.job_name)}_{ts}.kjb"

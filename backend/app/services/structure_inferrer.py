@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.models.llm_base import BaseLLM, LLMResponse
 from app.schemas.etl_schemas import InferRequest, RefineRequest, InferResponse
+from app.schemas.llm_output_schemas import INFERENCE_OUTPUT_SCHEMA
 from app.services import context_builder
 
 logger = logging.getLogger(__name__)
@@ -124,7 +125,9 @@ Sin texto adicional."""
 
 
 def _parse_response(resp: LLMResponse) -> InferResponse:
-    data = json.loads(resp.content)
+    data = resp.json_data
+    if data is None:
+        raise ValueError("LLM returned no structured data — json_data is None")
 
     if "stg_definition" not in data or "dwh_model" not in data:
         raise ValueError("La respuesta del modelo no contiene stg_definition o dwh_model.")
@@ -152,22 +155,12 @@ def _parse_response(resp: LLMResponse) -> InferResponse:
 async def infer_structures(request: InferRequest, llm: BaseLLM, db: Optional[Session] = None) -> InferResponse:
     prompt = _build_infer_prompt(request, db)
     system = _load_system(_SYSTEM_PROMPT)
-    resp   = await llm.complete(prompt, system)
-    try:
-        return _parse_response(resp)
-    except (ValueError, KeyError) as e:
-        logger.warning("Primer intento de inferencia inválido (%s), reintentando...", e)
-        resp = await llm.complete(prompt, system)
-        return _parse_response(resp)
+    resp   = await llm.complete(prompt, system, schema=INFERENCE_OUTPUT_SCHEMA)
+    return _parse_response(resp)
 
 
 async def refine_structures(request: RefineRequest, llm: BaseLLM, db: Optional[Session] = None) -> InferResponse:
     prompt = _build_refine_prompt(request, db)
     system = _load_system(_SYSTEM_PROMPT)
-    resp   = await llm.complete(prompt, system)
-    try:
-        return _parse_response(resp)
-    except (ValueError, KeyError) as e:
-        logger.warning("Primer intento de refinamiento inválido (%s), reintentando...", e)
-        resp = await llm.complete(prompt, system)
-        return _parse_response(resp)
+    resp   = await llm.complete(prompt, system, schema=INFERENCE_OUTPUT_SCHEMA)
+    return _parse_response(resp)

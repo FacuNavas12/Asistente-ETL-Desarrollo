@@ -1,8 +1,10 @@
+import asyncio
 import json
 import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -40,6 +42,19 @@ router = APIRouter(tags=["ETL"], dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 
+class _KtrLogHandler(logging.Handler):
+    """Forwards ktr_builder log messages into an asyncio queue for SSE streaming."""
+    def __init__(self, queue: asyncio.Queue):
+        super().__init__()
+        self.queue = queue
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.queue.put_nowait({"type": "ktr_log", "message": self.format(record)})
+        except asyncio.QueueFull:
+            pass
+
+#TODO: modelo anthropic devuelve algo que da error 502 mal manejado de nuestro lado.
 async def _handle(fn, *args):
     try:
         return await fn(*args)
@@ -132,6 +147,67 @@ async def generate_from_inference(
 ):
     """Genera el proceso ETL completo usando estructuras STG/DWH inferidas por el modelo."""
     return await _handle(generate_etl_from_inference, req, llm, db)
+
+
+@router.post("/api/v1/etl/generate-from-inference/stream")
+async def generate_from_inference_sse(
+    req: ETLFromInferenceRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
+    """SSE stream: emite llm_done → ktr_log* → result (o error)."""
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue(maxsize=200)
+
+        ktr_logger = logging.getLogger("app.services.ktr_builder")
+        handler = _KtrLogHandler(queue)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        handler.setLevel(logging.DEBUG)
+        ktr_logger.addHandler(handler)
+
+        result_box: list = []
+        error_box:  list = []
+
+        async def on_llm_done():
+            await queue.put({"type": "llm_done"})
+
+        async def run():
+            try:
+                result = await generate_etl_from_inference(req, llm, db, on_llm_done=on_llm_done)
+                result_box.append(result)
+            except Exception as exc:
+                error_box.append(exc)
+            finally:
+                await queue.put({"type": "done"})
+
+        task = asyncio.create_task(run())
+
+        try:
+            while True:
+                msg = await queue.get()
+                if msg["type"] == "done":
+                    if error_box:
+                        payload = json.dumps({"type": "error", "message": str(error_box[0])})
+                    else:
+                        data = result_box[0].model_dump() if hasattr(result_box[0], "model_dump") else result_box[0].dict()
+                        payload = json.dumps({"type": "result", "data": data})
+                    yield f"data: {payload}\n\n"
+                    break
+                elif msg["type"] == "ktr_log":
+                    yield f"data: {json.dumps(msg)}\n\n"
+                    await asyncio.sleep(0.12)
+                else:
+                    yield f"data: {json.dumps(msg)}\n\n"
+        finally:
+            ktr_logger.removeHandler(handler)
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Linaje de datos ───────────────────────────────────────────────────────────

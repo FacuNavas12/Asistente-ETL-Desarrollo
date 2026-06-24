@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
 import { ETL_STATUS } from "@/constants/status";
 import Layout from "@/components/layout/Layout";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import "./Home.css";
 
 const ETL_ICONS  = ["⚡", "🔄", "📊", "🔗", "🗃️", "⚙️", "🧩", "📦"];
@@ -13,13 +14,20 @@ const FILTERS    = [
   { key: "job", label: "Job" },
 ];
 
-function EtlCard({ etl, index, onClick }) {
+function EtlCard({ etl, index, onClick, onDelete }) {
   const status = ETL_STATUS[etl.status] ?? ETL_STATUS.done;
   const isIncomplete = etl.status === "pending" || etl.status === "en_proceso";
   const action = isIncomplete ? "Continuar →" : "Ver detalle →";
 
   return (
     <div className="etl-card" style={{ animationDelay: `${index * 60}ms` }} onClick={onClick}>
+      <button
+        className="etl-card__delete"
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        title="Eliminar"
+      >
+        ×
+      </button>
       <div className="etl-card__icon">{ETL_ICONS[index % ETL_ICONS.length]}</div>
       <span className="etl-card__type-tag etl-card__type-tag--etl">Transformación</span>
       <span className="etl-card__name">{etl.name}</span>
@@ -85,8 +93,9 @@ function EmptyState({ filter }) {
 
 export default function Home() {
   const navigate = useNavigate();
-  const { etls, jobs } = useEtl();
+  const { etls, jobs, deleteEtl } = useEtl();
   const [filter, setFilter] = useState("all");
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const visibleEtls = filter !== "job" ? etls : [];
   const visibleJobs = filter !== "etl" ? jobs : [];
@@ -94,6 +103,16 @@ export default function Home() {
 
   return (
     <Layout>
+      {deleteTarget && (
+        <ConfirmModal
+          title="¿Eliminar esta Transformación?"
+          message="Esta acción la eliminará permanentemente del almacenamiento local. Si no la descargaste antes, no hay forma de recuperarla."
+          confirmLabel="Eliminar"
+          cancelLabel="Cancelar"
+          onConfirm={() => { deleteEtl(deleteTarget); setDeleteTarget(null); }}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
       <div className="home-page">
         <div className="home-header">
           <div className="home-header__left">
@@ -132,11 +151,12 @@ export default function Home() {
                 index={i}
                 onClick={() => {
                   if (etl.status === "pending" || etl.status === "en_proceso") {
-                    navigate("/etl-create", { state: { initialFormData: etl.formData } });
+                    navigate("/etl-create", { state: { initialFormData: etl.formData, etlId: etl.id } });
                   } else {
                     navigate(`/etl/${etl.id}`);
                   }
                 }}
+                onDelete={() => setDeleteTarget(etl.id)}
               />
             ))}
             {visibleJobs.map((job, i) => (

@@ -62,10 +62,15 @@ def _make_llm(captured: list[str], response_json: dict | None = None) -> BaseLLM
     }
     payload = json.dumps(response_json or default_resp)
 
-    async def _complete(user_message: str, system: str) -> LLMResponse:
+    async def _complete(user_message: str, system: str, schema=None) -> LLMResponse:
         captured.append(user_message)
         return LLMResponse(
-            content=payload, model="test", input_tokens=0, output_tokens=0, provider="test"
+            content=payload,
+            json_data=response_json or default_resp,
+            model="test",
+            input_tokens=0,
+            output_tokens=0,
+            provider="test",
         )
 
     llm = MagicMock(spec=BaseLLM)

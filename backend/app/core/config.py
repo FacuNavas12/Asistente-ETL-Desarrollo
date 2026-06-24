@@ -29,7 +29,7 @@ class Settings(BaseSettings):
         default="gemini-2.5-flash",
         validation_alias=AliasChoices("gemini_model", "google_model_main"),
     )
-    anthropic_model: str = "claude-sonnet-4-20250514"
+    anthropic_model: str = "claude-sonnet-4-6"
     # Residencia geográfica de inferencia (Ley 18.331 / AGESIC 5.0).
     # "ca" → Canadá (adecuación equivalente a Uruguay). Requiere Claude Enterprise o acuerdo de DPA.
     # Referencia: https://docs.anthropic.com/en/api/getting-started#geographic-routing

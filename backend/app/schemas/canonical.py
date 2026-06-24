@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 if TYPE_CHECKING:
     from app.schemas.context_schemas import ColumnProfile
@@ -59,6 +59,26 @@ class ForeignKeyRef(BaseModel):
     fields: list[str]
     reference_resource: str      # "schema.table"
     reference_fields: list[str]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_llm_names(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        # fields: accept "columns"
+        if "fields" not in data and "columns" in data:
+            data["fields"] = data.pop("columns")
+        # reference_resource: accept "table"
+        if "reference_resource" not in data and "table" in data:
+            data["reference_resource"] = data.pop("table")
+        # reference_fields: accept "column" (str) or "reference_columns"
+        if "reference_fields" not in data:
+            if "reference_columns" in data:
+                data["reference_fields"] = data.pop("reference_columns")
+            elif "column" in data:
+                val = data.pop("column")
+                data["reference_fields"] = [val] if isinstance(val, str) else val
+        return data
 
 
 # ── Semántica de columna (la llena el usuario) ────────────────────────────────

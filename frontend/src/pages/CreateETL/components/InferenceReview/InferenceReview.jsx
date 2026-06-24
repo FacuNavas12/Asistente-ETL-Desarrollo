@@ -1,7 +1,24 @@
 import { useState } from "react";
 import "../../css/inferenceReview.css";
 
-export default function InferenceReview({ inferResult, onConfirm, onRefine, isRefining }) {
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <button className="infer-panel__copy-btn" onClick={handleCopy} title="Copiar al portapapeles">
+      {copied ? "✓ Copiado" : "Copiar"}
+    </button>
+  );
+}
+
+export default function InferenceReview({ inferResult, onConfirm, onRefine, onBack, isRefining }) {
   const [correction, setCorrection] = useState("");
 
   const handleRefine = () => {
@@ -26,7 +43,10 @@ export default function InferenceReview({ inferResult, onConfirm, onRefine, isRe
 
       <div className="infer-review__panels">
         <div className="infer-panel">
-          <h3 className="infer-panel__title">Tabla STG</h3>
+          <div className="infer-panel__header">
+            <h3 className="infer-panel__title">Tabla STG</h3>
+            <CopyButton text={inferResult.stg_definition} />
+          </div>
           <pre className="infer-panel__ddl">{inferResult.stg_definition}</pre>
           {inferResult.stg_rationale && (
             <p className="infer-panel__rationale">
@@ -37,7 +57,10 @@ export default function InferenceReview({ inferResult, onConfirm, onRefine, isRe
         </div>
 
         <div className="infer-panel">
-          <h3 className="infer-panel__title">Modelo DWH</h3>
+          <div className="infer-panel__header">
+            <h3 className="infer-panel__title">Modelo DWH</h3>
+            <CopyButton text={inferResult.dwh_model} />
+          </div>
           <pre className="infer-panel__ddl">{inferResult.dwh_model}</pre>
           {inferResult.dwh_rationale && (
             <p className="infer-panel__rationale">
@@ -61,6 +84,13 @@ export default function InferenceReview({ inferResult, onConfirm, onRefine, isRe
           />
         </div>
         <div className="infer-review__actions">
+          <button
+            className="infer-btn infer-btn--back"
+            onClick={onBack}
+            disabled={isRefining}
+          >
+            ← Volver
+          </button>
           <button
             className="infer-btn infer-btn--secondary"
             onClick={handleRefine}
