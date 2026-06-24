@@ -1,21 +1,70 @@
 import JSZip from "jszip";
 import yaml from "js-yaml";
 
+// ── Constants ────────────────────────────────────────────────────────────────
 const VERSION = "1.0.0";
-const DB_NAME = "ETL_DWH";
+const DB_NAME  = "ETL_DWH";
 const DB_SCHEMA = "public";
-
 const dumpOpts = { noRefs: true, lineWidth: -1, sortKeys: false };
 const dump = (obj) => yaml.dump(obj, dumpOpts);
-
 const uuid = () => crypto.randomUUID();
 
+// UUID fijo para la conexión de base de datos — garantiza que todos los exports
+// compartan la misma entrada ETL_DWH en Superset. El usuario la configura una vez
+// y todos los dashboards (ETLs y Jobs) la reutilizan automáticamente.
+const DB_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+
+// Columnas de auditoría ETL — no aportan valor analítico en charts
+const AUDIT_KEYWORDS = [
+  "CARGA_DW","LOAD_DT","INSERT_DT","UPDATE_DT","CREATED_AT","UPDATED_AT",
+  "MODIFIED_AT","ETL_DATE","PROCESS_DATE","FECHA_CARGA","FECHA_INSERT",
+  "FECHA_UPDATE","FECHA_ETL","FECHA_PROCESO","DW_TIMESTAMP","AUDIT",
+];
+
+// ── Column name utilities ─────────────────────────────────────────────────────
 const isUsableColumn = (name) => {
   if (!name) return false;
-  const upper = String(name).toUpperCase();
-  if (upper.startsWith("SK_")) return false;
-  if (upper === "ID" || upper.endsWith("_ID")) return false;
+  const u = String(name).toUpperCase();
+  if (u.startsWith("SK_") || u.startsWith("FK_") || u.startsWith("ID_")) return false;
+  if (u === "ID" || u.endsWith("_ID")) return false;
   return true;
+};
+
+const inferSemanticType = (name, values) => {
+  const u = String(name).toUpperCase();
+  const sample = values.find(v => v !== null && v !== undefined && v !== "");
+
+  // Surrogate / foreign / natural keys → exclude
+  if (u === "ID" || u.endsWith("_ID") || u.startsWith("SK_") ||
+      u.startsWith("FK_") || u.startsWith("ID_")) return "id";
+
+  if (typeof sample === "boolean") return "boolean";
+
+  // Audit columns → treat as non-usable
+  if (AUDIT_KEYWORDS.some(k => u.includes(k))) return "id";
+
+  // Date detection
+  const DATE_KW = ["FECHA","DATE","DT","ANIO","MES","TRIMESTRE","DIA","YEAR","MONTH","DAY","PERIODO","QUARTER"];
+  if (DATE_KW.some(k => u.includes(k))) return "date";
+  if (typeof sample === "string" && /^\d{4}-\d{2}(-\d{2})?$/.test(sample)) return "date";
+
+  // Category-prefix indicators (TIPO_VENTA should be category, not metric even if VENTA is a metric keyword)
+  const CAT_PREFIXES = ["TIPO","CATEGORIA","ESTADO","CLASE","GRUPO","NOMBRE","DESC","DESCRIPCION","CODIGO","CODE","FLAG","IND","INDICADOR","GENERO","PAIS","REGION","CIUDAD","ZONA","SEGMENTO"];
+  if (CAT_PREFIXES.some(k => u === k || u.startsWith(k + "_"))) return "category";
+
+  // Metric detection — keywords cover the common DWH vocabulary
+  const METRIC_KW = ["MONTO","IMPORTE","TOTAL","PRECIO","CANTIDAD","QTY","AMOUNT","INGRESO","EGRESO",
+    "COSTO","VENTA","COMPRA","REVENUE","DESCUENTO","IMPUESTO","NETO","BRUTO","SALDO","COUNT",
+    "VALOR","STOCK","PESO","VOLUMEN","TASA","PORCENTAJE","RATIO","SCORE","RATING","HORAS",
+    "DIAS","UNIDADES","GANANCIA","MARGEN","UTILIDAD","FACTURACION","PAGOS","CUOTA","DEUDA",
+    "CREDITO","DEBITO","BALANCE","INVENTARIO","VENTAS","COMPRAS","PROMEDIO","AVG","SUM","MAX","MIN"];
+
+  if (typeof sample === "number" && METRIC_KW.some(k => u.includes(k))) return "metric";
+  // Name-only metric inference for KTR-parsed columns where values are all null
+  if (sample === undefined && METRIC_KW.some(k => u.includes(k))) return "metric";
+  if (typeof sample === "number") return "metric";
+
+  return "category";
 };
 
 const inferType = (values) => {
@@ -26,32 +75,227 @@ const inferType = (values) => {
   return "VARCHAR";
 };
 
+// ── Table builder ─────────────────────────────────────────────────────────────
+// Prefijos que indican tablas intermedias/staging — excluidas del export analítico
+const STAGING_PREFIXES = ["stg_","staging_","tmp_","temp_","ods_","raw_","wrk_","work_","landing_","src_","source_","ext_"];
+
+const isAnalyticsTable = (name) => {
+  const lower = String(name).toLowerCase();
+  return !STAGING_PREFIXES.some(p => lower.startsWith(p));
+};
+
 const buildTables = (dwhSample = {}) =>
   Object.entries(dwhSample)
+    .filter(([name]) => isAnalyticsTable(name))
     .map(([name, rows]) => {
       if (!Array.isArray(rows) || !rows.length) return null;
-      const columnNames = Array.from(rows.reduce((set, row) => {
-        Object.keys(row ?? {}).forEach(k => set.add(k));
-        return set;
+      const colNames = Array.from(rows.reduce((s, row) => {
+        // Normalizar a minúsculas para compatibilidad con PostgreSQL
+        Object.keys(row ?? {}).forEach(k => s.add(k.toLowerCase())); return s;
       }, new Set()));
-      const columns = columnNames.map(col => ({
-        name: col,
-        values: rows.map(r => r?.[col]),
+      const columns = colNames.map(col => ({
+        name: col, // ya está en minúsculas
+        // buscar el valor con la key original (mayúsculas o minúsculas)
+        values: rows.map(r => r?.[col] ?? r?.[col.toUpperCase()]),
+        semanticType: inferSemanticType(col, rows.map(r => r?.[col] ?? r?.[col.toUpperCase()])),
       }));
       const pickColumn =
-        columns.find(c => isUsableColumn(c.name) && c.values.some(v => v !== null && v !== undefined && v !== "")) ??
-        columns.find(c => c.values.some(v => v !== null && v !== undefined && v !== ""));
+        columns.find(c => isUsableColumn(c.name) && c.values.some(v => v != null && v !== "")) ??
+        columns.find(c => c.values.some(v => v != null && v !== "")) ??
+        columns[0];
       return pickColumn ? { name, columns, pickColumn } : null;
     })
     .filter(Boolean);
 
+// ── PDI step column extractors ────────────────────────────────────────────────
+// Reads text of a DIRECT child element only (avoids tag-name collisions with grandchildren)
+const directChildText = (el, tag) => {
+  for (const child of el.children) {
+    if (child.tagName === tag) return child.textContent?.trim() || null;
+  }
+  return null;
+};
+
+// ─ Category A: fields > field > column_name | stream_name
+// Covers: TableOutput, ConcurrentTableOutput, SynchronizeAfterMerge,
+//         PostgresBulkLoader, OraBulkLoader, MySQLBulkLoader, MSSQLBulkLoader,
+//         VerticaBulkLoader, TeraFastBulkLoader, MonetDBBulkLoader, DB2BulkLoader
+const extractFieldsCols = (step) =>
+  Array.from(step.querySelectorAll("fields > field")).map(f =>
+    (f.querySelector("column_name")?.textContent ||
+     f.querySelector("stream_name")?.textContent || "").trim()
+  ).filter(Boolean);
+
+// ─ Category B: DimensionLookup (SCD type 1/2)
+//   lookup keys: fields > key > name
+//   update attributes: fields > field > name
+//   surrogate key returned: fields > return > name
+const extractDimLookupCols = (step) => [
+  ...Array.from(step.querySelectorAll("fields > key")).map(k => k.querySelector("name")?.textContent?.trim()),
+  ...Array.from(step.querySelectorAll("fields > field")).map(f => f.querySelector("name")?.textContent?.trim()),
+  ...Array.from(step.querySelectorAll("fields > return")).map(r => r.querySelector("name")?.textContent?.trim()),
+].filter(Boolean);
+
+// ─ Category C: InsertUpdate / Update / Delete
+//   keys: lookup > key > name
+//   values: lookup > value > name
+const extractLookupCols = (step) => [
+  ...Array.from(step.querySelectorAll("lookup > key")).map(k => k.querySelector("name")?.textContent?.trim()),
+  ...Array.from(step.querySelectorAll("lookup > value")).map(v => v.querySelector("name")?.textContent?.trim()),
+].filter(Boolean);
+
+// ─ Category D: CombinationLookup (degenerate dimensions)
+//   fields: fields > field > name
+//   surrogate: return > name
+const extractCombinationCols = (step) => [
+  ...Array.from(step.querySelectorAll("fields > field")).map(f => f.querySelector("name")?.textContent?.trim()),
+  step.querySelector("return > name")?.textContent?.trim(),
+].filter(Boolean);
+
+// ─ Generic fallback: tries all known column-name patterns across PDI XML schemas.
+//   Covers custom plugins and any step type not listed explicitly.
+const extractGenericCols = (step) => {
+  const SELECTORS = [
+    "fields > field > column_name",
+    "fields > field > stream_name",
+    "fields > field > name",
+    "fields > key > name",
+    "fields > return > name",
+    "lookup > key > name",
+    "lookup > value > name",
+    "keys > key > name",
+    "values > value > name",
+    "mapping > field > name",
+    "mapping > field > column_name",
+    "field_in > name",
+    "field_out > name",
+  ];
+  const cols = new Set();
+  for (const sel of SELECTORS) {
+    for (const el of step.querySelectorAll(sel)) {
+      const text = el.textContent?.trim();
+      if (text && text.length > 0 && text.length < 128) cols.add(text);
+    }
+  }
+  return Array.from(cols);
+};
+
+// Step type → extractor mapping.
+// Any type NOT listed here falls through to extractGenericCols.
+const STEP_EXTRACTORS = {
+  // Standard table write (fields > field > column_name / stream_name)
+  TableOutput:            extractFieldsCols,
+  ConcurrentTableOutput:  extractFieldsCols,
+  SynchronizeAfterMerge:  extractFieldsCols,
+  // Bulk loaders — all use same fields structure as TableOutput
+  PostgresBulkLoader:     extractFieldsCols,
+  OraBulkLoader:          extractFieldsCols,
+  MySQLBulkLoader:        extractFieldsCols,
+  MSSQLBulkLoader:        extractFieldsCols,
+  VerticaBulkLoader:      extractFieldsCols,
+  TeraFastBulkLoader:     extractFieldsCols,
+  MonetDBBulkLoader:      extractFieldsCols,
+  DB2BulkLoader:          extractFieldsCols,
+  // SCD dimension
+  DimensionLookup:        extractDimLookupCols,
+  // Lookup-based writes
+  InsertUpdate:           extractLookupCols,
+  Update:                 extractLookupCols,
+  Delete:                 extractLookupCols,
+  // Degenerate dimension
+  CombinationLookup:      extractCombinationCols,
+};
+
+// Genera un valor sintético tipado para que inferSemanticType pueda usar el valor JS
+// (detecta boolean, number, string) además del nombre de la columna.
+const _syntheticValue = (colName) => {
+  const u = colName.toUpperCase();
+
+  if (u.startsWith("SK_") || u.startsWith("FK_") ||
+      u.startsWith("ID_") || u.endsWith("_ID") || u === "ID") return 1;
+
+  const dateKW = ["FECHA","DATE","DT","INICIO","FIN","COMIENZO"];
+  if (dateKW.some(k => u.includes(k))) return "2024-01-01";
+
+  if (u.startsWith("ES_") || u.startsWith("IS_") || u.startsWith("FLAG_") ||
+      u.includes("VIGENTE") || u.includes("ACTIVO") || u.includes("CAPITAL")) return true;
+
+  const numKW = ["MONTO","TOTAL","PRECIO","CANTIDAD","QTY","AREA","POBLACION",
+                 "DENSIDAD","DURACION","DIAS","PORCENTAJE","TASA","COSTO"];
+  if (numKW.some(k => u.includes(k))) return 0.0;
+
+  const intKW = ["ANIO","MES","DIA","TRIMESTRE","YEAR","MONTH","DAY","ORDEN",
+                 "ORDER","NUMERO","NUM","COUNT"];
+  if (intKW.some(k => u.includes(k))) return 1;
+
+  return "ejemplo";
+};
+
+// Parses PDI .ktr files and returns a dwh_sample-compatible object:
+// { tableName: [{ col1: <syntheticValue>, ... }] }
+// Works with ALL PDI output step types; unknown types use generic column extraction.
+export async function extractDwhSchemaFromKtrs(ktrFiles) {
+  const dwhSample = {};
+
+  const addCols = (tableName, cols) => {
+    if (!tableName || !cols.length) return;
+    const name = tableName.toLowerCase();
+    const existing = dwhSample[name]?.[0] ?? {};
+    cols.forEach(col => { if (!(col in existing)) existing[col] = _syntheticValue(col); });
+    dwhSample[name] = [existing];
+  };
+
+  for (const file of ktrFiles) {
+    let text;
+    try { text = await file.text(); } catch { continue; }
+    let doc;
+    try { doc = new DOMParser().parseFromString(text, "text/xml"); } catch { continue; }
+    if (doc.querySelector("parsererror")) continue;
+
+    for (const step of Array.from(doc.querySelectorAll("step"))) {
+      const stepType = directChildText(step, "type");
+      if (!stepType) continue;
+
+      const tableName = directChildText(step, "table");
+      if (!tableName) continue;
+
+      // Skip reject/log/audit tables in addition to staging prefixes
+      const tl = tableName.toLowerCase();
+      if (tl.includes("rechaz") || tl.includes("reject") ||
+          tl.includes("_log")   || tl.includes("audit")) continue;
+
+      const extractor = STEP_EXTRACTORS[stepType] ?? extractGenericCols;
+      addCols(tableName, extractor(step));
+    }
+  }
+
+  return dwhSample;
+}
+
+// ── Metrics ───────────────────────────────────────────────────────────────────
+const countMetric = {
+  label: "COUNT(*)",
+  expressionType: "SQL",
+  sqlExpression: "COUNT(*)",
+  hasCustomLabel: false,
+  optionName: "metric_count",
+};
+
+const sumMetric = (colName) => ({
+  label: `SUM(${colName})`,
+  expressionType: "SQL",
+  sqlExpression: `SUM(${colName})`,
+  hasCustomLabel: false,
+  optionName: `metric_sum_${colName.toLowerCase().replace(/\W/g, "_")}`,
+});
+
+// ── Database / dataset YAML ───────────────────────────────────────────────────
 const metadataYaml = () => dump({
   version: VERSION,
   type: "Dashboard",
   timestamp: new Date().toISOString(),
 });
 
-// FIX 4: sqlalchemyUri como parámetro; extra como dict YAML (no JSON string)
 const databaseYaml = (dbUuid, sqlalchemyUri) => dump({
   database_name: DB_NAME,
   sqlalchemy_uri: sqlalchemyUri,
@@ -89,20 +333,18 @@ const datasetYaml = (table, dsUuid, dbUuid) => dump({
   normalize_columns: false,
   always_filter_main_dttm: false,
   uuid: dsUuid,
-  metrics: [
-    {
-      metric_name: "count",
-      verbose_name: "COUNT(*)",
-      metric_type: "count",
-      expression: "COUNT(*)",
-      description: null,
-      d3format: null,
-      extra: null,
-      warning_text: null,
-    },
-  ],
+  metrics: [{
+    metric_name: "count",
+    verbose_name: "COUNT(*)",
+    metric_type: "count",
+    expression: "COUNT(*)",
+    description: null,
+    d3format: null,
+    extra: null,
+    warning_text: null,
+  }],
   columns: table.columns.map(c => ({
-    column_name: c.name,
+    column_name: c.name.toLowerCase(),
     verbose_name: null,
     is_dttm: false,
     is_active: true,
@@ -119,33 +361,30 @@ const datasetYaml = (table, dsUuid, dbUuid) => dump({
   database_uuid: dbUuid,
 });
 
-// FIX 2: expressionType "SQL" con sqlExpression evita el error
-// "Cannot compile Column object until its 'name' is assigned" de SQLAlchemy
-const countMetric = {
-  label: "COUNT(*)",
-  expressionType: "SQL",
-  sqlExpression: "COUNT(*)",
-  hasCustomLabel: false,
-  optionName: "metric_count",
-};
+// ── Superset chart YAML generators ────────────────────────────────────────────
+// Superset viz types used:
+//   table                    – Table (aggregate mode, groupby + metrics)
+//   pie                      – Pie / donut chart (groupby category, COUNT metric)
+//   echarts_timeseries_bar   – Bar chart (temporal or categorical x-axis)
+//   echarts_timeseries_line  – Line chart (temporal or categorical x-axis)
+//   big_number_total         – KPI big number (single metric, no time axis)
 
-// FIX 1: params como objeto directo (YAML dict), no JSON string
-const tableChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
+const tableChartYaml = ({ tableName, columnName, dsUuid, chartUuid, isMetric = false }) => {
   const params = {
     datasource: `${dsUuid}__table`,
     viz_type: "table",
     url_params: {},
     time_grain_sqla: null,
     time_range: "No filter",
-    query_mode: "aggregate",
-    groupby: [columnName],
-    metrics: [countMetric],
-    all_columns: [],
+    query_mode: isMetric ? "raw" : "aggregate",
+    groupby: isMetric ? [] : [columnName],
+    metrics: isMetric ? [] : [countMetric],
+    all_columns: isMetric ? [columnName] : [],
     percent_metrics: [],
     adhoc_filters: [],
     order_by_cols: [],
     order_desc: true,
-    row_limit: 10000,
+    row_limit: 1000,
     include_time: false,
     show_cell_bars: true,
     align_pn: false,
@@ -170,7 +409,6 @@ const tableChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
   });
 };
 
-// FIX 1: params como objeto directo (YAML dict), no JSON string
 const pieChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
   const params = {
     datasource: `${dsUuid}__table`,
@@ -206,69 +444,248 @@ const pieChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
   });
 };
 
+// Bar chart — echarts_timeseries_bar supports both temporal and categorical x-axis
+const barChartYaml = ({ tableName, columnName, xAxis, metric, dsUuid, chartUuid }) => {
+  const params = {
+    datasource: `${dsUuid}__table`,
+    viz_type: "echarts_timeseries_bar",
+    x_axis: xAxis ?? columnName,
+    metrics: [metric ?? countMetric],
+    groupby: [],
+    adhoc_filters: [],
+    row_limit: 10000,
+    time_range: "No filter",
+    color_scheme: "supersetColors",
+    extra_form_data: {},
+    orientation: "vertical",
+    x_axis_sort_asc: true,
+    x_axis_sort_series: "name",
+  };
+  return dump({
+    slice_name: `${tableName} - ${xAxis ?? columnName} (Barras)`,
+    description: null,
+    certified_by: null,
+    certification_details: null,
+    viz_type: "echarts_timeseries_bar",
+    params,
+    query_context: null,
+    cache_timeout: null,
+    uuid: chartUuid,
+    version: VERSION,
+    dataset_uuid: dsUuid,
+    is_managed_externally: false,
+    external_url: null,
+  });
+};
+
+// Line chart — echarts_timeseries_line, ideal for metric over time
+const lineChartYaml = ({ tableName, columnName, xAxis, metric, dsUuid, chartUuid }) => {
+  const params = {
+    datasource: `${dsUuid}__table`,
+    viz_type: "echarts_timeseries_line",
+    x_axis: xAxis,
+    metrics: [metric ?? countMetric],
+    groupby: [],
+    adhoc_filters: [],
+    row_limit: 10000,
+    time_range: "No filter",
+    color_scheme: "supersetColors",
+    extra_form_data: {},
+  };
+  return dump({
+    slice_name: `${tableName} - ${columnName} (Línea)`,
+    description: null,
+    certified_by: null,
+    certification_details: null,
+    viz_type: "echarts_timeseries_line",
+    params,
+    query_context: null,
+    cache_timeout: null,
+    uuid: chartUuid,
+    version: VERSION,
+    dataset_uuid: dsUuid,
+    is_managed_externally: false,
+    external_url: null,
+  });
+};
+
+// Big number KPI — big_number_total, shows a single aggregate metric prominently
+const bigNumberYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
+  const kpiMetric = columnName
+    ? { label: `SUM(${columnName})`, expressionType: "SQL", sqlExpression: `SUM(${columnName})`, hasCustomLabel: false, optionName: `metric_sum_${columnName}` }
+    : countMetric;
+  const params = {
+    datasource: `${dsUuid}__table`,
+    viz_type: "big_number_total",
+    metric: kpiMetric,
+    adhoc_filters: [],
+    time_range: "No filter",
+    extra_form_data: {},
+  };
+  return dump({
+    slice_name: `${tableName} - ${columnName ?? "Total"} (KPI)`,
+    description: null,
+    certified_by: null,
+    certification_details: null,
+    viz_type: "big_number_total",
+    params,
+    query_context: null,
+    cache_timeout: null,
+    uuid: chartUuid,
+    version: VERSION,
+    dataset_uuid: dsUuid,
+    is_managed_externally: false,
+    external_url: null,
+  });
+};
+
+// ── Smart chart selection ─────────────────────────────────────────────────────
+// Returns an array of chart specs: { type, columnName, xAxis?, metric?, label }
+// Chart selection logic per table type:
+//
+//  FACT   → big_number (KPI) + line (metric over time) + bar (metric by category) + table
+//  DIM    → pie | bar (distribution) + [line if dates present] + table
+//  BRIDGE → big_number (count) + table
+//  OTHER  → pie | bar (distribution) + table
+//
+// Superset viz types chosen:
+//  big_number_total         – KPI, no time-axis dependency
+//  echarts_timeseries_line  – trend over date/time column
+//  echarts_timeseries_bar   – distribution by category or time
+//  pie                      – composition for low-cardinality categories (≤15 unique values)
+//  table                    – always included as detail view
+const selectChartsForTable = (table) => {
+  const charts = [];
+  const allUsable    = table.columns.filter(c => isUsableColumn(c.name));
+  const dateColumns  = allUsable.filter(c => c.semanticType === "date");
+  const metricCols   = allUsable.filter(c => c.semanticType === "metric");
+  const catCols      = allUsable.filter(c => c.semanticType === "category");
+  const boolCols     = table.columns.filter(c => c.semanticType === "boolean");
+
+  const isFact   = /^(fact_|hecho_|fct_|ft_)/i.test(table.name);
+  const isDim    = /^(dim_|dimension_|d_)/i.test(table.name);
+  const isBridge = /^(bridge_|br_|rel_|relacion_)/i.test(table.name);
+
+  const hasValues = table.columns.some(c => c.values.some(v => v != null));
+  const cardinality = (col) => hasValues
+    ? new Set(col.values.filter(v => v != null)).size
+    : null; // null = unknown (KTR-parsed, no sample data)
+
+  // Business dates — exclude audit/ETL load timestamps
+  const businessDates = dateColumns.filter(c =>
+    !AUDIT_KEYWORDS.some(k => c.name.toUpperCase().includes(k))
+  );
+
+  // Real metric columns — exclude any ID-like numerics that slipped through
+  const realMetrics = metricCols.filter(c => {
+    const u = c.name.toUpperCase();
+    return !u.startsWith("ID_") && !u.endsWith("_ID") &&
+           !u.startsWith("SK_") && !u.startsWith("FK_");
+  });
+  const bestMetric    = realMetrics[0] ?? metricCols[0];
+  const bestMetricObj = bestMetric ? sumMetric(bestMetric.name) : countMetric;
+
+  if (isBridge) {
+    charts.push({ type: "big_number", columnName: null, label: "Total registros" });
+    charts.push({ type: "table", columnName: (allUsable[0] ?? table.pickColumn).name, label: "Detalle" });
+    return charts;
+  }
+
+  if (isFact) {
+    // KPI for best metric
+    charts.push({
+      type: "big_number",
+      columnName: bestMetric?.name ?? null,
+      label: "KPI",
+    });
+    // Second KPI if available
+    const second = realMetrics[1];
+    if (second) {
+      charts.push({ type: "big_number", columnName: second.name, label: "KPI" });
+    }
+    // Trend over time
+    if (businessDates.length > 0 && bestMetric) {
+      charts.push({
+        type: "line",
+        columnName: bestMetric.name,
+        xAxis: businessDates[0].name,
+        metric: bestMetricObj,
+        label: "Evolución temporal",
+      });
+    }
+    // Breakdown by category
+    if (catCols.length > 0 && bestMetric) {
+      charts.push({
+        type: "bar",
+        columnName: bestMetric.name,
+        xAxis: catCols[0].name,
+        metric: bestMetricObj,
+        label: "Por categoría",
+      });
+    }
+    charts.push({ type: "table", columnName: (bestMetric ?? table.pickColumn).name, label: "Detalle", isMetric: !!bestMetric });
+    return charts;
+  }
+
+  if (isDim) {
+    // Dimensiones: solo pie/bar de distribución + tabla de detalle
+    // NUNCA line chart — las dims no son series temporales
+
+    const col = catCols[0] ?? table.pickColumn;
+    const colName = col?.name ?? table.pickColumn.name;
+    const uniqueCount = new Set(
+      (col?.values ?? table.pickColumn.values).filter(v => v != null)
+    ).size;
+
+    if (uniqueCount <= 15) {
+      charts.push({ type: "pie", columnName: colName, label: "Distribución" });
+    } else {
+      charts.push({ type: "bar", columnName: colName, xAxis: colName, label: "Distribución" });
+    }
+    charts.push({ type: "table", columnName: colName, label: "Detalle" });
+    return charts;
+  }
+
+  // Generic / unknown table type
+  const col  = catCols[0] ?? table.pickColumn;
+  const card = cardinality(col);
+  if (card !== null && card > 15) {
+    charts.push({ type: "bar", columnName: col.name, xAxis: col.name, metric: countMetric, label: "Distribución" });
+  } else {
+    charts.push({ type: "pie", columnName: col.name, label: "Distribución" });
+  }
+  charts.push({ type: "table", columnName: col.name, label: "Detalle" });
+  return charts;
+};
+
+// ── Dashboard layout builder ──────────────────────────────────────────────────
 const buildDashboardConfig = ({ etlName, dashUuid, charts }) => {
   const rows = [];
-  for (let i = 0; i < charts.length; i += 2) {
-    rows.push(charts.slice(i, i + 2));
-  }
+  for (let i = 0; i < charts.length; i += 2) rows.push(charts.slice(i, i + 2));
 
   const position = {
     DASHBOARD_VERSION_KEY: "v2",
-    ROOT_ID: {
-      type: "ROOT",
-      id: "ROOT_ID",
-      children: ["GRID_ID"],
-    },
-    GRID_ID: {
-      type: "GRID",
-      id: "GRID_ID",
-      children: rows.map((_, idx) => `ROW-${idx}`),
-      parents: ["ROOT_ID"],
-    },
+    ROOT_ID: { type: "ROOT", id: "ROOT_ID", children: ["GRID_ID"] },
+    GRID_ID: { type: "GRID", id: "GRID_ID", children: rows.map((_, i) => `ROW-${i}`), parents: ["ROOT_ID"] },
   };
 
   rows.forEach((row, rowIdx) => {
-    const rowId = `ROW-${rowIdx}`;
+    const rowId    = `ROW-${rowIdx}`;
     const chartIds = row.map(c => `CHART-${c.chartUuid.slice(0, 8)}`);
     position[rowId] = {
-      type: "ROW",
-      id: rowId,
-      children: chartIds,
+      type: "ROW", id: rowId, children: chartIds,
       meta: { background: "BACKGROUND_TRANSPARENT" },
       parents: ["ROOT_ID", "GRID_ID"],
     };
     row.forEach((c, colIdx) => {
       const chartId = chartIds[colIdx];
       position[chartId] = {
-        type: "CHART",
-        id: chartId,
-        children: [],
-        meta: {
-          width: 6,
-          height: 50,
-          chartId: 0,
-          sliceName: c.sliceName,
-          uuid: c.chartUuid,
-        },
+        type: "CHART", id: chartId, children: [],
+        meta: { width: 6, height: 50, chartId: 0, sliceName: c.sliceName, uuid: c.chartUuid },
         parents: ["ROOT_ID", "GRID_ID", rowId],
       };
     });
   });
-
-  const metadata = {
-    show_native_filters: true,
-    default_filters: "{}",  // FIX 3: string JSON, Superset llama json.loads() sobre este valor
-    filter_scopes: {},
-    expanded_slices: {},
-    refresh_frequency: 0,
-    timed_refresh_immune_slices: [],
-    color_scheme: "",
-    label_colors: {},
-    shared_label_colors: {},
-    cross_filters_enabled: false,
-    global_chart_configuration: {},
-    chart_configuration: {},
-  };
 
   return {
     dashboard_title: `ETL - ${etlName}`,
@@ -277,7 +694,20 @@ const buildDashboardConfig = ({ etlName, dashUuid, charts }) => {
     slug: null,
     uuid: dashUuid,
     position,
-    metadata,
+    metadata: {
+      show_native_filters: true,
+      default_filters: "{}",
+      filter_scopes: {},
+      expanded_slices: {},
+      refresh_frequency: 0,
+      timed_refresh_immune_slices: [],
+      color_scheme: "",
+      label_colors: {},
+      shared_label_colors: {},
+      cross_filters_enabled: false,
+      global_chart_configuration: {},
+      chart_configuration: {},
+    },
     version: VERSION,
     is_managed_externally: false,
     external_url: null,
@@ -290,24 +720,20 @@ const buildDashboardConfig = ({ etlName, dashUuid, charts }) => {
 const dashboardYaml = (cfg) => dump(buildDashboardConfig(cfg));
 
 const slugify = (s) =>
-  String(s).normalize("NFD").replace(/[̀-ͯ]/g, "")
+  String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 60) || "etl";
 
-// FIX 4: sqlalchemyUri como parámetro opcional (default: placeholder)
+// ── Main ZIP export ───────────────────────────────────────────────────────────
 export async function generateSupersetZip(etl, sqlalchemyUri = "postgresql://user:password@host:5432/dwh") {
   const dwhSample = etl?.result?.dwh_sample ?? {};
-  const tables = buildTables(dwhSample);
-  if (!tables.length) {
-    throw new Error("No hay datos en el DWH para exportar a Superset.");
-  }
+  const tables    = buildTables(dwhSample);
+  if (!tables.length) throw new Error("No hay datos en el DWH para exportar a Superset.");
 
-  const zip = new JSZip();
-  const root = `etl_${slugify(etl.name)}_export`;
-  const folder = zip.folder(root);
-
-  const dbUuid = uuid();
+  const zip    = new JSZip();
+  const folder = zip.folder(`etl_${slugify(etl.name)}_export`);
+  const dbUuid  = DB_UUID;
   const dashUuid = uuid();
-  const charts = [];
+  const allCharts = [];
 
   folder.file("metadata.yaml", metadataYaml());
   folder.file(`databases/${DB_NAME}.yaml`, databaseYaml(dbUuid, sqlalchemyUri));
@@ -316,39 +742,38 @@ export async function generateSupersetZip(etl, sqlalchemyUri = "postgresql://use
     const dsUuid = uuid();
     folder.file(`datasets/${DB_NAME}/${table.name}.yaml`, datasetYaml(table, dsUuid, dbUuid));
 
-    const tableUuid = uuid();
-    const pieUuid = uuid();
-    const tableName2 = `${table.name} - ${table.pickColumn.name} (Tabla)`;
-    const pieName = `${table.name} - ${table.pickColumn.name} (Torta)`;
+    for (const spec of selectChartsForTable(table)) {
+      const chartUuid = uuid();
+      const chartLabel = spec.type === "line"
+        ? `${table.name} - ${spec.columnName} por ${spec.xAxis} (${spec.label})`
+        : `${table.name} - ${spec.xAxis ?? spec.columnName ?? spec.label} (${spec.label})`;
+      const common = { tableName: table.name, columnName: spec.columnName, dsUuid, chartUuid };
 
-    folder.file(
-      `charts/${slugify(tableName2)}_${tableUuid.slice(0, 8)}.yaml`,
-      tableChartYaml({ tableName: table.name, columnName: table.pickColumn.name, dsUuid, chartUuid: tableUuid }),
-    );
-    folder.file(
-      `charts/${slugify(pieName)}_${pieUuid.slice(0, 8)}.yaml`,
-      pieChartYaml({ tableName: table.name, columnName: table.pickColumn.name, dsUuid, chartUuid: pieUuid }),
-    );
+      let yamlContent;
+      if      (spec.type === "table")      yamlContent = tableChartYaml({ ...common, isMetric: spec.isMetric ?? false });
+      else if (spec.type === "pie")        yamlContent = pieChartYaml(common);
+      else if (spec.type === "bar")        yamlContent = barChartYaml({ ...common, xAxis: spec.xAxis, metric: spec.metric });
+      else if (spec.type === "line")       yamlContent = lineChartYaml({ ...common, xAxis: spec.xAxis, metric: spec.metric });
+      else if (spec.type === "big_number") yamlContent = bigNumberYaml(common);
 
-    charts.push({ chartUuid: tableUuid, sliceName: tableName2 });
-    charts.push({ chartUuid: pieUuid, sliceName: pieName });
+      if (!yamlContent) continue;
+      folder.file(`charts/${slugify(chartLabel)}_${chartUuid.slice(0, 8)}.yaml`, yamlContent);
+      allCharts.push({ chartUuid, sliceName: chartLabel });
+    }
   }
 
   folder.file(
     `dashboards/${slugify(etl.name)}_${dashUuid.slice(0, 8)}.yaml`,
-    dashboardYaml({ etlName: etl.name, dashUuid, charts }),
+    dashboardYaml({ etlName: etl.name, dashUuid, charts: allCharts }),
   );
 
-  const readme = `# Dashboard Superset - ${etl.name}
-
-Importar en Superset:
-1. Settings -> Import Dashboards -> seleccionar este ZIP.
-2. Si la URI de base de datos no está configurada, editar en Settings -> Database Connections -> ETL_DWH.
-
-Tablas incluidas: ${tables.map(t => t.name).join(", ")}
-Charts generados: ${charts.length} (1 tabla + 1 torta por tabla).
-`;
-  folder.file("README.md", readme);
+  folder.file("README.md",
+    `# Dashboard Superset - ${etl.name}\n\n` +
+    `Importar en Superset: Settings → Import Dashboards → seleccionar este ZIP.\n` +
+    `Si la URI no está configurada, editar en Settings → Database Connections → ${DB_NAME}.\n\n` +
+    `Tablas: ${tables.map(t => t.name).join(", ")}\n` +
+    `Charts: ${allCharts.length}\n`
+  );
 
   return await zip.generateAsync({ type: "blob" });
 }
