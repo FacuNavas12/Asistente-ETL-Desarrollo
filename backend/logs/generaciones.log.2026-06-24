@@ -1,0 +1,327 @@
+2026-06-23 21:03:04,080 | WARNING | app.services.structure_inferrer | Could not parse source_structure for whitelisting: 6 validation errors for TablaOrigen
+canonical_schema.fields.1.references.fields
+  Field required [type=missing, input_value={'table': 'categorias', 'column': 'cod_categoria'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+canonical_schema.fields.1.references.reference_resource
+  Field required [type=missing, input_value={'table': 'categorias', 'column': 'cod_categoria'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+canonical_schema.fields.1.references.reference_fields
+  Field required [type=missing, input_value={'table': 'categorias', 'column': 'cod_categoria'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+canonical_schema.foreign_keys.0.fields
+  Field required [type=missing, input_value={'columns': ['cod_categor...ns': ['cod_categoria']}}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+canonical_schema.foreign_keys.0.reference_resource
+  Field required [type=missing, input_value={'columns': ['cod_categor...ns': ['cod_categoria']}}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+canonical_schema.foreign_keys.0.reference_fields
+  Field required [type=missing, input_value={'columns': ['cod_categor...ns': ['cod_categoria']}}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+2026-06-23 21:03:05,143 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-06-23 21:03:05,144 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:03:11,344 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:03:11,346 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 3453 | out: 1008 | stop: end_turn | 6201ms
+2026-06-23 21:19:37,726 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-06-23 21:19:37,727 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:19:43,216 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:19:43,218 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 1400 | out: 972 | stop: end_turn | 5491ms
+2026-06-23 21:22:17,618 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:22:40,828 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:22:40,836 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 4749 | out: 5087 | stop: end_turn | 23217ms
+2026-06-23 21:26:17,342 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:26:24,656 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:26:24,657 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 2070 | out: 1556 | stop: end_turn | 7315ms
+2026-06-23 21:27:08,076 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:27:49,820 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:27:49,824 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 6017 | out: 9683 | stop: end_turn | 41747ms
+2026-06-23 21:33:36,585 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:33:47,433 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:33:47,435 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 3095 | out: 2367 | stop: end_turn | 10850ms
+2026-06-23 21:34:44,667 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:35:26,425 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:37:37,477 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-06-23 21:37:37,478 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:38:32,223 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:38:32,226 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 7833 | out: 13123 | stop: end_turn | 54747ms
+2026-06-23 21:42:28,575 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:42:35,001 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:42:35,003 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 1638 | out: 1151 | stop: end_turn | 6427ms
+2026-06-23 21:43:45,604 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:44:21,519 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:44:21,521 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 5176 | out: 8410 | stop: end_turn | 35916ms
+2026-06-23 21:44:21,522 | INFO | app.services.ktr_builder | KTR: step type 'Write to log' normalizado a 'WriteToLog'
+2026-06-23 21:44:21,522 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-23 21:44:21,522 | INFO | app.services.ktr_builder | KTR: step type 'Filter rows' normalizado a 'FilterRows'
+2026-06-23 21:44:21,523 | INFO | app.services.ktr_builder | KTR: step type 'Add constants' normalizado a 'AddConstants'
+2026-06-23 21:44:21,523 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-23 21:44:21,523 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-23 21:44:21,523 | INFO | app.services.ktr_builder | KTR: step type 'String operations' normalizado a 'StringOperations'
+2026-06-23 21:44:21,523 | INFO | app.services.ktr_builder | KTR: step type 'Regex evaluation' normalizado a 'RegexEval'
+2026-06-23 21:44:21,524 | WARNING | app.services.ktr_builder | KTR: step type 'Regex evaluation' (canonical: 'RegexEval') not supported, using generic builder
+2026-06-23 21:44:21,524 | INFO | app.services.ktr_builder | KTR: step type 'If field value is null' normalizado a 'IfNull'
+2026-06-23 21:44:21,524 | INFO | app.services.ktr_builder | KTR: step type 'String operations' normalizado a 'StringOperations'
+2026-06-23 21:44:21,524 | INFO | app.services.ktr_builder | KTR: step type 'Add constants' normalizado a 'AddConstants'
+2026-06-23 21:44:21,524 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-23 21:44:21,524 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-23 21:44:21,525 | INFO | app.services.ktr_builder | KTR: step type 'Add constants' normalizado a 'AddConstants'
+2026-06-23 21:44:21,525 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-23 21:44:21,525 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-23 21:44:21,525 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-23 21:44:21,526 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-23 21:44:21,526 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-23 21:44:21,526 | INFO | app.services.ktr_builder | KTR: step type 'Group by' normalizado a 'GroupBy'
+2026-06-23 21:44:21,526 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-23 21:44:21,526 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-23 21:44:21,526 | INFO | app.services.ktr_builder | KTR: step type 'Merge rows (diff)' normalizado a 'MergeRows'
+2026-06-23 21:44:21,527 | INFO | app.services.ktr_builder | KTR: step type 'Dimension lookup/update' normalizado a 'DimensionLookup'
+2026-06-23 21:44:21,527 | INFO | app.services.ktr_builder | KTR: step type 'Dimension lookup/update' normalizado a 'DimensionLookup'
+2026-06-23 21:44:21,527 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-23 21:44:21,527 | INFO | app.services.ktr_builder | KTR: step type 'Insert / Update' normalizado a 'InsertUpdate'
+2026-06-23 21:44:21,527 | INFO | app.services.ktr_builder | KTR: step type 'Dimension lookup/update' normalizado a 'DimensionLookup'
+2026-06-23 21:44:21,527 | INFO | app.services.ktr_builder | KTR: step type 'Dimension lookup/update' normalizado a 'DimensionLookup'
+2026-06-23 21:44:21,528 | INFO | app.services.ktr_builder | KTR: step type 'Dimension lookup/update' normalizado a 'DimensionLookup'
+2026-06-23 21:44:21,528 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-23 21:44:21,528 | INFO | app.services.ktr_builder | KTR: step type 'Insert / Update' normalizado a 'InsertUpdate'
+2026-06-23 21:46:13,568 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 21:46:20,936 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 21:46:20,938 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 1638 | out: 1456 | stop: end_turn | 7370ms
+2026-06-23 23:16:21,364 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-06-23 23:16:21,365 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 23:16:27,778 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 23:16:27,779 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 1400 | out: 1172 | stop: end_turn | 6414ms
+2026-06-23 23:32:03,556 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-06-23 23:32:03,557 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 23:32:04,586 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-06-23 23:32:04,587 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 1/4): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro\nPlease retry in 54.891356525s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerDay-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '54s'}]}} — retrying in 1s
+2026-06-23 23:32:05,589 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 23:32:05,824 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-06-23 23:32:05,825 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 2/4): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-pro\nPlease retry in 53.651885669s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerDay-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '53s'}]}} — retrying in 2s
+2026-06-23 23:32:07,826 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 23:32:08,051 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-06-23 23:32:08,051 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 3/4): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-pro\nPlease retry in 51.428153058s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerDay-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '51s'}]}} — retrying in 4s
+2026-06-23 23:32:12,052 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 23:32:12,286 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-06-23 23:32:12,287 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 4/4): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-pro\nPlease retry in 47.191859202s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerDay-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '47s'}]}} — retrying in 8s
+2026-06-23 23:32:12,288 | ERROR | app.routers.ai | Service error: [Gemini] Max retries reached: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-pro\nPlease retry in 47.191859202s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerDay-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-pro'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '47s'}]}}
+2026-06-23 23:34:00,125 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-06-23 23:34:00,126 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 23:34:03,253 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 23:34:03,255 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 1400 | out: 514 | stop: end_turn | 3129ms
+2026-06-23 23:39:48,499 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 23:39:54,599 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 23:39:54,600 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 1400 | out: 1194 | stop: end_turn | 6101ms
+2026-06-23 23:46:59,727 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 23:47:09,646 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 23:47:09,648 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 2070 | out: 1756 | stop: end_turn | 9920ms
+2026-06-23 23:47:57,689 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-23 23:48:01,439 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-23 23:48:01,444 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 1400 | out: 522 | stop: end_turn | 3755ms
+2026-06-24 00:15:12,799 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-06-24 00:15:12,800 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-24 00:15:21,990 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-24 00:15:21,993 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 2070 | out: 1788 | stop: end_turn | 9193ms
+2026-06-24 00:22:11,768 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-24 00:22:20,145 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-06-24 00:22:20,147 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-2.5-flash | attempt: 1 | in: 2070 | out: 1587 | stop: end_turn | 8379ms
+2026-06-24 16:51:22,114 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-06-24 16:51:22,115 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-24 16:51:24,291 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-06-24 16:51:24,293 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 1/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 1s
+2026-06-24 16:51:25,294 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-24 16:51:26,248 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-06-24 16:51:26,249 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 2/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 2s
+2026-06-24 16:51:28,250 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-24 16:51:29,537 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-06-24 16:51:29,538 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 3/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 4s
+2026-06-24 16:51:33,539 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-06-24 16:51:35,395 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-06-24 16:51:35,396 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 4/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 8s
+2026-06-24 16:51:35,397 | ERROR | app.routers.ai | Service error: [Gemini] Max retries reached: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-06-24 16:52:54,662 | INFO | app.models.anthropic_llm | Anthropic client created — region: ca
+2026-06-24 16:53:14,375 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 16:53:14,406 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-sonnet-4-6 | attempt: 1 | in: 1875 | out: 970 | stop: end_turn | 19743ms
+2026-06-24 16:56:23,495 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 16:56:23,497 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-sonnet-4-6 | attempt: 1 | in: 6536 | out: 5839 | stop: end_turn | 107762ms
+2026-06-24 16:56:23,499 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:06:40,476 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 17:06:40,477 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-sonnet-4-6 | attempt: 1 | in: 2588 | out: 1697 | stop: end_turn | 24275ms
+2026-06-24 17:10:14,010 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 17:10:14,012 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-sonnet-4-6 | attempt: 1 | in: 7860 | out: 9498 | stop: end_turn | 143524ms
+2026-06-24 17:10:14,013 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:10:14,014 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:10:14,014 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:10:14,014 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:15:56,894 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 17:15:56,896 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-sonnet-4-6 | attempt: 1 | in: 3740 | out: 3602 | stop: end_turn | 48202ms
+2026-06-24 17:21:30,845 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 17:21:30,849 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-sonnet-4-6 | attempt: 1 | in: 10754 | out: 14910 | stop: end_turn | 224141ms
+2026-06-24 17:21:30,851 | INFO | app.services.ktr_builder | KTR: step type 'Unique rows (HashSet)' normalizado a 'UniqueRowsByHashSet'
+2026-06-24 17:21:30,852 | INFO | app.services.ktr_builder | KTR: step type 'Unique rows (HashSet)' normalizado a 'UniqueRowsByHashSet'
+2026-06-24 17:21:30,853 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:21:30,854 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:21:30,854 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:21:30,854 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:21:30,855 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:21:30,855 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:21:30,856 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 17:41:16,186 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 17:41:16,188 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-sonnet-4-6 | attempt: 1 | in: 2052 | out: 2150 | stop: end_turn | 30991ms
+2026-06-24 18:25:22,613 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 18:25:22,616 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-sonnet-4-6 | attempt: 1 | in: 7748 | out: 8321 | stop: end_turn | 132944ms
+2026-06-24 18:25:22,617 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 18:25:22,618 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 19:30:39,177 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 19:30:39,181 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-sonnet-4-6 | attempt: 1 | in: 2134 | out: 2037 | stop: end_turn | 30586ms
+2026-06-24 19:55:33,865 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 19:55:33,869 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-sonnet-4-6 | attempt: 1 | in: 7750 | out: 9401 | stop: end_turn | 151358ms
+2026-06-24 19:55:33,871 | WARNING | app.services.ktr_builder | KTR: step type 'RegexEvaluation' (canonical: 'RegexEvaluation') not supported, using generic builder
+2026-06-24 19:55:33,871 | WARNING | app.services.ktr_builder | KTR: step type 'NullIf' (canonical: 'NullIf') not supported, using generic builder
+2026-06-24 19:55:33,872 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 19:55:33,873 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 19:55:33,873 | WARNING | app.services.ktr_builder | KTR: step type 'DatabaseLookup' (canonical: 'DatabaseLookup') not supported, using generic builder
+2026-06-24 20:32:19,761 | INFO | app.models.anthropic_llm | Anthropic client created — region: ca
+2026-06-24 20:32:27,591 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 20:32:27,615 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-haiku-4-5-20251001 | attempt: 1 | in: 1874 | out: 849 | stop: end_turn | 7852ms
+2026-06-24 20:34:36,082 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 20:34:36,084 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-haiku-4-5-20251001 | attempt: 1 | in: 6451 | out: 4738 | stop: end_turn | 36253ms
+2026-06-24 20:34:36,085 | INFO | app.services.ktr_builder | KTR: step type 'Write to log' normalizado a 'WriteToLog'
+2026-06-24 20:34:36,085 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:34:36,085 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:34:36,086 | INFO | app.services.ktr_builder | KTR: step type 'Add constants' normalizado a 'AddConstants'
+2026-06-24 20:34:36,086 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:34:36,086 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:34:36,087 | INFO | app.services.ktr_builder | KTR: step type 'Filter rows' normalizado a 'FilterRows'
+2026-06-24 20:34:36,087 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:34:36,087 | INFO | app.services.ktr_builder | KTR: step type 'Concat fields' normalizado a 'ConcatFields'
+2026-06-24 20:34:36,087 | INFO | app.services.ktr_builder | KTR: step type 'Add constants' normalizado a 'AddConstants'
+2026-06-24 20:34:36,088 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:34:36,088 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:34:36,088 | INFO | app.services.ktr_builder | KTR: step type 'Dimension lookup/update' normalizado a 'DimensionLookup'
+2026-06-24 20:34:36,088 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:34:36,088 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:34:36,089 | INFO | app.services.ktr_builder | KTR: step type 'Dimension lookup/update' normalizado a 'DimensionLookup'
+2026-06-24 20:34:36,089 | INFO | app.services.ktr_builder | KTR: step type 'Insert / Update' normalizado a 'InsertUpdate'
+2026-06-24 20:37:00,453 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 20:37:00,455 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-haiku-4-5-20251001 | attempt: 1 | in: 2587 | out: 1483 | stop: end_turn | 10365ms
+2026-06-24 20:38:48,733 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 20:38:48,735 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-haiku-4-5-20251001 | attempt: 1 | in: 7694 | out: 9465 | stop: end_turn | 57346ms
+2026-06-24 20:38:48,736 | INFO | app.services.ktr_builder | KTR: step type 'Write to log' normalizado a 'WriteToLog'
+2026-06-24 20:38:48,736 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:38:48,736 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:38:48,737 | INFO | app.services.ktr_builder | KTR: step type 'If field value is null' normalizado a 'IfNull'
+2026-06-24 20:38:48,737 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-24 20:38:48,738 | INFO | app.services.ktr_builder | KTR: step type 'Unique rows' normalizado a 'Unique'
+2026-06-24 20:38:48,738 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:38:48,738 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:38:48,739 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:38:48,739 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:38:48,739 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:38:48,740 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:38:48,740 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:38:48,741 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:38:48,741 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:38:48,741 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:38:48,742 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:38:48,743 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:38:48,743 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-24 20:38:48,743 | INFO | app.services.ktr_builder | KTR: step type 'Group by' normalizado a 'GroupBy'
+2026-06-24 20:38:48,743 | INFO | app.services.ktr_builder | KTR: step type 'Merge rows (diff)' normalizado a 'MergeRows'
+2026-06-24 20:38:48,744 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:38:48,744 | INFO | app.services.ktr_builder | KTR: step type 'Dimension lookup/update' normalizado a 'DimensionLookup'
+2026-06-24 20:38:48,744 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:38:48,744 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:38:48,744 | INFO | app.services.ktr_builder | KTR: step type 'Combination lookup/update' normalizado a 'CombinationLookup'
+2026-06-24 20:38:48,744 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:38:48,745 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:38:48,745 | INFO | app.services.ktr_builder | KTR: step type 'Combination lookup/update' normalizado a 'CombinationLookup'
+2026-06-24 20:38:48,745 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:38:48,745 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:38:48,745 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:38:48,746 | INFO | app.services.ktr_builder | KTR: step type 'Unique rows' normalizado a 'Unique'
+2026-06-24 20:38:48,746 | INFO | app.services.ktr_builder | KTR: step type 'Combination lookup/update' normalizado a 'CombinationLookup'
+2026-06-24 20:38:48,746 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:38:48,746 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:38:48,746 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:38:48,747 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:38:48,747 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:38:48,747 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:38:48,747 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:38:48,747 | INFO | app.services.ktr_builder | KTR: step type 'Insert / Update' normalizado a 'InsertUpdate'
+2026-06-24 20:48:25,257 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 20:48:25,259 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-haiku-4-5-20251001 | attempt: 1 | in: 3739 | out: 2657 | stop: end_turn | 16630ms
+2026-06-24 20:51:29,396 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 20:51:29,398 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-haiku-4-5-20251001 | attempt: 1 | in: 9864 | out: 14386 | stop: end_turn | 80853ms
+2026-06-24 20:51:29,400 | INFO | app.services.ktr_builder | KTR: step type 'Write to log' normalizado a 'WriteToLog'
+2026-06-24 20:51:29,400 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,401 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,401 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:51:29,402 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,402 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,402 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:51:29,402 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,402 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,403 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:51:29,403 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,403 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,403 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:51:29,403 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,404 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,404 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:51:29,404 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,404 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,405 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:51:29,405 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,405 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,405 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:51:29,405 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,406 | INFO | app.services.ktr_builder | KTR: step type 'Dimension lookup/update' normalizado a 'DimensionLookup'
+2026-06-24 20:51:29,406 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,406 | INFO | app.services.ktr_builder | KTR: step type 'Combination lookup/update' normalizado a 'CombinationLookup'
+2026-06-24 20:51:29,406 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,407 | INFO | app.services.ktr_builder | KTR: step type 'Combination lookup/update' normalizado a 'CombinationLookup'
+2026-06-24 20:51:29,407 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,407 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,407 | INFO | app.services.ktr_builder | KTR: step type 'Unique rows' normalizado a 'Unique'
+2026-06-24 20:51:29,407 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,408 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,408 | INFO | app.services.ktr_builder | KTR: step type 'Unique rows' normalizado a 'Unique'
+2026-06-24 20:51:29,408 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-24 20:51:29,408 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-24 20:51:29,409 | INFO | app.services.ktr_builder | KTR: step type 'Merge rows (diff)' normalizado a 'MergeRows'
+2026-06-24 20:51:29,409 | INFO | app.services.ktr_builder | KTR: step type 'Unique rows' normalizado a 'Unique'
+2026-06-24 20:51:29,409 | INFO | app.services.ktr_builder | KTR: step type 'Combination lookup/update' normalizado a 'CombinationLookup'
+2026-06-24 20:51:29,409 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,409 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,410 | INFO | app.services.ktr_builder | KTR: step type 'Group by' normalizado a 'GroupBy'
+2026-06-24 20:51:29,410 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-24 20:51:29,410 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-24 20:51:29,410 | INFO | app.services.ktr_builder | KTR: step type 'Merge rows (diff)' normalizado a 'MergeRows'
+2026-06-24 20:51:29,411 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,411 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:51:29,411 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,411 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:51:29,411 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,412 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:51:29,412 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,412 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:51:29,412 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,412 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:51:29,413 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,413 | INFO | app.services.ktr_builder | KTR: step type 'Filter rows' normalizado a 'FilterRows'
+2026-06-24 20:51:29,413 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,414 | INFO | app.services.ktr_builder | KTR: step type 'Group by' normalizado a 'GroupBy'
+2026-06-24 20:51:29,414 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-24 20:51:29,414 | INFO | app.services.ktr_builder | KTR: step type 'Sort rows' normalizado a 'SortRows'
+2026-06-24 20:51:29,414 | INFO | app.services.ktr_builder | KTR: step type 'Merge rows (diff)' normalizado a 'MergeRows'
+2026-06-24 20:51:29,414 | INFO | app.services.ktr_builder | KTR: step type 'Combination lookup/update' normalizado a 'CombinationLookup'
+2026-06-24 20:51:29,415 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,415 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:51:29,415 | INFO | app.services.ktr_builder | KTR: step type 'Table Input' normalizado a 'TableInput'
+2026-06-24 20:51:29,415 | INFO | app.services.ktr_builder | KTR: step type 'Stream lookup' normalizado a 'StreamLookup'
+2026-06-24 20:51:29,415 | INFO | app.services.ktr_builder | KTR: step type 'Select values' normalizado a 'SelectValues'
+2026-06-24 20:51:29,415 | INFO | app.services.ktr_builder | KTR: step type 'Table Output' normalizado a 'TableOutput'
+2026-06-24 20:51:29,416 | INFO | app.services.ktr_builder | KTR: step type 'Write to log' normalizado a 'WriteToLog'
+2026-06-24 20:55:21,085 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 20:55:21,087 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-haiku-4-5-20251001 | attempt: 1 | in: 2051 | out: 1145 | stop: end_turn | 8303ms
+2026-06-24 20:58:21,351 | INFO | httpx | HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-06-24 20:58:21,353 | INFO | app.models.anthropic_llm | Anthropic complete — model: claude-haiku-4-5-20251001 | attempt: 1 | in: 6874 | out: 7202 | stop: end_turn | 51446ms

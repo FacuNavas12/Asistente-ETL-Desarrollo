@@ -53,8 +53,9 @@
   border-bottom: 2px solid var(--color-primary, #6366f1);
   outline: none;
   padding: 0 4px 2px;
-  min-width: 240px;
-  width: auto;
+  flex: 1;
+  margin-right: 16px;
+  min-width: 0;
 }
 
 /* Limpiar button inside the form header */

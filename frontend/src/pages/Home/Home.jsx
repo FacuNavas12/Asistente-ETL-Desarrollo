@@ -35,7 +35,7 @@ function EtlCard({ etl, index, onClick, onDelete }) {
         {new Date(etl.createdAt).toLocaleDateString("es-AR", { dateStyle: "medium" })}
       </span>
       <span className="etl-card__status" style={{ "--status-color": status.color }}>
-        {status.label} TEST
+        {status.label}
       </span>
       <div className="etl-card__footer">
         <span className="etl-card__action">{action}</span>

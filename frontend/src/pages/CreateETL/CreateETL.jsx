@@ -357,6 +357,7 @@ export default function CreateETL() {
               value={nameInputVal}
               onChange={e => setNameInputVal(e.target.value)}
               onBlur={handleNameConfirm}
+              onFocus={e => e.target.select()}
               onKeyDown={e => {
                 if (e.key === "Enter") handleNameConfirm();
                 if (e.key === "Escape") { setNameInputVal(etlName); setIsEditingName(false); }
