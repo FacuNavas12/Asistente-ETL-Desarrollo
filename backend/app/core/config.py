@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     main_temperature: float = 0.1    # RNF10 — reproducibilidad
     main_max_tokens: int = 32768     # subido desde 16384 — caso 01 (demografía) lo excedía
     secondary_temperature: float = 0.0  # determinismo total para validaciones
-    secondary_max_tokens: int = 2048
+    secondary_max_tokens: int = 8192
 
     @field_validator("credentials_encryption_keys", mode="before")
     @classmethod

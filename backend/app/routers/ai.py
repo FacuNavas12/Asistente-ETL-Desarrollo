@@ -17,14 +17,13 @@ from app.schemas.etl_schemas import (
     ETLDocumentResponse,
     ETLFromInferenceRequest,
     ETLGenerateResponse,
-    ETLRequest,
     ETLValidateRequest,
     ETLValidateResponse,
     InferRequest,
     InferResponse,
     RefineRequest,
 )
-from app.services.etl_generator import generate_etl, generate_etl_from_inference
+from app.services.etl_generator import generate_etl_from_inference
 from app.services.validator import validate_etl
 from app.services.documenter import document_etl
 from app.services.structure_inferrer import infer_structures, refine_structures
@@ -66,38 +65,8 @@ async def _handle(fn, *args):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _validate_etl_request(req: ETLRequest):
-    if not req.origenTables:
-        raise HTTPException(status_code=422, detail="origenTables no puede estar vacío.")
-    if not req.stagingDef:
-        raise HTTPException(status_code=422, detail="stagingDef no puede estar vacío.")
-    if not req.dwhModel.tables:
-        raise HTTPException(status_code=422, detail="dwhModel.tables no puede estar vacío.")
-
 
 # ── ETL — endpoints principales ───────────────────────────────────────────────
-
-@router.post("/api/ai/etl", response_model=ETLGenerateResponse)
-async def etl_from_frontend(
-    req: ETLRequest,
-    llm: BaseLLM = Depends(get_main_llm),
-    db:  Session = Depends(get_db),
-):
-    """Recibe el payload del formulario y genera el proceso ETL completo."""
-    _validate_etl_request(req)
-    return await _handle(generate_etl, req, llm, db)
-
-
-@router.post("/api/v1/etl/generate", response_model=ETLGenerateResponse)
-async def generate(
-    req: ETLRequest,
-    llm: BaseLLM = Depends(get_main_llm),
-    db:  Session = Depends(get_db),
-):
-    """RF5, RF6, RF7, RF14 — Genera el proceso ETL completo."""
-    _validate_etl_request(req)
-    return await _handle(generate_etl, req, llm, db)
-
 
 @router.post("/api/v1/etl/validate", response_model=ETLValidateResponse)
 async def validate(

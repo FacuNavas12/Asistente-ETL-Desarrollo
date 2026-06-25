@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 # dos bloques "if _DEBUG_CONTEXT_FILTER" dentro de la función de abajo.
 # 
 # ─────────────────────────────────────────────────────────────────────────────
-_DEBUG_CONTEXT_FILTER = True
 
 # Frontend dataType strings → CanonicalType.
 # Used in the formulario path and the DB fallback.
@@ -180,11 +179,6 @@ def format_model_context_for_prompt(ctx: ModelContext) -> str:
 
     Absent: connection_id, raw data values, InternalTableRef, InternalContext.
     """
-    # ───────────────────────────────── DEBUG: log completo vs filtrado ─────────────────────────────────
-    if _DEBUG_CONTEXT_FILTER:
-       logger.debug("[CTX FILTER] Received (ModelContext completo):\n%s", ctx.model_dump_json(indent=2))
-    # ─────────────────────────────────                                 ─────────────────────────────────
-
 
     lines: list[str] = []
     for t in ctx.source_tables:
@@ -209,11 +203,4 @@ def format_model_context_for_prompt(ctx: ModelContext) -> str:
                 parts.append(f"ejemplos: {', '.join(col.masked_examples)}")
             lines.append(" | ".join(parts))
 
-    # ───────────────────────────────── DEBUG: log completo vs filtrado ─────────────────────────────────
-    if _DEBUG_CONTEXT_FILTER:
-        result = "\n".join(lines)
-        logger.debug("[CTX FILTER] Output (lo que va al prompt):\n%s", result)
-        return result
-    # ─────────────────────────────────                                 ─────────────────────────────────
-    
     return "\n".join(lines)

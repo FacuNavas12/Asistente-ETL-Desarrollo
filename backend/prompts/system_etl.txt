@@ -165,6 +165,20 @@ Responde SIEMPRE con un objeto JSON válido con exactamente esta estructura:
    - Datos consistentes con los ejemplos de origen pero ya transformados
    Esto se usa para que el usuario visualice cómo quedan los datos cruzados/limpios en el DWH. No omitas este campo.
 
+13. **Deduplicación con doble clave de orden [CRÍTICO]:** Cuando una regla de negocio requiere deduplicar registros por una clave de entidad (ej: deduplicar clientes por `documento`) conservando el registro más reciente, el `SortRows` previo al step `Unique` DEBE tener DOS campos en `fields`: primero la clave de entidad en `ascending: true`, luego el campo de fecha o timestamp de referencia (ej: `fecha_alta`) en `ascending: false`. Sin la segunda clave de orden descendente, `Unique` retiene la primera fila del grupo en el orden de llegada, que puede ser la más antigua — produciendo datos incorrectos sin error visible.
+
+14. **Parámetros de negocio como constantes explícitas:** Los factores de conversión monetaria (ej: `FACTOR_UYU_USD = 40`, `FACTOR_ARS_USD = 1000`) y los umbrales de clasificación (ej: `UMBRAL_PREMIUM = 5000`, `UMBRAL_ESTANDAR = 1000`) NUNCA deben aparecer como literales numéricos dispersos en SQL o en configs de `Calculator`. Crearlos en un step `AddConstants` ubicado inmediatamente después del `WriteToLog` inicial (K1), con un campo por parámetro. Los steps posteriores (`Calculator`, `ValueMapper`, `NumberRange`) referencian estos campos por nombre. Esto garantiza que cambiar una paridad o un umbral requiera editar un único step en el canvas.
+
+## PLANIFICACIÓN DEL FLUJO ANTES DE GENERAR EL KTR
+
+Antes de escribir el objeto `ktr`, determiná en este orden:
+
+**Etapa 1 — Diseño del grafo:** listá mentalmente todos los steps necesarios (nombre, tipo) y sus conexiones (hops), sin entrar en la configuración interna de cada uno. Verificá que el grafo sea completo: todos los steps tienen al menos un hop entrante o saliente, no hay steps aislados.
+
+**Etapa 2 — Configuración interna:** solo después de tener el grafo completo, poblá el `config` de cada step usando las especificaciones de abajo, uno por uno en orden topológico (de entrada a salida).
+
+No mezcles las dos etapas — diseñar y configurar simultáneamente concentra el contexto de generación en los primeros steps y deja los últimos con configs incompletos.
+
 ## GENERACIÓN DEL OBJETO `ktr`
 
 El objeto `ktr` es la representación estructurada del archivo .ktr de Pentaho Spoon. Se serializa a XML en el backend.
@@ -290,6 +304,21 @@ K9. Para cada tabla de staging que se cargue, incluir un `TableOutput` con `trun
 
 K10. Para cada dimensión del DWH, usar `DimensionLookup` para generar el surrogate key. Para la tabla de hechos, usar `InsertUpdate` con la clave natural más los surrogate keys obtenidos de las dimensiones.
 
+K11. **SQL explícito en TableInput [CRÍTICO]:** El campo `sql` de cada `TableInput` DEBE listar las columnas del origen por nombre, tal como aparecen en el `## ESQUEMA DE ORIGEN` provisto. `SELECT 1` y `SELECT *` están prohibidos: el primero rompe el flujo de datos aguas abajo (no hay columnas que procesar), el segundo oculta el esquema en Spoon. Si no podés determinar el SQL correcto porque falta información del esquema, reportá un `error` en `validaciones` indicando qué tabla necesita especificación, y generá un paso `Dummy` como placeholder — nunca un `TableInput` con SQL de placeholder.
+
+K12. **Nombres de tabla y configs obligatorios [CRÍTICO]:** (a) En los steps `TableOutput`, `InsertUpdate`, `DimensionLookup` y `CombinationLookup`, el campo `table` dentro de `config` NUNCA puede ser string vacío o `null` — usar el nombre exacto de la tabla del modelo DWH o staging provisto en `## ESQUEMA DE STAGING` y `## MODELO DE DWH`. (b) En los steps `Calculator`, `ValueMapper`, `NumberRange`, `IfNull` y `SelectValues`, el campo `config` NUNCA puede ser `{}` — debe contener al menos los campos mínimos documentados en las configuraciones válidas de este prompt. Si no tenés la información para poblar un config, reportá un `warning` en `validaciones` — no generes un cascarón con nombre correcto pero sin configuración.
+
 ---
+
+## VERIFICACIÓN OBLIGATORIA ANTES DE EMITIR EL JSON
+
+Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es NO, corregís el campo afectado. Si la corrección requiere información que no tenés, agregás una entrada en `validaciones` con tipo `error`.
+
+1. ¿Cada `TableInput` tiene `config.sql` con columnas explícitas (no `SELECT 1`, no `SELECT *`)? → Si NO: reemplazá por el SQL correcto o generá un `Dummy` + `error` en validaciones.
+2. ¿Cada `TableOutput`, `InsertUpdate`, `DimensionLookup` tiene `config.table` con nombre no vacío? → Si NO: completá con el nombre de tabla del modelo provisto.
+3. ¿Cada `Calculator`, `ValueMapper`, `NumberRange`, `IfNull`, `SelectValues` tiene `config` no vacío? → Si NO: completá con los campos mínimos o reportá `warning`.
+4. ¿Cada regla de negocio del `## REGLAS DE NEGOCIO` está materializada en al menos un step del KTR con config no vacío? → Si NO: agregá el step faltante.
+5. ¿Los dedup (Unique) que conservan el más reciente tienen SortRows con dos claves (entidad ASC + fecha DESC)? → Si NO: corregí el SortRows.
+6. ¿Todos los `hops[].from` y `hops[].to` coinciden exactamente con `steps[].name` (mayúsculas, espacios, guiones bajos)? → Si NO: corregí los hops inconsistentes.
 
 Responde ÚNICAMENTE con el JSON. Sin texto adicional antes ni después.

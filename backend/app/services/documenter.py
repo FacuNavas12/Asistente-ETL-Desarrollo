@@ -12,7 +12,7 @@ from app.models.llm_base import BaseLLM
 from app.schemas.etl_schemas import ETLDocumentRequest, ETLDocumentResponse
 from app.schemas.llm_output_schemas import DOCUMENT_OUTPUT_SCHEMA
 
-_DOCUMENT_SYSTEM = "system_validator.txt"
+_DOCUMENT_SYSTEM = "system_documenter.txt"
 
 
 def _load_system(filename: str) -> str:
