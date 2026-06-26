@@ -145,9 +145,9 @@ export default function CreateETL() {
     setIsEditingName(false);
   };
 
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     const values = getValues();
-    const id = saveInProgressEtl(values.etlName, {
+    const id = await saveInProgressEtl(values.etlName, {
       ...values,
       inferResult,
       stg_definition: inferResult?.stg_definition ?? null,
@@ -159,9 +159,9 @@ export default function CreateETL() {
     reset(values); // isDirty → false → useEffect fires → navigate
   };
 
-  const handleGuardarFromReview = () => {
+  const handleGuardarFromReview = async () => {
     const values = getValues();
-    const id = saveInProgressEtl(values.etlName, {
+    const id = await saveInProgressEtl(values.etlName, {
       ...values,
       inferResult,
       stg_definition: inferResult?.stg_definition ?? null,
@@ -315,7 +315,7 @@ export default function CreateETL() {
 
       if (!apiResult) throw new Error("No se recibió resultado del servidor.");
 
-      const id = addEtl({
+      const id = await addEtl({
         etlName,
         descripcionObjetivo,
         origenTables,

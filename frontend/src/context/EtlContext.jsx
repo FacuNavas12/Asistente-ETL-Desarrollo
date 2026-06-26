@@ -1,13 +1,11 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
+import { listEtls, createEtl, updateEtl, deleteEtlById } from "../api/etls";
+import { listJobs, createJob, updateJob } from "../api/jobs";
 
 const EtlContext = createContext();
 
-const DRAFT_KEY      = "etl_draft";
-const ETLS_KEY       = "etl_list";
-const JOBS_KEY       = "job_list";
-const DRAFT_TTL      = 2 * 60 * 60 * 1000;
-// Retención localStorage: 30 días (Ley 18.331 — Limitación de conservación).
-const LIST_TTL       = 30 * 24 * 60 * 60 * 1000;
+const DRAFT_KEY  = "etl_draft";
+const DRAFT_TTL  = 2 * 60 * 60 * 1000;
 const SCHEMA_VERSION = "1.0";
 
 function isSchemaVersionValid(formData) {
@@ -20,35 +18,6 @@ function isSchemaVersionValid(formData) {
     }
   }
   return true;
-}
-
-function loadItems(key) {
-  try {
-    const raw = JSON.parse(localStorage.getItem(key));
-    if (!raw) return [];
-    // Formato con envoltorio TTL: { data: [...], savedAt: timestamp }
-    let items;
-    if (raw.savedAt !== undefined) {
-      if (Date.now() - raw.savedAt > LIST_TTL) {
-        localStorage.removeItem(key);
-        return [];
-      }
-      items = raw.data ?? [];
-    } else {
-      // Compatibilidad con registros anteriores sin envoltorio (migración transparente).
-      items = Array.isArray(raw) ? raw : [];
-    }
-    return items.filter(item => {
-      if (!isSchemaVersionValid(item.formData)) {
-        console.warn(
-          `[EtlContext] Entrada descartada (schema_version obsoleto): "${item.name}". ` +
-          "Volvé a cargar los archivos para regenerar el esquema."
-        );
-        return false;
-      }
-      return true;
-    });
-  } catch { return []; }
 }
 
 function loadDraft() {
@@ -71,24 +40,22 @@ function loadDraft() {
   } catch { return null; }
 }
 
-function persist(key, list, setter) {
-  setter(list);
-  localStorage.setItem(key, JSON.stringify({ data: list, savedAt: Date.now() }));
-}
-
-/** Elimina todos los datos del usuario del almacenamiento local y de sesión.
+/** Elimina el borrador de sesión del usuario.
  *  Debe llamarse en el logout para cumplir el principio de minimización de
- *  datos de la Ley 18.331. */
+ *  datos de la Ley 18.331. Los registros persistentes viven en el backend. */
 export function clearAllStoredData() {
-  localStorage.removeItem(ETLS_KEY);
-  localStorage.removeItem(JOBS_KEY);
   sessionStorage.removeItem(DRAFT_KEY);
 }
 
 export function EtlProvider({ children }) {
-  const [etls, setEtls] = useState(() => loadItems(ETLS_KEY));
+  const [etls, setEtls] = useState([]);
+  const [jobs, setJobs] = useState([]);
   const [draft, setDraftState] = useState(loadDraft);
-  const [jobs, setJobs] = useState(() => loadItems(JOBS_KEY));
+
+  useEffect(() => {
+    listEtls().then(setEtls).catch(console.error);
+    listJobs().then(setJobs).catch(console.error);
+  }, []);
 
   // ── Draft (session-only) ────────────────────────────────────────────────
   const saveDraft = (data) => {
@@ -102,90 +69,91 @@ export function EtlProvider({ children }) {
   };
 
   // ── ETLs ────────────────────────────────────────────────────────────────
-  const addEtl = (formData, apiResult, name) => {
-    const newEtl = {
-      id: crypto.randomUUID(),
+  const addEtl = async (formData, apiResult, name) => {
+    const record = await createEtl({
       name: name || `ETL #${etls.length + 1}`,
-      createdAt: new Date().toISOString(),
       status: "done",
       formData,
       result: apiResult,
-    };
-    // Remove any pending ETL when a completed one is saved
-    const updated = [newEtl, ...etls.filter(e => e.status !== "pending")];
-    persist(ETLS_KEY, updated, setEtls);
+    });
+    setEtls(prev => [record, ...prev.filter(e => e.status !== "pending")]);
     clearDraft();
-    return newEtl.id;
+    return record.id;
   };
 
-  const savePendingEtl = (name, formData) => {
+  const savePendingEtl = async (name, formData) => {
     const existing = etls.find(e => e.status === "pending");
-    const entry = {
-      id: existing?.id ?? crypto.randomUUID(),
+    if (existing) {
+      const record = await updateEtl(existing.id, {
+        name: name || existing.name,
+        status: "pending",
+        formData,
+      });
+      setEtls(prev => prev.map(e => e.id === existing.id ? record : e));
+    } else {
+      const record = await createEtl({
+        name: name || `ETL #${etls.length + 1}`,
+        status: "pending",
+        formData,
+      });
+      setEtls(prev => [record, ...prev]);
+    }
+  };
+
+  const saveInProgressEtl = async (name, formData, id = null) => {
+    const existing = id ? etls.find(e => e.id === id) : null;
+    if (existing) {
+      const record = await updateEtl(existing.id, {
+        name: name || existing.name,
+        status: "en_proceso",
+        formData,
+      });
+      setEtls(prev => prev.map(e => e.id === existing.id ? record : e));
+      return record.id;
+    }
+    const record = await createEtl({
       name: name || `ETL #${etls.length + 1}`,
-      createdAt: existing?.createdAt ?? new Date().toISOString(),
-      status: "pending",
+      status: "en_proceso",
       formData,
-      result: null,
-    };
-    const updated = existing
-      ? etls.map(e => (e.id === existing.id ? entry : e))
-      : [entry, ...etls];
-    persist(ETLS_KEY, updated, setEtls);
+    });
+    setEtls(prev => [record, ...prev]);
+    return record.id;
+  };
+
+  const deleteEtl = async (id) => {
+    await deleteEtlById(id);
+    setEtls(prev => prev.filter(e => e.id !== id));
   };
 
   // ── Jobs ────────────────────────────────────────────────────────────────
-  const addJob = (formData, apiResult) => {
-    const newJob = {
-      id: crypto.randomUUID(),
+  const addJob = async (formData, apiResult) => {
+    const record = await createJob({
       name: apiResult?.job_plan?.job_name ?? `Job #${jobs.length + 1}`,
-      createdAt: new Date().toISOString(),
       status: "done",
       formData,
       result: apiResult,
-    };
-    // Remove any pending Job when a completed one is saved
-    const updated = [newJob, ...jobs.filter(j => j.status !== "pending")];
-    persist(JOBS_KEY, updated, setJobs);
-    return newJob.id;
+    });
+    setJobs(prev => [record, ...prev.filter(j => j.status !== "pending")]);
+    return record.id;
   };
 
-  const saveInProgressEtl = (name, formData, id = null) => {
-    const existing = id ? etls.find(e => e.id === id) : null;
-    const entry = {
-      id: existing?.id ?? crypto.randomUUID(),
-      name: name || `ETL #${etls.length + 1}`,
-      createdAt: existing?.createdAt ?? new Date().toISOString(),
-      status: "en_proceso",
-      formData,
-      result: null,
-    };
-    const updated = existing
-      ? etls.map(e => (e.id === existing.id ? entry : e))
-      : [entry, ...etls];
-    persist(ETLS_KEY, updated, setEtls);
-    return entry.id;
-  };
-
-  const savePendingJob = (name, formData) => {
+  const savePendingJob = async (name, formData) => {
     const existing = jobs.find(j => j.status === "pending");
-    const entry = {
-      id: existing?.id ?? crypto.randomUUID(),
-      name: name || `Job #${jobs.length + 1}`,
-      createdAt: existing?.createdAt ?? new Date().toISOString(),
-      status: "pending",
-      formData,
-      result: null,
-    };
-    const updated = existing
-      ? jobs.map(j => (j.id === existing.id ? entry : j))
-      : [entry, ...jobs];
-    persist(JOBS_KEY, updated, setJobs);
-  };
-
-  const deleteEtl = (id) => {
-    const updated = etls.filter(e => e.id !== id);
-    persist(ETLS_KEY, updated, setEtls);
+    if (existing) {
+      const record = await updateJob(existing.id, {
+        name: name || existing.name,
+        status: "pending",
+        formData,
+      });
+      setJobs(prev => prev.map(j => j.id === existing.id ? record : j));
+    } else {
+      const record = await createJob({
+        name: name || `Job #${jobs.length + 1}`,
+        status: "pending",
+        formData,
+      });
+      setJobs(prev => [record, ...prev]);
+    }
   };
 
   const clearAll = () => {
