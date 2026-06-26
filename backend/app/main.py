@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.log_filters import PasswordFilter
 from app.routers import ai, connections, schema
+from app.routers import etl as etl_router
+from app.routers import job as job_router
 
 _log_dir = Path(__file__).resolve().parent.parent / "logs"
 _log_dir.mkdir(exist_ok=True)
@@ -77,6 +79,8 @@ app.add_middleware(
 app.include_router(ai.router)
 app.include_router(connections.router)
 app.include_router(schema.router)
+app.include_router(etl_router.router)
+app.include_router(job_router.router)
 
 
 @app.get("/")

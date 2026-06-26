@@ -30,7 +30,10 @@ def _get_engine() -> Engine:
 
 
 def create_tables() -> None:
-    import app.models.connection  # noqa: F401 — registers Connection model with Base
+    # TODO: Alembic para versionar el schema más adelante
+    import app.models.connection  # noqa: F401
+    import app.models.etl  # noqa: F401
+    import app.models.job  # noqa: F401
     Base.metadata.create_all(bind=_get_engine())
 
 
