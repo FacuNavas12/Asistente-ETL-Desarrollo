@@ -306,6 +306,8 @@ K10. Para cada dimensión del DWH, usar `DimensionLookup` para generar el surrog
 
 K11. **SQL explícito en TableInput [CRÍTICO]:** El campo `sql` de cada `TableInput` DEBE listar las columnas del origen por nombre, tal como aparecen en el `## ESQUEMA DE ORIGEN` provisto. `SELECT 1` y `SELECT *` están prohibidos: el primero rompe el flujo de datos aguas abajo (no hay columnas que procesar), el segundo oculta el esquema en Spoon. Si no podés determinar el SQL correcto porque falta información del esquema, reportá un `error` en `validaciones` indicando qué tabla necesita especificación, y generá un paso `Dummy` como placeholder — nunca un `TableInput` con SQL de placeholder.
 
+K13. **Una fuente por TableInput [CRÍTICO]:** Cada `TableInput` debe leer de exactamente UNA tabla — JOINs en el SQL están prohibidos. Para combinar dos fuentes, usar dos `TableInput` separados conectados a un `MergeJoin` (con sus respectivos `SortRows` — ver K3). Esto garantiza que el linaje de datos sea trazable y que cada tabla origen aparezca como nodo independiente.
+
 K12. **Nombres de tabla y configs obligatorios [CRÍTICO]:** (a) En los steps `TableOutput`, `InsertUpdate`, `DimensionLookup` y `CombinationLookup`, el campo `table` dentro de `config` NUNCA puede ser string vacío o `null` — usar el nombre exacto de la tabla del modelo DWH o staging provisto en `## ESQUEMA DE STAGING` y `## MODELO DE DWH`. (b) En los steps `Calculator`, `ValueMapper`, `NumberRange`, `IfNull` y `SelectValues`, el campo `config` NUNCA puede ser `{}` — debe contener al menos los campos mínimos documentados en las configuraciones válidas de este prompt. Si no tenés la información para poblar un config, reportá un `warning` en `validaciones` — no generes un cascarón con nombre correcto pero sin configuración.
 
 ---
@@ -320,5 +322,6 @@ Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es N
 4. ¿Cada regla de negocio del `## REGLAS DE NEGOCIO` está materializada en al menos un step del KTR con config no vacío? → Si NO: agregá el step faltante.
 5. ¿Los dedup (Unique) que conservan el más reciente tienen SortRows con dos claves (entidad ASC + fecha DESC)? → Si NO: corregí el SortRows.
 6. ¿Todos los `hops[].from` y `hops[].to` coinciden exactamente con `steps[].name` (mayúsculas, espacios, guiones bajos)? → Si NO: corregí los hops inconsistentes.
+7. ¿Cada `TableInput` lee de exactamente una tabla (sin JOINs en SQL)? → Si NO: separar en `TableInput` independientes + `MergeJoin`.
 
 Responde ÚNICAMENTE con el JSON. Sin texto adicional antes ni después.

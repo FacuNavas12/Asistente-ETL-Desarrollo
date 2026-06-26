@@ -25,10 +25,10 @@ _TABLE_FIELD_TYPES = {
     "CombinationLookup",
 }
 
-# Regex best-effort para extraer el nombre de tabla de un SQL SELECT.
-_FROM_RE = re.compile(
-    r"\bFROM\s+(?:\"?[\w]+\"?\.)?"  # esquema opcional
-    r"\"?([\w]+)\"?",               # nombre de tabla
+# Regex para extraer nombres de tabla de un SQL SELECT (FROM y cualquier JOIN).
+_TABLE_RE = re.compile(
+    r"\b(?:FROM|JOIN)\s+(?:\"?[\w]+\"?\.)?"  # FROM o JOIN, esquema opcional
+    r"\"?([\w]+)\"?",                         # nombre de tabla
     re.IGNORECASE,
 )
 
@@ -43,8 +43,8 @@ def _extract_table(canonical_type: str, config: dict) -> Optional[str]:
     if canonical_type == "CsvInput":
         return config.get("filename") or None
     if canonical_type == "TableInput":
-        m = _FROM_RE.search(config.get("sql", ""))
-        return m.group(1) if m else None
+        tables = _TABLE_RE.findall(config.get("sql", ""))
+        return ", ".join(tables) if tables else None
     return None
 
 
