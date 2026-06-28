@@ -15,6 +15,7 @@ import { inferStructures, refineInference, generateFromInferenceStream } from "@
 import { useToast } from "@/components/ui/Toast";
 import { downloadEtlSkeleton } from "@/utils/etlExport";
 import { importEtlSkeleton } from "@/utils/etlImport";
+import CreateETLOptions from "./components/CreateETLOptions";
 import "./css/createETL.css";
 import "./css/etlError.css";
 
@@ -58,6 +59,7 @@ export default function CreateETL() {
   const [step,           setStep]           = useState(STEP.FORM);
   const [isEditingName,  setIsEditingName]  = useState(false);
   const [nameInputVal,   setNameInputVal]   = useState(defaultName);
+  const [syncStatus,     setSyncStatus]     = useState(null); // null | "pending" | "synced" | "failed"
   const [inferResult,    setInferResult]    = useState(() => {
     if (initSource?.inferResult) return initSource.inferResult;
     if (initSource?.stg_definition || initSource?.dwh_model) {
@@ -145,30 +147,32 @@ export default function CreateETL() {
     setIsEditingName(false);
   };
 
-  const handleGuardar = async () => {
+  const _saveSnapshot = async () => {
     const values = getValues();
-    const id = await saveInProgressEtl(values.etlName, {
+    const { id, syncStatus: ss } = await saveInProgressEtl(values.etlName, {
       ...values,
       inferResult,
       stg_definition: inferResult?.stg_definition ?? null,
       dwh_model:      inferResult?.dwh_model       ?? null,
     }, currentEtlIdRef.current);
     currentEtlIdRef.current = id;
-    addToast("Transformación guardada");
+    setSyncStatus(ss);
+    return values;
+  };
+
+  const handleGuardar = async () => {
+    const values = await _saveSnapshot();
+    addToast("Guardado");
     pendingNavigateRef.current = "/home";
     reset(values); // isDirty → false → useEffect fires → navigate
   };
 
   const handleGuardarFromReview = async () => {
-    const values = getValues();
-    const id = await saveInProgressEtl(values.etlName, {
-      ...values,
-      inferResult,
-      stg_definition: inferResult?.stg_definition ?? null,
-      dwh_model:      inferResult?.dwh_model       ?? null,
-    }, currentEtlIdRef.current);
-    currentEtlIdRef.current = id;
-    addToast("Transformación guardada");
+    await _saveSnapshot();
+  };
+
+  const handleRetrySync = async () => {
+    await _saveSnapshot();
   };
 
   const handleLimpiar = () => {
@@ -373,6 +377,18 @@ export default function CreateETL() {
               <span className="etl-title-edit-hint">Editar</span>
             </h1>
           )}
+          {syncStatus && (
+            <span className={`etl-sync-badge etl-sync-badge--${syncStatus}`}>
+              {syncStatus === "pending" && "Guardando…"}
+              {syncStatus === "synced"  && "✓ Guardado"}
+              {syncStatus === "failed"  && (
+                <button className="etl-sync-retry" onClick={handleRetrySync}>
+                  ⚠ Error de sync · Reintentar
+                </button>
+              )}
+            </span>
+          )}
+
           {step === STEP.REVIEW && (
             <div className="etl-header-actions">
               <button className="etl-save-btn" onClick={handleGuardarFromReview}>
@@ -390,30 +406,12 @@ export default function CreateETL() {
                 style={{ display: "none" }}
                 onChange={handleImport}
               />
-              <button
-                className="etl-clear-btn"
-                onClick={() => importInputRef.current?.click()}
-                title="Importar transformación desde archivo .json"
-              >
-                Importar
-              </button>
-              <button
-                className="etl-clear-btn"
-                onClick={handleDownload}
-                title="Descargar transformación como archivo .json"
-              >
-                Descargar
-              </button>
-              <button
-                className="etl-clear-btn"
-                onClick={handleCargarEjemplo}
-                title="Completar el formulario con un caso de ejemplo (ventas)"
-              >
-                Cargar ejemplo
-              </button>
-              <button className="etl-clear-btn" disabled={!isDirty} onClick={handleLimpiar}>
-                Limpiar
-              </button>
+              <CreateETLOptions
+                importInputRef={importInputRef}
+                onDescargar={handleDownload}
+                onLimpiar={handleLimpiar}
+                onCargarEjemplo={handleCargarEjemplo}
+              />
               <button
                 className="etl-save-btn"
                 disabled={!isDirty}
@@ -422,7 +420,7 @@ export default function CreateETL() {
                 Guardar
               </button>
               <button className="etl-infer-header-btn" onClick={handleInfer}>
-                Inferir STG y DWH
+                Inferir
               </button>
               {inferResult && (
                 <button

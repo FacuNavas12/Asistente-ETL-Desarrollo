@@ -18,8 +18,9 @@ def list_etls(db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=EtlRead, status_code=status.HTTP_201_CREATED)
-def create_etl(payload: EtlCreate, db: Session = Depends(get_db)):
-    return etl_service.create_etl(db, payload)
+def create_etl(payload: EtlCreate):
+    # No DB dependency — write goes to the local outbox only; never blocks on Supabase.
+    return etl_service.create_etl(payload)
 
 
 @router.get("/{id}", response_model=EtlRead)

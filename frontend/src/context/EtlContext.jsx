@@ -109,7 +109,7 @@ export function EtlProvider({ children }) {
         formData,
       });
       setEtls(prev => prev.map(e => e.id === existing.id ? record : e));
-      return record.id;
+      return { id: record.id, syncStatus: record.syncStatus };
     }
     const record = await createEtl({
       name: name || `ETL #${etls.length + 1}`,
@@ -117,7 +117,7 @@ export function EtlProvider({ children }) {
       formData,
     });
     setEtls(prev => [record, ...prev]);
-    return record.id;
+    return { id: record.id, syncStatus: record.syncStatus };
   };
 
   const deleteEtl = async (id) => {

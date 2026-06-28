@@ -61,9 +61,23 @@ logging.getLogger().addFilter(PasswordFilter())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.core.database import create_tables
+    from asyncio import create_task
+
+    from app.core.database import create_tables, _get_session_factory
+    from app.outbox import get_outbox
+    from app.outbox.runner import run_in_process
+
     create_tables()
+
+    # Entrypoint A — in-process drain loop.
+    # To switch to an external process/cron (entrypoint B), remove this task
+    # and wire app.outbox.runner.run_drain_once_sync() to your scheduler.
+    # Pieces 1 (OutboxPort) and 2 (drainer.drain) are not touched.
+    _drain_task = create_task(run_in_process(get_outbox(), _get_session_factory()))
+
     yield
+
+    _drain_task.cancel()
 
 
 app = FastAPI(title="Acelerador ETL — API", version="0.1.0", lifespan=lifespan)

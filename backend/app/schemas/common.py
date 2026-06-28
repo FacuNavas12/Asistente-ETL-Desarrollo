@@ -14,6 +14,10 @@ class WorkflowStatus(str, enum.Enum):
     error = "error"
 
 
+# Re-export so the schema layer has a single import point.
+from app.outbox.port import SyncStatus as SyncStatus  # noqa: E402,F401
+
+
 class CamelModel(BaseModel):
     """Base model: camelCase aliases (in + out), ORM-compatible."""
 
