@@ -76,6 +76,11 @@ Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
 El mapeo "origen → nombre" indica que el campo se renombra entre capas; respetá los nombres destino exactos.
 Aplica todas las reglas de limpieza definidas en cada columna de staging.
 Verifica la consistencia de tipos y nombres entre las tres capas.
+
+Antes de escribir el objeto `ktr`, determiná en orden:
+**Etapa 1 — Diseño del grafo:** listá mentalmente todos los steps necesarios (nombre, tipo) y sus conexiones (hops) para ESTE proceso específico, sin entrar en configs internas. Verificá grafo completo: ningún step aislado.
+**Etapa 2 — Configuración interna:** solo después del grafo completo, poblá el `config` de cada step en orden topológico (entrada → salida).
+No mezcles las etapas — configura solo cuando el grafo esté cerrado.
 """
 
 
@@ -177,6 +182,11 @@ async def generate_etl_from_inference(
 Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
 Las estructuras STG y DWH ya fueron validadas por el usuario — usá exactamente esos nombres de tablas y columnas.
 Verifica la consistencia de tipos y nombres entre las tres capas.
+
+Antes de escribir el objeto `ktr`, determiná en orden:
+**Etapa 1 — Diseño del grafo:** listá mentalmente todos los steps necesarios (nombre, tipo) y sus conexiones (hops) para ESTE proceso específico, sin entrar en configs internas. Verificá grafo completo: ningún step aislado.
+**Etapa 2 — Configuración interna:** solo después del grafo completo, poblá el `config` de cada step en orden topológico (entrada → salida).
+No mezcles las etapas — configura solo cuando el grafo esté cerrado.
 """
     resp = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
     if on_llm_done is not None:
