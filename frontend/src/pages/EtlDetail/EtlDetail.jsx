@@ -78,7 +78,9 @@ export default function EtlDetail() {
     URL.revokeObjectURL(url);
   };
 
-  const hasDwhSample = Object.keys(etl.result?.dwh_sample ?? {}).length > 0;
+  // Mostrar el botón siempre que haya KTR — si dwh_sample está vacío,
+  // generateSupersetZip usa el KTR como fallback para extraer el esquema.
+  const canExportSuperset = Boolean(etl.result?.ktr_xml);
 
   const handleExportSuperset = async () => {
     setSupersetBusy(true);
@@ -124,7 +126,7 @@ export default function EtlDetail() {
             ) : (
               <span className="ktr-unavailable">No se pudo generar el .ktr</span>
             )}
-            {hasDwhSample && (
+            {canExportSuperset && (
               <button
                 className="superset-export-btn"
                 onClick={handleExportSuperset}

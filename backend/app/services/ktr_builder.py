@@ -3,6 +3,7 @@ KTR serializer: converts the ktr JSON structure returned by Gemini into valid .k
 No AI calls — pure Python data transformation.
 """
 import re
+import json
 import logging
 from datetime import datetime
 from xml.etree.ElementTree import Element, SubElement, tostring
@@ -18,6 +19,43 @@ def _sub(parent: Element, tag: str, text: str = "") -> Element:
     if text:
         el.text = str(text)
     return el
+
+
+# Step types que requieren un tag <connection> en el XML
+_STEPS_NEEDING_CONNECTION = {
+    "TableInput", "TableOutput", "InsertUpdate", "Update", "Delete",
+    "DimensionLookup", "CombinationLookup", "DBLookup", "ExecSQL",
+    "DynamicSQLRow", "CallDBProc",
+}
+
+_STAGING_PREFIXES = ("stg_", "staging_", "tmp_", "temp_", "ods_", "raw_", "wrk_", "work_")
+_DWH_PREFIXES     = ("dim_", "fact_", "fct_", "hecho_", "ft_", "dwh_", "bridge_", "br_", "rel_")
+
+
+def _resolve_connection(cfg: dict, canonical_type: str, connection_names: list) -> str:
+    """
+    Devuelve el nombre de conexión a usar en el step.
+    Prioridad: campo 'connection' del config → campo 'connection_name' → inferencia por tabla.
+    """
+    conn = (cfg.get("connection") or cfg.get("connection_name") or "").strip()
+    if conn:
+        return conn
+
+    table = (cfg.get("table") or cfg.get("schema_table") or "").lower().strip()
+
+    if any(table.startswith(p) for p in _DWH_PREFIXES):
+        inferred = "conn_dwh"
+    elif any(table.startswith(p) for p in _STAGING_PREFIXES):
+        inferred = "conn_staging"
+    elif canonical_type == "TableInput":
+        inferred = "conn_origen"
+    else:
+        inferred = connection_names[0] if connection_names else "conn_origen"
+
+    # Preferir el nombre inferido si existe en las conexiones declaradas
+    if inferred in connection_names:
+        return inferred
+    return connection_names[0] if connection_names else inferred
 
 
 # ─── Connection block ─────────────────────────────────────────────────────────
@@ -62,9 +100,10 @@ def _step_TableInput(el: Element, cfg: dict) -> None:
 
 
 def _step_TableOutput(el: Element, cfg: dict) -> None:
+    table = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or ""
     _sub(el, "connection",     cfg.get("connection", ""))
     _sub(el, "schema",         cfg.get("schema", ""))
-    _sub(el, "table",          cfg.get("table", ""))
+    _sub(el, "table",          table)
     _sub(el, "commit",         "1000")
     _sub(el, "truncate",       "Y" if cfg.get("truncate") else "N")
     _sub(el, "ignore_errors",  "N")
@@ -79,9 +118,10 @@ def _step_TableOutput(el: Element, cfg: dict) -> None:
 
 
 def _step_InsertUpdate(el: Element, cfg: dict) -> None:
+    table = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or ""
     _sub(el, "connection", cfg.get("connection", ""))
     _sub(el, "schema",     cfg.get("schema", ""))
-    _sub(el, "table",      cfg.get("table", ""))
+    _sub(el, "table",      table)
     _sub(el, "commit",     "100")
     lookup = SubElement(el, "lookup")
     for k in cfg.get("keys", []):
@@ -98,26 +138,42 @@ def _step_InsertUpdate(el: Element, cfg: dict) -> None:
 
 
 def _step_SelectValues(el: Element, cfg: dict) -> None:
+    # LLM puede usar "select", "fields" o "columns" para la lista de campos a seleccionar
+    select_fields = cfg.get("select") or cfg.get("fields") or cfg.get("columns") or []
+    remove_fields = cfg.get("remove", [])
+    cast_fields   = cfg.get("cast", [])
+
+    if not select_fields and not cast_fields and not remove_fields:
+        logger.warning("SelectValues: config sin campos en select/fields/cast/remove. cfg=%s", cfg)
+
     fe = SubElement(el, "fields")
-    for f in cfg.get("select", []):
+    for f in select_fields:
+        if isinstance(f, str):
+            f = {"name": f, "rename": f}
         field = SubElement(fe, "field")
         _sub(field, "name",      f.get("name", ""))
-        _sub(field, "rename",    f.get("rename", ""))
+        _sub(field, "rename",    f.get("rename") or f.get("name", ""))
         _sub(field, "length",    str(f.get("length", -1)))
         _sub(field, "precision", str(f.get("precision", -1)))
+    # PDI requiere este tag al final de <fields>
+    _sub(fe, "select_unspecified", "N")
+
     re_el = SubElement(el, "remove")
-    for r in cfg.get("remove", []):
+    for r in remove_fields:
         _sub(re_el, "field", r if isinstance(r, str) else r.get("name", ""))
+
     meta = SubElement(el, "meta")
-    for f in cfg.get("cast", []):
+    for f in cast_fields:
+        # El LLM puede usar "name" o "field" como clave del nombre de columna
+        col_name = f.get("name") or f.get("field", "")
         field = SubElement(meta, "field")
-        _sub(field, "name",                 f.get("name", ""))
+        _sub(field, "name",                col_name)
         _sub(field, "rename")
-        _sub(field, "type",                 f.get("type", "String"))
-        _sub(field, "length",               "-1")
-        _sub(field, "precision",            "-1")
+        _sub(field, "type",                f.get("type", "String"))
+        _sub(field, "length",              "-1")
+        _sub(field, "precision",           "-1")
         _sub(field, "conversion_mask")
-        _sub(field, "date_format_lenient",  "false")
+        _sub(field, "date_format_lenient", "false")
         _sub(field, "encoding")
         _sub(field, "dec_symbol")
         _sub(field, "group_symbol")
@@ -160,10 +216,14 @@ def _step_SortRows(el: Element, cfg: dict) -> None:
     _sub(el, "sort_path")
     _sub(el, "unique_rows",            "N")
     fe = SubElement(el, "fields")
-    for f in cfg.get("fields", []):
+    for f in cfg.get("fields", cfg.get("sort_fields", [])):
         field = SubElement(fe, "field")
-        name = f.get("name", f) if isinstance(f, dict) else str(f)
-        asc  = f.get("ascending", True) if isinstance(f, dict) else True
+        if isinstance(f, dict):
+            name = f.get("name") or f.get("field") or f.get("column") or ""
+            asc  = f.get("ascending", True)
+        else:
+            name = str(f)
+            asc  = True
         _sub(field, "name",           name)
         _sub(field, "ascending",      "Y" if asc else "N")
         _sub(field, "case_sensitive", "N")
@@ -184,8 +244,12 @@ def _step_GroupBy(el: Element, cfg: dict) -> None:
     fe = SubElement(el, "fields")
     for agg in cfg.get("aggregates", []):
         field = SubElement(fe, "field")
-        _sub(field, "aggregate", agg.get("name", agg.get("aggregate", "")))
-        _sub(field, "subject",   agg.get("subject", agg.get("field", "")))
+        # LLM puede usar name/result_field/aggregate para el campo resultado
+        _sub(field, "aggregate", (agg.get("name") or agg.get("result_field") or
+                                  agg.get("aggregate") or agg.get("output_field") or ""))
+        # LLM puede usar subject/subject_field/field para el campo fuente
+        _sub(field, "subject",   (agg.get("subject") or agg.get("subject_field") or
+                                  agg.get("field") or agg.get("input_field") or ""))
         _sub(field, "type",      agg.get("type", "SUM"))
         _sub(field, "valuefield")
 
@@ -209,11 +273,19 @@ def _step_MergeJoin(el: Element, cfg: dict) -> None:
 
 
 def _step_DimensionLookup(el: Element, cfg: dict) -> None:
+    table        = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or ""
+    return_field = (cfg.get("return_field") or cfg.get("returnfield") or
+                    cfg.get("sk_field") or cfg.get("surrogate_key") or "id_sk")
+    if not table:
+        logger.warning("DimensionLookup: 'table' vacío — PDI fallará con SELECT FROM null")
+    if not return_field or return_field == "id_sk":
+        logger.warning("DimensionLookup: 'returnfield' no configurado, usando fallback '%s'", return_field)
     _sub(el, "schema",                    cfg.get("schema", ""))
-    _sub(el, "table",                     cfg.get("table", ""))
+    _sub(el, "table",                     table)
     _sub(el, "connection",                cfg.get("connection", ""))
+    _sub(el, "commit",                    "100")
     _sub(el, "update",                    "Y")
-    _sub(el, "returnfield",               cfg.get("return_field", "id_sk"))
+    _sub(el, "returnfield",               return_field)
     _sub(el, "preload_cache",             "N")
     _sub(el, "cache_size",                "5000")
     _sub(el, "use_start_date_alternative","N")
@@ -223,18 +295,52 @@ def _step_DimensionLookup(el: Element, cfg: dict) -> None:
     fe = SubElement(el, "fields")
     for k in cfg.get("keys", []):
         ke = SubElement(fe, "key")
-        _sub(ke, "name",   k.get("stream", k.get("name", "")))
-        _sub(ke, "lookup", k.get("lookup", k.get("name", "")))
+        # LLM puede usar stream/stream_field/name para el campo del stream
+        _sub(ke, "name",   k.get("stream") or k.get("stream_field") or k.get("name", ""))
+        _sub(ke, "lookup", k.get("lookup") or k.get("table_field") or k.get("name", ""))
     for f in cfg.get("fields", []):
         field = SubElement(fe, "field")
-        _sub(field, "name",   f.get("stream", f.get("name", "")))
-        _sub(field, "lookup", f.get("lookup", f.get("name", "")))
+        _sub(field, "name",   f.get("stream") or f.get("stream_field") or f.get("name", ""))
+        _sub(field, "lookup", f.get("lookup") or f.get("table_field") or f.get("name", ""))
         _sub(field, "update", "Y" if f.get("update", True) else "N")
         _sub(field, "type",   f.get("type", "Insert"))
     date_el = SubElement(fe, "date")
     _sub(date_el, "name",       cfg.get("date_from", "fecha_desde"))
     _sub(date_el, "datename",   cfg.get("date_to",   "fecha_hasta"))
     _sub(date_el, "dateformat", "yyyy-MM-dd")
+    # Bloque <return> obligatorio para PDI — identifica el surrogate key generado
+    ret_el = SubElement(fe, "return")
+    _sub(ret_el, "name",            return_field)
+    _sub(ret_el, "rename",          return_field)
+    _sub(ret_el, "creation_method", "autoinc")
+    _sub(ret_el, "use_autoinc",     "Y")
+    _sub(ret_el, "version",         "1")
+
+
+def _step_DBLookup(el: Element, cfg: dict) -> None:
+    table = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or ""
+    if not table:
+        logger.warning("DBLookup: 'table' vacío — PDI fallará buscando campo en tabla null")
+    _sub(el, "connection", cfg.get("connection", ""))
+    _sub(el, "schema",     cfg.get("schema", ""))
+    _sub(el, "table",      table)
+    _sub(el, "orderby")
+    _sub(el, "fail_on_multiple", "N")
+    _sub(el, "eat_row_on_failure", "N")
+    _sub(el, "cache", "N")
+    _sub(el, "cache_load_all", "N")
+    lookup = SubElement(el, "lookup")
+    for k in cfg.get("keys", []):
+        ke = SubElement(lookup, "key")
+        _sub(ke, "name",      k.get("stream_field") or k.get("name", ""))
+        _sub(ke, "field",     k.get("lookup_field") or k.get("table_field") or k.get("field", ""))
+        _sub(ke, "condition", k.get("condition", "="))
+    for r in cfg.get("return_fields", cfg.get("returns", [])):
+        ret = SubElement(lookup, "value")
+        _sub(ret, "name",    r.get("name", ""))
+        _sub(ret, "rename",  r.get("rename") or r.get("name", ""))
+        _sub(ret, "default", str(r.get("default", "")))
+        _sub(ret, "type",    r.get("type", "String"))
 
 
 def _step_CombinationLookup(el: Element, cfg: dict) -> None:
@@ -362,7 +468,7 @@ def _step_Calculator(el: Element, cfg: dict) -> None:
         _sub(calc, "remove",          "N")
 
 
-def _step_AddConstants(el: Element, cfg: dict) -> None:
+def _step_Constant(el: Element, cfg: dict) -> None:
     fe = SubElement(el, "fields")
     for f in cfg.get("fields", []):
         field = SubElement(fe, "field")
@@ -426,16 +532,23 @@ def _step_StreamLookup(el: Element, cfg: dict) -> None:
 
 def _step_MergeRows(el: Element, cfg: dict) -> None:
     """Merge rows (diff) — compara dos streams ordenados y marca cambios."""
-    _sub(el, "keys")
+    # El LLM puede usar "step1"/"step2" o "reference"/"compare_step"
+    reference = cfg.get("reference") or cfg.get("step1") or cfg.get("reference_step") or ""
+    compare   = cfg.get("compare") or cfg.get("compare_step") or cfg.get("step2") or cfg.get("compare_step_name") or ""
+    if not reference or not compare:
+        logger.warning(
+            "MergeRows: faltan step1/step2. reference=%r compare=%r config completo=%r",
+            reference, compare, cfg
+        )
     keys_el = SubElement(el, "keys")
     for k in cfg.get("keys", []):
         _sub(keys_el, "key", k if isinstance(k, str) else k.get("name", ""))
     values_el = SubElement(el, "values")
-    for v in cfg.get("compare", cfg.get("values", [])):
+    for v in cfg.get("values", []):
         _sub(values_el, "value", v if isinstance(v, str) else v.get("name", ""))
-    _sub(el, "flag_field",    cfg.get("flag_field", "flagfield"))
-    _sub(el, "reference",     cfg.get("reference", ""))
-    _sub(el, "compare",       cfg.get("compare_step", ""))
+    _sub(el, "flag_field", cfg.get("flag_field", "flagfield"))
+    _sub(el, "reference",  reference)
+    _sub(el, "compare",    compare)
 
 
 def _step_ConcatFields(el: Element, cfg: dict) -> None:
@@ -495,8 +608,12 @@ def _step_Denormaliser(el: Element, cfg: dict) -> None:
 
 
 def _step_ValueMapper(el: Element, cfg: dict) -> None:
-    _sub(el, "field_to_use",   cfg.get("source_field", cfg.get("field", "")))
-    _sub(el, "target_field",   cfg.get("target_field", ""))
+    field_to_use = (cfg.get("field_to_use") or cfg.get("source_field") or
+                    cfg.get("field") or cfg.get("input_field") or "")
+    if not field_to_use:
+        logger.warning("ValueMapper: 'field_to_use' vacío — PDI fallará buscando campo [null]")
+    _sub(el, "field_to_use",   field_to_use)
+    _sub(el, "target_field",   cfg.get("target_field") or cfg.get("output_field") or field_to_use)
     _sub(el, "non_match_default", cfg.get("default", ""))
     fe = SubElement(el, "fields")
     for m in cfg.get("mappings", []):
@@ -551,7 +668,8 @@ STEP_TYPE_ALIASES = {
     "Value mapper":              "ValueMapper",
     "Null if...":                "IfNull",
     "If field value is null":    "IfNull",
-    "Add constants":             "AddConstants",
+    "Add constants":             "Constant",
+    "AddConstants":              "Constant",
     "Number range":              "NumberRange",
     "Regex evaluation":          "RegexEval",
     "Row Normaliser":            "Normaliser",
@@ -561,6 +679,7 @@ STEP_TYPE_ALIASES = {
     "Stream lookup":             "StreamLookup",
     "Merge rows (diff)":         "MergeRows",
     "Merge join":                "MergeJoin",
+    "Merge Join":                "MergeJoin",
     # Salida
     "Table Output":              "TableOutput",
     "Insert / Update":           "InsertUpdate",
@@ -609,12 +728,13 @@ STEP_BUILDERS = {
     "MergeJoin":           _step_MergeJoin,
     "StreamLookup":        _step_StreamLookup,
     "MergeRows":           _step_MergeRows,
+    "DBLookup":            _step_DBLookup,
     # DWH
     "DimensionLookup":     _step_DimensionLookup,
     "CombinationLookup":   _step_CombinationLookup,
     # Cálculo / texto / constantes
     "Calculator":          _step_Calculator,
-    "AddConstants":        _step_AddConstants,
+    "Constant":            _step_Constant,
     "StringOperations":    _step_StringOperations,
     "ReplaceString":       _step_ReplaceString,
     "ConcatFields":        _step_ConcatFields,
@@ -732,6 +852,55 @@ def build_ktr(ktr_data: dict, process_name: str = "") -> tuple[str, str]:
     steps       = _auto_layout(ktr_data.get("steps", []), ktr_data.get("hops", []))
     hops        = ktr_data.get("hops", [])
 
+    # Diagnóstico: loggear config completo de steps con campos críticos vacíos
+    _CRITICAL_FIELDS = {
+        "TableOutput":      ["table"],
+        "InsertUpdate":     ["table"],
+        "Update":           ["table"],
+        "Delete":           ["table"],
+        "DimensionLookup":  ["table", "returnfield"],
+        "CombinationLookup":["table", "returnfield"],
+        "DBLookup":         ["table"],
+        "MergeRows":        ["step1", "step2"],
+        "MergeJoin":        ["step1", "step2"],
+        "ValueMapper":      ["field_to_use"],
+    }
+    for step in ktr_data.get("steps", []):
+        canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
+        required = _CRITICAL_FIELDS.get(canonical, [])
+        raw = step.get("config", {})
+        if isinstance(raw, str):
+            try:
+                cfg = json.loads(raw) if raw.strip() else {}
+            except json.JSONDecodeError:
+                cfg = {}
+        else:
+            cfg = raw or {}
+        missing = [f for f in required if not (cfg.get(f) or cfg.get(f + "_name") or cfg.get("target_" + f))]
+        if missing:
+            logger.warning(
+                "BUILD_KTR step='%s' type='%s' campos_faltantes=%s config_completo=%s",
+                step.get("name"), canonical, missing, cfg,
+            )
+
+    # Pre-pass: garantizar que cada step con conexión la tenga resuelta en su config
+    connection_names = [c.get("name", "") for c in connections if c.get("name")]
+    for step in steps:
+        canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
+        if canonical in _STEPS_NEEDING_CONNECTION:
+            raw = step.get("config", {})
+            if isinstance(raw, str):
+                try:
+                    parsed = json.loads(raw) if raw.strip() else {}
+                except json.JSONDecodeError:
+                    parsed = {}
+                step["config"] = parsed  # normalizar a dict para el pre-pass
+                raw = parsed
+            cfg = raw if isinstance(raw, dict) else {}
+            step.setdefault("config", cfg)
+            resolved = _resolve_connection(cfg, canonical, connection_names)
+            cfg["connection"] = resolved
+
     trans = Element("transformation")
 
     # Info
@@ -767,7 +936,17 @@ def build_ktr(ktr_data: dict, process_name: str = "") -> tuple[str, str]:
         _sub(part, "method",      "none")
         _sub(part, "schema_name")
 
-        cfg     = step.get("config", {})
+        # config puede llegar como dict (schema object) o string JSON (schema string)
+        raw_cfg = step.get("config", {})
+        if isinstance(raw_cfg, str):
+            try:
+                cfg = json.loads(raw_cfg) if raw_cfg.strip() else {}
+            except json.JSONDecodeError:
+                logger.warning("KTR: config JSON inválido en step '%s': %r", step.get("name"), raw_cfg[:200])
+                cfg = {}
+        else:
+            cfg = raw_cfg or {}
+
         # Normalizar tipo: el modelo puede devolver nombres con espacios ("Table Input")
         # o internos ("TableInput"). El alias map traduce ambos al canónico.
         canonical_type = STEP_TYPE_ALIASES.get(step_type, step_type)

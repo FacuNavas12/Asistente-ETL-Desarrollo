@@ -60,11 +60,12 @@ def _sanitize_for_anthropic(schema: Dict[str, Any]) -> Dict[str, Any]:
 @lru_cache(maxsize=8)
 def _cached_client(api_key: str, region: str) -> anthropic.AsyncAnthropic:
     """One AsyncAnthropic per (api_key, region) pair. Reuses the connection pool."""
+    headers = {"anthropic-geography": region} if region else {}
     client = anthropic.AsyncAnthropic(
         api_key=api_key,
-        default_headers={"anthropic-geography": region},
+        default_headers=headers,
     )
-    logger.info("Anthropic client created — region: %s", region)
+    logger.info("Anthropic client created — region: %s", region or "default")
     return client
 
 
@@ -142,13 +143,22 @@ class AnthropicLLM(BaseLLM):
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
+
         if schema is not None:
-            kwargs["output_config"] = {
-                "format": {"type": "json_schema", "schema": _sanitize_for_anthropic(schema)}
-            }
+            kwargs["tools"] = [
+                {
+                    "name": "structured_output",
+                    "description": "Output the response as a structured JSON object matching the schema.",
+                    "input_schema": _sanitize_for_anthropic(schema),
+                }
+            ]
+            kwargs["tool_choice"] = {"type": "tool", "name": "structured_output"}
 
         start = time.monotonic()
-        response = await client.messages.create(**kwargs)
+        # Use streaming internally to bypass the non-streaming max_tokens limit.
+        # get_final_message() collects the complete response transparently.
+        async with client.messages.stream(**kwargs) as stream:
+            response = await stream.get_final_message()
         latency_ms = int((time.monotonic() - start) * 1000)
 
         stop_reason = response.stop_reason or ""
@@ -158,11 +168,18 @@ class AnthropicLLM(BaseLLM):
                 f"current max_tokens={self._max_tokens}. Increase or simplify prompt/schema."
             )
 
-        raw = response.content[0].text
         json_data: Optional[Dict[str, Any]] = None
+        raw = ""
         if schema is not None:
-            # Constrained decoding guarantees valid JSON — no fence-strip or regex needed.
-            json_data = json.loads(raw)
+            for block in response.content:
+                if block.type == "tool_use" and block.name == "structured_output":
+                    json_data = block.input
+                    raw = json.dumps(json_data, ensure_ascii=False)
+                    break
+            if json_data is None:
+                raise RuntimeError("[Anthropic] No tool_use block in response — structured output failed")
+        else:
+            raw = response.content[0].text if response.content else ""
 
         logger.info(
             "Anthropic complete — model: %s | attempt: %d | in: %d | out: %d | stop: %s | %dms",
