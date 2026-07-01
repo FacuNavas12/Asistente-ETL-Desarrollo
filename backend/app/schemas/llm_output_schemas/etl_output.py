@@ -19,9 +19,7 @@ ETL_OUTPUT_SCHEMA: Dict[str, Any] = {
     "required": [
         "proceso_etl",
         "validaciones",
-        "documentacion",
         "advertencias_buenas_practicas",
-        "dwh_sample",
         "ktr",
     ],
     "properties": {
@@ -37,22 +35,12 @@ ETL_OUTPUT_SCHEMA: Dict[str, Any] = {
                     "items": {
                         "type": "object",
                         "additionalProperties": False,
-                        "required": [
-                            "orden",
-                            "tipo_step_pdi",
-                            "nombre",
-                            "descripcion",
-                            "configuracion",
-                            "justificacion",
-                        ],
+                        "required": ["orden", "tipo_step_pdi", "nombre", "descripcion"],
                         "properties": {
                             "orden": {"type": "integer"},
                             "tipo_step_pdi": {"type": "string"},
                             "nombre": {"type": "string"},
                             "descripcion": {"type": "string"},
-                            # Free-form: varies by step type. No additionalProperties constraint.
-                            "configuracion": {"type": "object"},
-                            "justificacion": {"type": "string"},
                         },
                     },
                 },
@@ -71,13 +59,10 @@ ETL_OUTPUT_SCHEMA: Dict[str, Any] = {
                 },
             },
         },
-        "documentacion": {"type": "string"},
         "advertencias_buenas_practicas": {
             "type": "array",
             "items": {"type": "string"},
         },
-        # Dynamic keys (table names) → cannot enumerate → no additionalProperties constraint.
-        "dwh_sample": {"type": "object"},
         "ktr": {
             "type": "object",
             "additionalProperties": False,
@@ -110,8 +95,16 @@ ETL_OUTPUT_SCHEMA: Dict[str, Any] = {
                         "properties": {
                             "name": {"type": "string"},
                             "type": {"type": "string"},
-                            # Free-form: varies by Pentaho step type.
-                            "config": {"type": "object"},
+                            # String so Gemini structured-output can populate it freely.
+                            # The builder parses it with json.loads().
+                            "config": {
+                                "type": "string",
+                                "description": (
+                                    "JSON string with ALL required fields for this step type. "
+                                    "NEVER return '{}' — always populate with connection, table, "
+                                    "fields, keys, etc. as documented in the system prompt."
+                                ),
+                            },
                         },
                     },
                 },

@@ -88,13 +88,41 @@ def _build_response(resp: LLMResponse) -> ETLGenerateResponse:
 
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_data = data.get("ktr", {})
+
+    # Diagnóstico de causa raíz: mostrar los primeros steps del JSON crudo del modelo
+    import json as _json
+    _log.info("=== KTR JSON CRUDO (primeros 3 steps) ===")
+    for s in ktr_data.get("steps", [])[:3]:
+        _log.info("STEP_RAW: %s", _json.dumps(s, ensure_ascii=False))
+
+    # Diagnóstico: loggear config de cada step antes de construir el KTR
+    import json as _json2
+    for s in ktr_data.get("steps", []):
+        raw = s.get("config", {})
+        if isinstance(raw, str):
+            try:
+                cfg = _json2.loads(raw) if raw.strip() else {}
+            except Exception:
+                cfg = {}
+        else:
+            cfg = raw or {}
+        _log.info(
+            "KTR_DIAG step='%s' type='%s' cfg_type=%s table=%r returnfield=%r step1=%r step2=%r cfg_keys=%s",
+            s.get("name"), s.get("type"), type(raw).__name__,
+            cfg.get("table") or cfg.get("target_table") or cfg.get("table_name"),
+            cfg.get("returnfield") or cfg.get("return_field"),
+            cfg.get("step1") or cfg.get("reference"),
+            cfg.get("step2") or cfg.get("compare"),
+            list(cfg.keys()),
+        )
+
     ktr_xml, ktr_filename = build_ktr(ktr_data, process_name)
     return ETLGenerateResponse(
         proceso_etl=data["proceso_etl"],
         validaciones=data.get("validaciones", []),
         documentacion=data.get("documentacion", ""),
         advertencias_buenas_practicas=data.get("advertencias_buenas_practicas", []),
-        dwh_sample=data.get("dwh_sample", {}),
+        dwh_sample={},
         ktr_xml=ktr_xml,
         ktr_filename=ktr_filename,
         lineage=build_lineage(ktr_data),

@@ -93,8 +93,8 @@ class StepETL(BaseModel):
     tipo_step_pdi: str
     nombre: str
     descripcion: str
-    configuracion: dict
-    justificacion: str          # RNF9
+    configuracion: dict = {}
+    justificacion: str = ""
 
 
 class ProcesoETL(BaseModel):
@@ -119,7 +119,7 @@ class MetadataResponse(BaseModel):
 class ETLGenerateResponse(BaseModel):
     proceso_etl: ProcesoETL
     validaciones: List[Validacion]
-    documentacion: str
+    documentacion: str = ""
     advertencias_buenas_practicas: List[str]
     dwh_sample: Dict[str, List[Dict[str, Any]]] = {}
     ktr_xml: str = ""

@@ -24,9 +24,13 @@ const AUDIT_KEYWORDS = [
 // ── Column name utilities ─────────────────────────────────────────────────────
 const isUsableColumn = (name) => {
   if (!name) return false;
-  const u = String(name).toUpperCase();
-  if (u.startsWith("SK_") || u.startsWith("FK_") || u.startsWith("ID_")) return false;
-  if (u === "ID" || u.endsWith("_ID")) return false;
+  const upper = String(name).toUpperCase();
+  if (upper.startsWith("SK_")) return false;
+  if (upper.startsWith("FK_")) return false;
+  if (upper.startsWith("ID_")) return false;
+  if (upper.startsWith("COD_")) return false;
+  if (upper.startsWith("BK_")) return false;
+  if (upper === "ID" || upper.endsWith("_ID")) return false;
   return true;
 };
 
@@ -99,10 +103,34 @@ const buildTables = (dwhSample = {}) =>
         values: rows.map(r => r?.[col] ?? r?.[col.toUpperCase()]),
         semanticType: inferSemanticType(col, rows.map(r => r?.[col] ?? r?.[col.toUpperCase()])),
       }));
+      const usableColumns = columns.filter(c =>
+        isUsableColumn(c.name) &&
+        c.values.some(v => v !== null && v !== undefined && v !== "")
+      );
+
+      const descriptiveKeywords = [
+        'NOMBRE', 'NAME', 'DESCRIPCION', 'DESCRIPTION', 'DETALLE', 'DETAIL',
+        'TIPO', 'TYPE', 'CATEGORIA', 'CATEGORY', 'CLASE', 'CLASS',
+        'ESTADO', 'STATUS', 'ETIQUETA', 'LABEL', 'TITULO', 'TITLE',
+        'DEPARTAMENTO', 'CIUDAD', 'PAIS', 'REGION', 'PROVINCIA',
+        'LOCALIDAD', 'MUNICIPIO', 'ZONA', 'TERRITORIO', 'COUNTRY', 'CITY',
+        'PROYECTO', 'PROJECT', 'FASE', 'ETAPA', 'STAGE',
+        'PRODUCTO', 'PRODUCT', 'ARTICULO', 'ITEM', 'SKU',
+        'CLIENTE', 'CUSTOMER', 'PROVEEDOR', 'SUPPLIER', 'VENDEDOR',
+        'COMPRA', 'VENTA', 'SALE', 'CANAL', 'CHANNEL',
+        'ONTOLOGY', 'TERM', 'DEFINITION', 'QUALIFIER', 'EVIDENCE',
+        'GENE', 'PROTEIN', 'RNA', 'ANNOTATION',
+        'EMPLEADO', 'EMPLOYEE', 'CARGO', 'ROLE',
+        'AREA', 'DIVISION', 'EQUIPO', 'TEAM',
+        'ASIGNATURA', 'CURSO', 'MATERIA', 'CARRERA', 'FACULTAD',
+        'ALUMNO', 'STUDENT', 'DOCENTE', 'TEACHER',
+      ];
+
       const pickColumn =
-        columns.find(c => isUsableColumn(c.name) && c.values.some(v => v != null && v !== "")) ??
-        columns.find(c => c.values.some(v => v != null && v !== "")) ??
-        columns[0];
+        usableColumns.find(c => descriptiveKeywords.some(k => c.name.toUpperCase().includes(k))) ??
+        usableColumns.find(c => typeof c.values.find(v => v !== null) === 'string') ??
+        usableColumns[0] ??
+        columns.find(c => c.values.some(v => v !== null && v !== undefined && v !== ""));
       return pickColumn ? { name, columns, pickColumn } : null;
     })
     .filter(Boolean);
@@ -409,13 +437,13 @@ const tableChartYaml = ({ tableName, columnName, dsUuid, chartUuid, isMetric = f
   });
 };
 
-const pieChartYaml = ({ tableName, columnName, dsUuid, chartUuid }) => {
+const pieChartYaml = ({ tableName, columnName, dsUuid, chartUuid, metric = countMetric }) => {
   const params = {
     datasource: `${dsUuid}__table`,
     viz_type: "pie",
     url_params: {},
     time_range: "No filter",
-    metric: countMetric,
+    metric,
     adhoc_filters: [],
     groupby: [columnName],
     row_limit: 100,
@@ -637,16 +665,96 @@ const selectChartsForTable = (table) => {
       (col?.values ?? table.pickColumn.values).filter(v => v != null)
     ).size;
 
-    if (uniqueCount <= 15) {
-      charts.push({ type: "pie", columnName: colName, label: "Distribución" });
+    const realMetrics = metricCols.filter(c => {
+      const u = c.name.toUpperCase();
+      return !u.startsWith("SK_") && !u.startsWith("FK_") &&
+             !u.startsWith("ID_") && !u.endsWith("_ID") &&
+             !u.startsWith("COD_") && !u.startsWith("BK_");
+    });
+
+    if (realMetrics.length > 0) {
+      const bestMetric = realMetrics[0];
+      const metricObj = {
+        label: `SUM(${bestMetric.name})`,
+        expressionType: "SQL",
+        sqlExpression: `SUM(${bestMetric.name})`,
+        hasCustomLabel: false,
+        optionName: `metric_sum_${bestMetric.name}`,
+      };
+      if (uniqueCount <= 15) {
+        charts.push({ type: "pie_with_metric", columnName: colName, metric: metricObj, label: "Distribución" });
+      } else {
+        charts.push({ type: "bar_with_metric", columnName: colName, metric: metricObj, xAxis: colName, label: "Distribución" });
+      }
     } else {
-      charts.push({ type: "bar", columnName: colName, xAxis: colName, label: "Distribución" });
+      if (uniqueCount <= 15) {
+        charts.push({ type: "pie", columnName: colName, label: "Distribución" });
+      } else {
+        charts.push({ type: "bar", columnName: colName, xAxis: colName, label: "Distribución" });
+      }
     }
     charts.push({ type: "table", columnName: colName, label: "Detalle" });
     return charts;
   }
 
-  // Generic / unknown table type
+  // Generic / unknown table type — clasificación semántica por contenido, no por nombre
+  // Caso A: tiene métricas reales + fechas → comportamiento fact-like
+  if (realMetrics.length > 0 && businessDates.length > 0) {
+    charts.push({ type: "big_number", columnName: bestMetric?.name ?? null, label: "KPI" });
+    const second = realMetrics[1];
+    if (second) charts.push({ type: "big_number", columnName: second.name, label: "KPI" });
+    charts.push({
+      type: "line",
+      columnName: bestMetric.name,
+      xAxis: businessDates[0].name,
+      metric: bestMetricObj,
+      label: "Evolución temporal",
+    });
+    if (catCols.length > 0) {
+      charts.push({
+        type: "bar",
+        columnName: bestMetric.name,
+        xAxis: catCols[0].name,
+        metric: bestMetricObj,
+        label: "Por categoría",
+      });
+    }
+    charts.push({ type: "table", columnName: (bestMetric ?? table.pickColumn).name, label: "Detalle", isMetric: true });
+    return charts;
+  }
+
+  // Caso B: tiene métricas reales sin fechas → KPI + bar por categoría + tabla
+  if (realMetrics.length > 0) {
+    charts.push({ type: "big_number", columnName: bestMetric?.name ?? null, label: "KPI" });
+    const second = realMetrics[1];
+    if (second) charts.push({ type: "big_number", columnName: second.name, label: "KPI" });
+    if (catCols.length > 0) {
+      charts.push({
+        type: "bar",
+        columnName: bestMetric.name,
+        xAxis: catCols[0].name,
+        metric: bestMetricObj,
+        label: "Por categoría",
+      });
+    }
+    charts.push({ type: "table", columnName: (bestMetric ?? table.pickColumn).name, label: "Detalle", isMetric: true });
+    return charts;
+  }
+
+  // Caso C: tiene fechas sin métricas → line de COUNT + tabla
+  if (businessDates.length > 0) {
+    charts.push({
+      type: "bar",
+      columnName: table.pickColumn.name,
+      xAxis: businessDates[0].name,
+      metric: countMetric,
+      label: "Evolución temporal",
+    });
+    charts.push({ type: "table", columnName: table.pickColumn.name, label: "Detalle" });
+    return charts;
+  }
+
+  // Caso D: solo categorías → pie/bar según cardinalidad + tabla
   const col  = catCols[0] ?? table.pickColumn;
   const card = cardinality(col);
   if (card !== null && card > 15) {
@@ -725,8 +833,30 @@ const slugify = (s) =>
 
 // ── Main ZIP export ───────────────────────────────────────────────────────────
 export async function generateSupersetZip(etl, sqlalchemyUri = "postgresql://user:password@host:5432/dwh") {
-  const dwhSample = etl?.result?.dwh_sample ?? {};
-  const tables    = buildTables(dwhSample);
+  let dwhSample = etl?.result?.dwh_sample ?? {};
+
+  // Fallback 1: si el LLM no generó dwh_sample, extraer el esquema desde el KTR
+  if (!Object.keys(dwhSample).length && etl?.result?.ktr_xml) {
+    const ktrBlob = new Blob([etl.result.ktr_xml], { type: "application/xml" });
+    dwhSample = await extractDwhSchemaFromKtrs([ktrBlob]);
+  }
+
+  // Fallback 2: si el KTR tampoco dio resultados, usar el dwhModel del formulario
+  if (!Object.keys(dwhSample).length && etl?.formData?.dwhModel?.tables?.length) {
+    for (const table of etl.formData.dwhModel.tables) {
+      const tableName = table.nombre?.toLowerCase();
+      if (!tableName) continue;
+      const row = {};
+      for (const col of table.columnas ?? []) {
+        const colName = col.nombre?.toLowerCase();
+        if (!colName) continue;
+        row[colName] = _syntheticValue(col.nombre);
+      }
+      if (Object.keys(row).length) dwhSample[tableName] = [row];
+    }
+  }
+
+  const tables = buildTables(dwhSample);
   if (!tables.length) throw new Error("No hay datos en el DWH para exportar a Superset.");
 
   const zip    = new JSZip();
@@ -750,11 +880,13 @@ export async function generateSupersetZip(etl, sqlalchemyUri = "postgresql://use
       const common = { tableName: table.name, columnName: spec.columnName, dsUuid, chartUuid };
 
       let yamlContent;
-      if      (spec.type === "table")      yamlContent = tableChartYaml({ ...common, isMetric: spec.isMetric ?? false });
-      else if (spec.type === "pie")        yamlContent = pieChartYaml(common);
-      else if (spec.type === "bar")        yamlContent = barChartYaml({ ...common, xAxis: spec.xAxis, metric: spec.metric });
-      else if (spec.type === "line")       yamlContent = lineChartYaml({ ...common, xAxis: spec.xAxis, metric: spec.metric });
-      else if (spec.type === "big_number") yamlContent = bigNumberYaml(common);
+      if      (spec.type === "table")           yamlContent = tableChartYaml({ ...common, isMetric: spec.isMetric ?? false });
+      else if (spec.type === "pie")             yamlContent = pieChartYaml(common);
+      else if (spec.type === "pie_with_metric") yamlContent = pieChartYaml({ ...common, metric: spec.metric });
+      else if (spec.type === "bar")             yamlContent = barChartYaml({ ...common, xAxis: spec.xAxis, metric: spec.metric });
+      else if (spec.type === "bar_with_metric") yamlContent = barChartYaml({ ...common, xAxis: spec.xAxis ?? spec.columnName, metric: spec.metric });
+      else if (spec.type === "line")            yamlContent = lineChartYaml({ ...common, xAxis: spec.xAxis, metric: spec.metric });
+      else if (spec.type === "big_number")      yamlContent = bigNumberYaml(common);
 
       if (!yamlContent) continue;
       folder.file(`charts/${slugify(chartLabel)}_${chartUuid.slice(0, 8)}.yaml`, yamlContent);
