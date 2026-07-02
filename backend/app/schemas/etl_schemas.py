@@ -177,6 +177,37 @@ class ETLFromInferenceRequest(BaseModel):
     reglasNegocio: str
 
 
+class BuildFromRawRequest(BaseModel):
+    """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada
+    previamente por el frontend (descargada tras un fallo de build_ktr). Sin llamada al LLM."""
+    raw_llm_data: Dict[str, Any]
+
+
+# ─── GENERATE ASYNC + CONEXIONES EN PARALELO ─────────────────────────────────
+
+class ConnectionsMapRequest(BaseModel):
+    """IDs de Connection ya creados (vía POST /api/connections) por nombre lógico
+    de capa. Nunca credenciales — solo referencias a filas ya existentes."""
+    conn_origen: Optional[str] = None
+    conn_staging: Optional[str] = None
+    conn_dwh: Optional[str] = None
+
+
+class GenerateAsyncResponse(BaseModel):
+    job_id: str
+
+
+class KtrJobStatusResponse(BaseModel):
+    model_status: str
+    build_status: str
+    error: Optional[str] = None
+    result: Optional[ETLGenerateResponse] = None
+    # Poblado solo cuando build_status == "failed": el modelo ya respondió pero
+    # build_ktr() falló. Le permite al frontend guardar/reutilizar esa respuesta
+    # sin pagar de nuevo la llamada al LLM.
+    raw_llm_data: Optional[Dict[str, Any]] = None
+
+
 # Resolve forward references.
 # Imports at bottom to avoid circular imports.
 from app.schemas.canonical import CanonicalSchema  # noqa: E402

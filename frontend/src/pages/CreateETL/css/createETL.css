@@ -115,6 +115,26 @@
   min-height: 300px;
 }
 
+/* Variante con formulario de conexiones destino: izquierda 4/5 (conexiones,
+   se van completando), derecha 1/5 (EtlChecks, progreso del modelo). */
+.etl-processing--split {
+  justify-content: stretch;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.etl-processing__connections {
+  flex: 4 1 0;
+  min-width: 0;
+}
+
+.etl-processing__checks {
+  flex: 1 1 0;
+  min-width: 220px;
+  position: sticky;
+  top: 24px;
+}
+
 /* ── Limpiar button (shared) ── */
 .etl-clear-btn {
   padding: 10px 14px;

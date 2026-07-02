@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -9,21 +11,32 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_auth
-from app.core.database import get_db
+from app.core.database import get_db, get_session_factory
 from app.core.dependencies import get_main_llm, get_secondary_llm
 from app.models.llm_base import BaseLLM
+from app.models.ktr_build_job import KtrBuildJob, ModelStatus
 from app.schemas.etl_schemas import (
+    BuildFromRawRequest,
+    ConnectionsMapRequest,
     ETLDocumentRequest,
     ETLDocumentResponse,
     ETLFromInferenceRequest,
     ETLGenerateResponse,
     ETLValidateRequest,
     ETLValidateResponse,
+    GenerateAsyncResponse,
     InferRequest,
     InferResponse,
+    KtrJobStatusResponse,
     RefineRequest,
 )
-from app.services.etl_generator import generate_etl_from_inference
+from app.services.etl_generator import (
+    build_etl_from_raw,
+    generate_etl_async,
+    generate_etl_from_inference,
+    KtrBuildError,
+    _try_build,
+)
 from app.services.validator import validate_etl
 from app.services.documenter import document_etl
 from app.services.structure_inferrer import infer_structures, refine_structures
@@ -57,6 +70,12 @@ class _KtrLogHandler(logging.Handler):
 async def _handle(fn, *args):
     try:
         return await fn(*args)
+    except KtrBuildError as e:
+        logger.error("build_ktr failed: %s", str(e.original_error))
+        raise HTTPException(status_code=502, detail={
+            "message": f"El modelo respondió pero falló la construcción del .ktr: {e.original_error}",
+            "raw_llm_data": e.raw_data,
+        })
     except json.JSONDecodeError as e:
         logger.error("JSON parse error: %s", str(e))
         raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
@@ -118,6 +137,107 @@ async def generate_from_inference(
     return await _handle(generate_etl_from_inference, req, llm, db)
 
 
+@router.post("/api/v1/etl/build-from-raw", response_model=ETLGenerateResponse)
+async def build_from_raw(req: BuildFromRawRequest):
+    """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada previamente
+    por el frontend (descargada tras un fallo de build_ktr). No llama al LLM."""
+    return await _handle(build_etl_from_raw, req.raw_llm_data)
+
+
+# ── Flujo async: modelo + conexiones destino en paralelo ─────────────────────
+# generate-async dispara el modelo en background y devuelve job_id de inmediato.
+# El cliente arranca el formulario de conexiones (staging/DWH) al mismo tiempo,
+# sin esperar al modelo. build_ktr() es una barrera: se dispara en cuanto ambos
+# lados (JSON del modelo + connections_map) están listos, sin importar el orden.
+
+_JOB_TTL_MINUTES = 30
+
+
+def _job_or_404(job_id: str, db: Session) -> KtrBuildJob:
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="job_id inválido.")
+
+    job = db.get(KtrBuildJob, job_uuid)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job no encontrado.")
+
+    # SQLite no preserva tzinfo en columnas DateTime(timezone=True) — expires_at
+    # vuelve naive al leerlo. Siempre se escribe en UTC, así que asumirlo es seguro.
+    expires_at = job.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at < datetime.now(timezone.utc):
+        db.delete(job)
+        db.commit()
+        raise HTTPException(status_code=410, detail="El job expiró (30 min). Generá el ETL de nuevo.")
+
+    return job
+
+
+def _status_response(job: KtrBuildJob) -> KtrJobStatusResponse:
+    # build_status == "failed": el modelo ya respondió (job.model_json quedó
+    # poblado en generate_etl_async) pero build_ktr() falló en _try_build.
+    # Devolvemos esa respuesta cruda para que el frontend no la pierda.
+    raw_llm_data = None
+    if job.build_status.value == "failed" and job.model_json:
+        raw_llm_data = job.model_json.get("raw_data")
+
+    return KtrJobStatusResponse(
+        model_status=job.model_status.value,
+        build_status=job.build_status.value,
+        error=job.model_error,
+        result=ETLGenerateResponse(**job.result_json) if job.result_json else None,
+        raw_llm_data=raw_llm_data,
+    )
+
+
+@router.post("/api/v1/etl/generate-async", response_model=GenerateAsyncResponse)
+async def generate_async(
+    req: ETLFromInferenceRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+    session_factory = Depends(get_session_factory),
+):
+    """Crea el job y dispara la llamada al modelo en background — responde con
+    job_id sin esperar al modelo, para que el cliente arranque el formulario de
+    conexiones en paralelo."""
+    job = KtrBuildJob(expires_at=datetime.now(timezone.utc) + timedelta(minutes=_JOB_TTL_MINUTES))
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    asyncio.create_task(generate_etl_async(job.id, req, llm, session_factory))
+
+    return GenerateAsyncResponse(job_id=str(job.id))
+
+
+@router.post("/api/v1/etl/{job_id}/connections", response_model=KtrJobStatusResponse)
+async def submit_job_connections(
+    job_id: str,
+    body: ConnectionsMapRequest,
+    db: Session = Depends(get_db),
+):
+    """Ata connection_id ya creados (vía POST /api/connections, mismo formulario
+    reusado del frontend) al job. No pide datos de conexión — eso ya ocurrió
+    en el navegador antes de esta llamada."""
+    job = _job_or_404(job_id, db)
+    job.connections_map = body.model_dump(exclude_none=True)
+    db.commit()
+    _try_build(job.id, db)
+    db.refresh(job)
+    return _status_response(job)
+
+
+@router.get("/api/v1/etl/{job_id}/status", response_model=KtrJobStatusResponse)
+async def get_job_status(job_id: str, db: Session = Depends(get_db)):
+    """Poleado por el cliente hasta build_status == 'built' (o 'failed')."""
+    job = _job_or_404(job_id, db)
+    return _status_response(job)
+
+
 @router.post("/api/v1/etl/generate-from-inference/stream")
 async def generate_from_inference_sse(
     req: ETLFromInferenceRequest,
@@ -156,7 +276,15 @@ async def generate_from_inference_sse(
                 msg = await queue.get()
                 if msg["type"] == "done":
                     if error_box:
-                        payload = json.dumps({"type": "error", "message": str(error_box[0])})
+                        exc = error_box[0]
+                        if isinstance(exc, KtrBuildError):
+                            payload = json.dumps({
+                                "type": "error",
+                                "message": f"El modelo respondió pero falló la construcción del .ktr: {exc.original_error}",
+                                "raw_llm_data": exc.raw_data,
+                            })
+                        else:
+                            payload = json.dumps({"type": "error", "message": str(exc)})
                     else:
                         data = result_box[0].model_dump() if hasattr(result_box[0], "model_dump") else result_box[0].dict()
                         payload = json.dumps({"type": "result", "data": data})

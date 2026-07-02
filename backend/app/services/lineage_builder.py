@@ -5,6 +5,7 @@ Producen un grafo dirigido origen → staging → DWH listo para el frontend.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Optional
@@ -35,6 +36,16 @@ _TABLE_RE = re.compile(
 
 def _canonical(raw_type: str) -> str:
     return STEP_TYPE_ALIASES.get(raw_type, raw_type)
+
+
+def _parse_config(raw) -> dict:
+    """El LLM a veces serializa 'config' como string JSON en vez de objeto."""
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            return {}
+    return raw or {}
 
 
 def _extract_table(canonical_type: str, config: dict) -> Optional[str]:
@@ -104,7 +115,7 @@ def build_lineage(ktr_data: dict) -> Lineage:
     for name, step in step_index.items():
         raw_type = step.get("type", "Dummy")
         c_type = _canonical(raw_type)
-        tabla = _extract_table(c_type, step.get("config", {}))
+        tabla = _extract_table(c_type, _parse_config(step.get("config", {})))
         capa = _classify_layer(in_deg[name], out_deg[name], tabla)
         nodes.append(LineageNode(
             step_name=name,

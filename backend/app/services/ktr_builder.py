@@ -5,9 +5,12 @@ No AI calls — pure Python data transformation.
 import re
 import json
 import logging
+import uuid
 from datetime import datetime
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom import minidom
+
+from app.core.kettle_crypto import encode as kettle_encode
 
 logger = logging.getLogger(__name__)
 
@@ -58,18 +61,91 @@ def _resolve_connection(cfg: dict, canonical_type: str, connection_names: list) 
     return connection_names[0] if connection_names else inferred
 
 
+# ─── Motor -> tipo de conexión Kettle ──────────────────────────────────────────
+# MSSQLNATIVE = driver JDBC oficial de Microsoft (confirmado contra export real
+# de Spoon 9.x, ver tests/fixtures/connections_sample.ktr). Si el Spoon del
+# equipo usa jTDS en vez del driver Microsoft, cambiar a "MSSQL" acá.
+_DB_TYPE_TO_KETTLE: dict[str, dict] = {
+    "postgresql": {"type": "POSTGRESQL",  "access": "Native"},
+    "sqlserver":  {"type": "MSSQLNATIVE", "access": "Native"},
+}
+
+
+def resolve_real_connections(connections_map: dict, db) -> tuple[dict[str, dict], list[str]]:
+    """
+    Resuelve un mapa {nombre_lógico: connection_id} a datos de conexión reales
+    (host/port/database/username/password-ofuscado/type) consultando la tabla
+    Connection y desofuscando el password SOLO en memoria, para inyectarlo en el
+    XML final. Nunca devuelve el password en claro ni lo loguea.
+
+    Devuelve (real_connections, warnings). Toda conexión que no se pueda resolver
+    genera un warning en vez de fallar — el .ktr sigue el build con placeholder.
+    """
+    from app.core.crypto import decrypt_password
+    from app.models.connection import Connection
+
+    real: dict[str, dict] = {}
+    warnings: list[str] = []
+
+    for logical_name, conn_id in (connections_map or {}).items():
+        if not conn_id:
+            continue
+        try:
+            conn_uuid = uuid.UUID(str(conn_id))
+        except (ValueError, TypeError, AttributeError):
+            warnings.append(f"Conexión '{logical_name}': id inválido — se usará placeholder, configurar manualmente en Spoon.")
+            continue
+
+        conn = db.get(Connection, conn_uuid)
+        if conn is None:
+            warnings.append(f"Conexión '{logical_name}': no encontrada — se usará placeholder, configurar manualmente en Spoon.")
+            continue
+
+        db_type_key = conn.db_type.value if hasattr(conn.db_type, "value") else str(conn.db_type)
+        kettle_meta = _DB_TYPE_TO_KETTLE.get(db_type_key)
+        if kettle_meta is None:
+            warnings.append(f"Conexión '{logical_name}': motor '{db_type_key}' sin mapeo Kettle — se usará placeholder.")
+            continue
+
+        password_plain = decrypt_password(conn.encrypted_password)
+        real[logical_name] = {
+            "host":     conn.host,
+            "port":     conn.port,
+            "database": conn.database,
+            "username": conn.username,
+            "password": kettle_encode(password_plain),
+            "type":     kettle_meta["type"],
+            "access":   kettle_meta["access"],
+        }
+        password_plain = None  # nunca queda referenciado más allá de este punto
+
+    return real, warnings
+
+
 # ─── Connection block ─────────────────────────────────────────────────────────
 
-def _build_connection(trans: Element, conn: dict) -> None:
+def _build_connection(trans: Element, conn: dict, real: dict | None = None) -> None:
     c = SubElement(trans, "connection")
-    _sub(c, "name",     conn.get("name", "conn_default"))
-    _sub(c, "server",   conn.get("host", "PLACEHOLDER_HOST"))
-    _sub(c, "type",     conn.get("type", "GENERIC"))
-    _sub(c, "access",   "Native")
-    _sub(c, "database", conn.get("database", "PLACEHOLDER_DATABASE"))
-    _sub(c, "port",     str(conn.get("port", 0)))
-    _sub(c, "username", conn.get("username", "PLACEHOLDER_USER"))
-    _sub(c, "password", "Encrypted ")
+    _sub(c, "name", conn.get("name", "conn_default"))
+    if real:
+        _sub(c, "server",   real["host"])
+        _sub(c, "type",     real["type"])
+        _sub(c, "access",   real.get("access", "Native"))
+        _sub(c, "database", real["database"])
+        _sub(c, "port",     str(real["port"]))
+        _sub(c, "username", real["username"])
+        _sub(c, "password", real["password"])
+    else:
+        _sub(c, "server",   conn.get("host", "PLACEHOLDER_HOST"))
+        _sub(c, "type",     conn.get("type", "GENERIC"))
+        _sub(c, "access",   "Native")
+        _sub(c, "database", conn.get("database", "PLACEHOLDER_DATABASE"))
+        _sub(c, "port",     str(conn.get("port", 0)))
+        _sub(c, "username", conn.get("username", "PLACEHOLDER_USER"))
+        # Sin conexión real resuelta: no hay password que ofuscar. Vacío es
+        # honesto (Spoon lo muestra en blanco); "Encrypted " a secas simulaba
+        # un password ofuscado inexistente.
+        _sub(c, "password", "")
     _sub(c, "servername")
     _sub(c, "data_tablespace")
     _sub(c, "index_tablespace")
@@ -135,6 +211,27 @@ def _step_InsertUpdate(el: Element, cfg: dict) -> None:
         _sub(ve, "name",   f.get("stream_field", f.get("name", "")))
         _sub(ve, "rename", f.get("table_field",  f.get("rename", "")))
         _sub(ve, "update", "Y" if f.get("update", True) else "N")
+
+
+def _step_Update(el: Element, cfg: dict) -> None:
+    table = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or ""
+    _sub(el, "connection",             cfg.get("connection", ""))
+    _sub(el, "schema",                 cfg.get("schema", ""))
+    _sub(el, "table",                  table)
+    _sub(el, "commit",                 "100")
+    _sub(el, "use_batch",              "Y")
+    _sub(el, "ignore_lookup_failure",  "N")
+    lookup = SubElement(el, "lookup")
+    for k in cfg.get("keys", []):
+        ke = SubElement(lookup, "key")
+        _sub(ke, "name",      k.get("stream_field", k.get("name", "")))
+        _sub(ke, "field",     k.get("table_field",  k.get("field", "")))
+        _sub(ke, "condition", "=")
+        _sub(ke, "name2")
+    for f in cfg.get("fields", []):
+        ve = SubElement(lookup, "value")
+        _sub(ve, "name",   f.get("stream_field", f.get("name", "")))
+        _sub(ve, "rename", f.get("table_field",  f.get("rename", "")))
 
 
 def _step_SelectValues(el: Element, cfg: dict) -> None:
@@ -326,17 +423,17 @@ def _step_DBLookup(el: Element, cfg: dict) -> None:
     _sub(el, "table",      table)
     _sub(el, "orderby")
     _sub(el, "fail_on_multiple", "N")
-    _sub(el, "eat_row_on_failure", "N")
+    _sub(el, "eat_row_on_lookup_failure", "N")
     _sub(el, "cache", "N")
     _sub(el, "cache_load_all", "N")
-    lookup = SubElement(el, "lookup")
+    _sub(el, "cache_size", "9999")
     for k in cfg.get("keys", []):
-        ke = SubElement(lookup, "key")
+        ke = SubElement(el, "key")
         _sub(ke, "name",      k.get("stream_field") or k.get("name", ""))
         _sub(ke, "field",     k.get("lookup_field") or k.get("table_field") or k.get("field", ""))
         _sub(ke, "condition", k.get("condition", "="))
     for r in cfg.get("return_fields", cfg.get("returns", [])):
-        ret = SubElement(lookup, "value")
+        ret = SubElement(el, "value")
         _sub(ret, "name",    r.get("name", ""))
         _sub(ret, "rename",  r.get("rename") or r.get("name", ""))
         _sub(ret, "default", str(r.get("default", "")))
@@ -676,6 +773,8 @@ STEP_TYPE_ALIASES = {
     "Row denormaliser":          "Denormaliser",
     # Joins / lookups
     "Database lookup":           "DBLookup",
+    "Database Lookup":           "DBLookup",
+    "DatabaseLookup":            "DBLookup",
     "Stream lookup":             "StreamLookup",
     "Merge rows (diff)":         "MergeRows",
     "Merge join":                "MergeJoin",
@@ -716,6 +815,7 @@ STEP_BUILDERS = {
     # Salida
     "TableOutput":         _step_TableOutput,
     "InsertUpdate":        _step_InsertUpdate,
+    "Update":              _step_Update,
     # Selección / orden / filtros / unique
     "SelectValues":        _step_SelectValues,
     "FilterRows":          _step_FilterRows,
@@ -834,13 +934,23 @@ def _sanitize(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_\-]", "_", name).strip("_") or "Transformacion_ETL"
 
 
-def build_ktr(ktr_data: dict, process_name: str = "") -> tuple[str, str]:
+def build_ktr(
+    ktr_data: dict,
+    process_name: str = "",
+    real_connections: dict[str, dict] | None = None,
+) -> tuple[str, str, list[str]]:
     """
     Convert KTR JSON dict from Gemini response to .ktr XML string.
-    Returns (ktr_xml_string, filename).  Returns ("", "") if ktr_data is empty.
+
+    real_connections: {nombre_lógico: {host, port, database, username, password, type, access}},
+    ya resuelto por resolve_real_connections() — reemplaza los placeholders del
+    modelo para esa conexión puntual. Conexiones sin entrada en el dict quedan
+    con el placeholder que emitió el modelo (comportamiento actual).
+
+    Returns (ktr_xml_string, filename, warnings). Returns ("", "", []) if ktr_data is empty.
     """
     if not ktr_data:
-        return "", ""
+        return "", "", []
 
     warnings = _validate_ktr(ktr_data)
     for w in warnings:
@@ -898,7 +1008,12 @@ def build_ktr(ktr_data: dict, process_name: str = "") -> tuple[str, str]:
                 raw = parsed
             cfg = raw if isinstance(raw, dict) else {}
             step.setdefault("config", cfg)
+            explicit = (cfg.get("connection") or cfg.get("connection_name") or "").strip()
             resolved = _resolve_connection(cfg, canonical, connection_names)
+            if explicit and explicit not in connection_names:
+                warnings.append(
+                    f"Step '{step.get('name')}' referencia conexión '{explicit}' no declarada en 'connections' — se usó '{resolved}' como fallback."
+                )
             cfg["connection"] = resolved
 
     trans = Element("transformation")
@@ -915,7 +1030,7 @@ def build_ktr(ktr_data: dict, process_name: str = "") -> tuple[str, str]:
 
     # Connections
     for conn in connections:
-        _build_connection(trans, conn)
+        _build_connection(trans, conn, real=(real_connections or {}).get(conn.get("name", "")))
 
     # Hops
     _build_order(trans, hops)
@@ -984,4 +1099,4 @@ def build_ktr(ktr_data: dict, process_name: str = "") -> tuple[str, str]:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename  = f"{_sanitize(name)}_{timestamp}.ktr"
 
-    return ktr_xml, filename
+    return ktr_xml, filename, warnings

@@ -15,11 +15,20 @@ _log = logging.getLogger(__name__)
 from sqlalchemy.orm import Session
 
 from app.models.llm_base import BaseLLM, LLMResponse
-from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse
+from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse, MetadataResponse
 from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
 from app.services.ktr_builder import build_ktr
 from app.services.lineage_builder import build_lineage
+
+
+class KtrBuildError(Exception):
+    """El modelo respondió correctamente pero build_ktr() falló al serializar el XML.
+    Conserva raw_data (el JSON crudo del modelo) para que el caller no lo pierda."""
+    def __init__(self, raw_data: dict, original_error: Exception):
+        self.raw_data = raw_data
+        self.original_error = original_error
+        super().__init__(str(original_error))
 
 
 def _load_system(filename: str) -> str:
@@ -84,13 +93,12 @@ No mezcles las etapas — configura solo cuando el grafo esté cerrado.
 """
 
 
-def _build_response(resp: LLMResponse) -> ETLGenerateResponse:
-    # json_data is always populated when schema= was passed to llm.complete()
-    data = resp.json_data
-    if data is None:
-        _log.error("LLM returned no json_data. raw=%r", (resp.content or "")[:200])
-        raise ValueError("LLM returned no structured data — cannot parse ETL response")
-
+def _build_response_from_data(
+    data: dict,
+    metadata: MetadataResponse,
+    real_connections: dict[str, dict] | None = None,
+    connection_warnings: list[str] | None = None,
+) -> ETLGenerateResponse:
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_data = data.get("ktr", {})
 
@@ -121,23 +129,57 @@ def _build_response(resp: LLMResponse) -> ETLGenerateResponse:
             list(cfg.keys()),
         )
 
-    ktr_xml, ktr_filename = build_ktr(ktr_data, process_name)
+    try:
+        ktr_xml, ktr_filename, ktr_warnings = build_ktr(ktr_data, process_name, real_connections=real_connections)
+    except Exception as e:
+        _log.error("build_ktr failed: %s — conservando raw_data para reintento manual", str(e))
+        raise KtrBuildError(data, e) from e
+
+    advertencias = [
+        *data.get("advertencias_buenas_practicas", []),
+        *(connection_warnings or []),
+        *ktr_warnings,
+    ]
+
     return ETLGenerateResponse(
         proceso_etl=data["proceso_etl"],
         validaciones=data.get("validaciones", []),
         documentacion=data.get("documentacion", ""),
-        advertencias_buenas_practicas=data.get("advertencias_buenas_practicas", []),
+        advertencias_buenas_practicas=advertencias,
         dwh_sample={},
         ktr_xml=ktr_xml,
         ktr_filename=ktr_filename,
         lineage=build_lineage(ktr_data),
-        metadata={
-            "modelo_usado": resp.model,
-            "tokens_input": resp.input_tokens,
-            "tokens_output": resp.output_tokens,
-            "region_inferencia": resp.provider,
-        },
+        metadata=metadata,
     )
+
+
+def _build_response(resp: LLMResponse) -> ETLGenerateResponse:
+    # json_data is always populated when schema= was passed to llm.complete()
+    data = resp.json_data
+    if data is None:
+        _log.error("LLM returned no json_data. raw=%r", (resp.content or "")[:200])
+        raise ValueError("LLM returned no structured data — cannot parse ETL response")
+
+    metadata = MetadataResponse(
+        modelo_usado=resp.model,
+        tokens_input=resp.input_tokens,
+        tokens_output=resp.output_tokens,
+        region_inferencia=resp.provider,
+    )
+    return _build_response_from_data(data, metadata)
+
+
+async def build_etl_from_raw(raw_llm_data: dict) -> ETLGenerateResponse:
+    """Reconstruye el ETL a partir de una respuesta cruda del modelo guardada previamente
+    (p. ej. tras un fallo de build_ktr). No llama al LLM."""
+    metadata = MetadataResponse(
+        modelo_usado="(respuesta reutilizada)",
+        tokens_input=0,
+        tokens_output=0,
+        region_inferencia="local",
+    )
+    return _build_response_from_data(raw_llm_data, metadata)
 
 
 async def generate_etl(
@@ -152,18 +194,11 @@ async def generate_etl(
     return _build_response(resp)
 
 
-async def generate_etl_from_inference(
-    req: ETLFromInferenceRequest,
-    llm: BaseLLM,
-    db: Optional[Session] = None,
-    on_llm_done=None,
-) -> ETLGenerateResponse:
-    ctx        = context_builder.build_model_context(req.origenTables, db)
-    origen_txt = context_builder.format_model_context_for_prompt(ctx)
-    objetivo   = req.descripcionObjetivo.strip() or "No especificado."
-    reglas     = req.reglasNegocio.strip() or "No se especificaron reglas de negocio adicionales."
+def _build_prompt_from_inference(req: ETLFromInferenceRequest, origen_txt: str) -> str:
+    objetivo = req.descripcionObjetivo.strip() or "No especificado."
+    reglas   = req.reglasNegocio.strip() or "No se especificaron reglas de negocio adicionales."
 
-    prompt = f"""## OBJETIVO DEL PROCESO ETL
+    return f"""## OBJETIVO DEL PROCESO ETL
 {objetivo}
 
 ## ESQUEMA DE ORIGEN (perfilado — sin datos crudos)
@@ -188,7 +223,119 @@ Antes de escribir el objeto `ktr`, determiná en orden:
 **Etapa 2 — Configuración interna:** solo después del grafo completo, poblá el `config` de cada step en orden topológico (entrada → salida).
 No mezcles las etapas — configura solo cuando el grafo esté cerrado.
 """
-    resp = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
+
+
+async def generate_etl_from_inference(
+    req: ETLFromInferenceRequest,
+    llm: BaseLLM,
+    db: Optional[Session] = None,
+    on_llm_done=None,
+) -> ETLGenerateResponse:
+    ctx        = context_builder.build_model_context(req.origenTables, db)
+    origen_txt = context_builder.format_model_context_for_prompt(ctx)
+    prompt     = _build_prompt_from_inference(req, origen_txt)
+    resp       = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
     if on_llm_done is not None:
         await on_llm_done()
     return _build_response(resp)
+
+
+# ─── Flujo async con conexiones en paralelo ───────────────────────────────────
+# generate_etl_async corre en background (asyncio.create_task, disparado desde
+# el router apenas el usuario confirma) mientras el cliente completa el
+# formulario de conexiones destino. _try_build es la barrera: se llama tanto
+# al terminar el modelo como al recibir conexiones, sin importar el orden.
+
+def _try_build(job_id, db: Session) -> None:
+    from app.models.ktr_build_job import KtrBuildJob, ModelStatus, KtrBuildStatus
+    from app.services.ktr_builder import resolve_real_connections
+
+    job = db.get(KtrBuildJob, job_id)
+    if job is None:
+        return  # TTL lo barrió, o nunca existió
+
+    if job.model_status == ModelStatus.failed:
+        job.build_status = KtrBuildStatus.failed
+        db.commit()
+        return
+
+    if job.model_status != ModelStatus.done:
+        return  # el modelo todavía no respondió — nada que hacer todavía
+
+    if not job.connections_map:
+        job.build_status = KtrBuildStatus.awaiting_connections
+        db.commit()
+        return
+
+    real_connections, conn_warnings = resolve_real_connections(job.connections_map, db)
+    metadata = MetadataResponse(**job.model_json["metadata"])
+
+    try:
+        result = _build_response_from_data(
+            job.model_json["raw_data"],
+            metadata,
+            real_connections=real_connections,
+            connection_warnings=conn_warnings,
+        )
+    except KtrBuildError as exc:
+        job.build_status = KtrBuildStatus.failed
+        job.model_error = str(exc.original_error)
+        db.commit()
+        return
+    except Exception as exc:
+        # Cualquier falla no anticipada (ej. bug en build_lineage) no debe dejar
+        # el job colgado en un estado no terminal: el cliente polea /status
+        # indefinidamente si build_status nunca llega a "failed".
+        _log.error("_try_build: fallo no anticipado — %s", exc, exc_info=True)
+        job.build_status = KtrBuildStatus.failed
+        job.model_error = str(exc)
+        db.commit()
+        return
+
+    job.result_json = result.model_dump(mode="json")
+    job.build_status = KtrBuildStatus.built
+    db.commit()
+
+
+async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM, session_factory) -> None:
+    """Llama al modelo y persiste el resultado en ktr_build_jobs. Abre su propia
+    sesión de DB porque corre en un asyncio.create_task separado del request
+    original — la sesión del request ya cerró para cuando esto se ejecuta."""
+    from app.models.ktr_build_job import KtrBuildJob, ModelStatus
+
+    db = session_factory()
+    try:
+        ctx        = context_builder.build_model_context(req.origenTables, db)
+        origen_txt = context_builder.format_model_context_for_prompt(ctx)
+        prompt     = _build_prompt_from_inference(req, origen_txt)
+
+        try:
+            resp = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
+            data = resp.json_data
+            if data is None:
+                raise ValueError("El modelo no devolvió datos estructurados.")
+        except Exception as exc:
+            job = db.get(KtrBuildJob, job_id)
+            if job is not None:
+                job.model_status = ModelStatus.failed
+                job.model_error = str(exc)
+                db.commit()
+            return
+
+        metadata = MetadataResponse(
+            modelo_usado=resp.model,
+            tokens_input=resp.input_tokens,
+            tokens_output=resp.output_tokens,
+            region_inferencia=resp.provider,
+        )
+
+        job = db.get(KtrBuildJob, job_id)
+        if job is None:
+            return  # el usuario abandonó y el TTL ya barrió la fila
+        job.model_status = ModelStatus.done
+        job.model_json = {"raw_data": data, "metadata": metadata.model_dump()}
+        db.commit()
+
+        _try_build(job_id, db)
+    finally:
+        db.close()
