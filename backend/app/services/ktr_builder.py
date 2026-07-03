@@ -10,7 +10,12 @@ from datetime import datetime
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom import minidom
 
+from app.core.config import settings
 from app.core.kettle_crypto import encode as kettle_encode
+from app.services.ktr_default_validator import (
+    check_missing_required_fields,
+    scrub_function_default_constants,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -551,7 +556,6 @@ def _step_CsvInput(el: Element, cfg: dict) -> None:
 
 def _step_Calculator(el: Element, cfg: dict) -> None:
     """Cálculos numéricos / de fecha. config = {calculations: [{field_name, calc_type, field_a, field_b, value_type}]}"""
-    _sub(el, "failIfNoFile", "Y")
     for c in cfg.get("calculations", []):
         calc = SubElement(el, "calculation")
         _sub(calc, "field_name",      c.get("field_name", ""))
@@ -576,6 +580,32 @@ def _step_Constant(el: Element, cfg: dict) -> None:
         _sub(field, "precision", str(f.get("precision", -1)))
         _sub(field, "nullif",    str(f.get("value", "")))
         _sub(field, "set_empty_string", "N")
+
+
+# Únicos dos info_type verificados contra exports reales de Spoon 9.x. Un
+# valor no reconocido por GetSystemInfoMeta rompe la carga del .ktr en Spoon
+# (mismo tipo de falla que NumberRange/Abort documentados arriba), así que
+# cualquier otro valor se fuerza a un fallback seguro en vez de pasarlo tal cual.
+_SYSTEM_INFO_KNOWN_TYPES = frozenset({"system date (fixed)", "system date (variable)"})
+
+
+def _step_GetSystemInfo(el: Element, cfg: dict) -> None:
+    """Get System Info — usar para capturar un timestamp de carga REAL cuando
+    hace falta dentro del stream (nunca un Constant con texto de función SQL).
+    'system date (fixed)': un único valor para toda la corrida (recomendado
+    para 'fecha de carga'). 'system date (variable)': uno por fila."""
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        info_type = str(f.get("info_type", "system date (fixed)")).strip().lower()
+        if info_type not in _SYSTEM_INFO_KNOWN_TYPES:
+            logger.warning(
+                "GetSystemInfo: info_type '%s' no reconocido, forzado a 'system date (fixed)'",
+                info_type,
+            )
+            info_type = "system date (fixed)"
+        field = SubElement(fe, "field")
+        _sub(field, "name", f.get("name", "fecha_carga"))
+        _sub(field, "type", info_type)
 
 
 def _step_DataValidator(el: Element, cfg: dict) -> None:
@@ -663,15 +693,25 @@ def _step_ConcatFields(el: Element, cfg: dict) -> None:
 
 
 def _step_NumberRange(el: Element, cfg: dict) -> None:
+    """NumberRangeMeta.loadXML hace Double.parseDouble(...) SIN guard de null sobre
+    lower_bound/upper_bound/fallBackValue. Un tag vacío (<lower_bound/>) se serializa
+    self-closing y XMLHandler.getTagValue lo devuelve como null (no ""), por eso un
+    default "" ahí revienta Spoon con NPE al abrir el .ktr. Nunca dejar esos 3 tags
+    sin texto: fallback numérico explícito, y se descarta la regla si falta bound."""
     _sub(el, "inputField",  cfg.get("input_field", ""))
     _sub(el, "outputField", cfg.get("output_field", "range"))
-    _sub(el, "fallBackValue", cfg.get("fallback", ""))
+    _sub(el, "fallBackValue", str(cfg.get("fallback", 0)) or "0")
     rules = SubElement(el, "rules")
     for r in cfg.get("ranges", []):
+        lower = r.get("lower")
+        upper = r.get("upper")
+        if lower is None or upper is None:
+            logger.warning("NumberRange: rule sin lower/upper, se descarta. rule=%s", r)
+            continue
         rule = SubElement(rules, "rule")
-        _sub(rule, "lower_bound", str(r.get("lower", "")))
-        _sub(rule, "upper_bound", str(r.get("upper", "")))
-        _sub(rule, "value",       str(r.get("value", "")))
+        _sub(rule, "lower_bound", str(lower))
+        _sub(rule, "upper_bound", str(upper))
+        _sub(rule, "value",       str(r.get("value", "")) or " ")
 
 
 def _step_SplitFieldToRows(el: Element, cfg: dict) -> None:
@@ -682,6 +722,26 @@ def _step_SplitFieldToRows(el: Element, cfg: dict) -> None:
     _sub(el, "rownum_field")
     _sub(el, "resetrownumber",     "Y")
     _sub(el, "delimiter_is_regex", "Y" if cfg.get("regex", False) else "N")
+
+
+def _step_FieldSplitter(el: Element, cfg: dict) -> None:
+    """Split Fields — un campo delimitado -> N columnas en la MISMA fila.
+    No confundir con SplitFieldToRows (Split field to rows: un campo -> N filas)."""
+    _sub(el, "splitfield", cfg.get("split_field", cfg.get("field", "")))
+    _sub(el, "delimiter",  cfg.get("delimiter", ","))
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f.get("name", ""))
+        _sub(field, "id")
+        _sub(field, "type",      f.get("type", "String"))
+        _sub(field, "format",    f.get("format", ""))
+        _sub(field, "group")
+        _sub(field, "decimal")
+        _sub(field, "length",    str(f.get("length", -1)))
+        _sub(field, "precision", str(f.get("precision", -1)))
+        _sub(field, "trimtype",  f.get("trim_type", "none"))
+        _sub(field, "nullif")
 
 
 def _step_Denormaliser(el: Element, cfg: dict) -> None:
@@ -731,6 +791,548 @@ def _step_ReplaceString(el: Element, cfg: dict) -> None:
         _sub(field, "set_empty_string", "N")
         _sub(field, "whole_word",       "N")
         _sub(field, "case_sensitive",   "Y" if f.get("case_sensitive", False) else "N")
+
+
+# ─── Builders agregados (Fase 2: cobertura de los 18 tipos sin builder) ───────
+# Cada uno verificado contra el código fuente real de pentaho-kettle (loadXML/
+# readData de la Meta class correspondiente). Se documenta inline solo lo que
+# no es obvio (tags con riesgo de NPE/NumberFormatException al cargar en Spoon).
+
+def _step_Delete(el: Element, cfg: dict) -> None:
+    """Mismo layout XML que Update/InsertUpdate (DeleteMeta.readData: <lookup><schema>/
+    <table>/<key>(name/field/condition/name2)</lookup>), pero sin bloque de <value> —
+    Delete no proyecta columnas de salida, solo condiciones de borrado."""
+    table = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or ""
+    if not table:
+        logger.warning("Delete: 'table' vacío — PDI fallará borrando de tabla null")
+    _sub(el, "connection", cfg.get("connection", ""))
+    _sub(el, "commit",     str(cfg.get("commit", 100)))
+    lookup = SubElement(el, "lookup")
+    _sub(lookup, "schema", cfg.get("schema", ""))
+    _sub(lookup, "table",  table)
+    for k in cfg.get("keys", []):
+        ke = SubElement(lookup, "key")
+        _sub(ke, "name",      k.get("stream_field", k.get("name", "")))
+        _sub(ke, "field",     k.get("table_field",  k.get("field", "")))
+        _sub(ke, "condition", k.get("condition", "="))
+        _sub(ke, "name2")
+
+
+def _step_ExecSQL(el: Element, cfg: dict) -> None:
+    sql = cfg.get("sql", "")
+    if not sql:
+        logger.warning("ExecSQL: 'sql' vacío — el step no ejecutará nada útil")
+    _sub(el, "connection",        cfg.get("connection", ""))
+    _sub(el, "execute_each_row",  "Y" if cfg.get("execute_each_row", False) else "N")
+    _sub(el, "single_statement",  "Y" if cfg.get("single_statement", True) else "N")
+    _sub(el, "replace_variables", "Y" if cfg.get("replace_variables", True) else "N")
+    _sub(el, "quoteString",       "N")
+    _sub(el, "set_params",        "N")
+    _sub(el, "sql",               sql or "SELECT 1")
+    _sub(el, "insert_field")
+    _sub(el, "update_field")
+    _sub(el, "delete_field")
+    _sub(el, "read_field")
+    SubElement(el, "arguments")
+
+
+def _step_AddSequence(el: Element, cfg: dict) -> None:
+    use_db = bool(cfg.get("use_database", False))
+    _sub(el, "valuename",    cfg.get("output_field") or cfg.get("valuename", "sequence"))
+    _sub(el, "use_database", "Y" if use_db else "N")
+    _sub(el, "connection",   cfg.get("connection", "") if use_db else "")
+    _sub(el, "schema",       cfg.get("schema", ""))
+    _sub(el, "seqname",      cfg.get("sequence_name") or cfg.get("seqname", ""))
+    _sub(el, "use_counter",  "N" if use_db else "Y")
+    _sub(el, "counter_name", cfg.get("counter_name", ""))
+    _sub(el, "start_at",     str(cfg.get("start_at", 1)))
+    _sub(el, "increment_by", str(cfg.get("increment_by", 1)))
+    _sub(el, "max_value",    str(cfg.get("max_value", 999999999)))
+
+
+def _step_Formula(el: Element, cfg: dict) -> None:
+    """FormulaMeta.loadXML NO envuelve las fórmulas en un <fields> — cada <formula> es
+    hijo directo del step (a diferencia de Calculator). value_length/value_precision
+    usan Const.toInt (con default), sin riesgo de NPE."""
+    for f in cfg.get("formulas", cfg.get("fields", [])):
+        formula = SubElement(el, "formula")
+        _sub(formula, "field_name",      f.get("field_name") or f.get("name", ""))
+        _sub(formula, "formula_string",  f.get("formula", ""))
+        _sub(formula, "value_type",      f.get("type", "String"))
+        _sub(formula, "value_length",    str(f.get("length", -1)))
+        _sub(formula, "value_precision", str(f.get("precision", -1)))
+        _sub(formula, "replace_field",   f.get("replace_field", ""))
+
+
+def _step_RegexEval(el: Element, cfg: dict) -> None:
+    _sub(el, "script",             cfg.get("regex") or cfg.get("script", ""))
+    _sub(el, "matcher",            cfg.get("field") or cfg.get("matcher", ""))
+    _sub(el, "resultfieldname",    cfg.get("result_field") or cfg.get("resultfieldname", ""))
+    _sub(el, "usevar",             "N")
+    _sub(el, "allowcapturegroups", "Y" if cfg.get("capture_groups") else "N")
+    _sub(el, "replacefields",      "N")
+    _sub(el, "canoneq",            "N")
+    _sub(el, "caseinsensitive",    "Y" if cfg.get("case_insensitive") else "N")
+    _sub(el, "comment",            "N")
+    _sub(el, "dotall",             "N")
+    _sub(el, "multiline",          "N")
+    _sub(el, "unicode",            "N")
+    _sub(el, "unix",               "N")
+    fe = SubElement(el, "fields")
+    for g in cfg.get("capture_fields", cfg.get("fields", [])):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      g.get("name", ""))
+        _sub(field, "type",      g.get("type", "String"))
+        _sub(field, "format",    g.get("format", ""))
+        _sub(field, "group")
+        _sub(field, "decimal")
+        _sub(field, "currency")
+        _sub(field, "length",    str(g.get("length", -1)))
+        _sub(field, "precision", str(g.get("precision", -1)))
+        _sub(field, "nullif")
+        _sub(field, "ifnull")
+        _sub(field, "trimtype",  g.get("trim_type", "none"))
+
+
+def _step_JoinRows(el: Element, cfg: dict) -> None:
+    """JoinRowsMeta usa el tag 'main' (no 'main_step') para identificar el step
+    principal, y reutiliza el mismo <compare><condition> que FilterRows (clase
+    Condition compartida en core). cache_size ya viene protegido con Const.toInt."""
+    main_step = cfg.get("main_step") or cfg.get("step1") or ""
+    if not main_step:
+        logger.warning("JoinRows: 'main_step' vacío — PDI no sabrá qué stream usar como principal")
+    _sub(el, "directory",  cfg.get("directory", "%%java.io.tmpdir%%"))
+    _sub(el, "prefix",     cfg.get("prefix", "out"))
+    _sub(el, "cache_size", str(cfg.get("cache_size", 500)))
+    _sub(el, "main",       main_step)
+    compare = SubElement(el, "compare")
+    cond = SubElement(compare, "condition")
+    _sub(cond, "negated",    "N")
+    _sub(cond, "operator",   "-")
+    _sub(cond, "leftvalue",  cfg.get("left_field", ""))
+    _sub(cond, "function",   cfg.get("operator", "="))
+    _sub(cond, "rightvalue", cfg.get("right_field", ""))
+    val = SubElement(cond, "value")
+    _sub(val, "name",      "constant")
+    _sub(val, "type",      "String")
+    _sub(val, "text")
+    _sub(val, "length",    "-1")
+    _sub(val, "precision", "-1")
+    _sub(val, "isnull",    "Y")
+    _sub(val, "mask")
+    SubElement(cond, "conditions")
+
+
+def _step_SetVariable(el: Element, cfg: dict) -> None:
+    _sub(el, "use_formatting", "Y" if cfg.get("use_formatting", False) else "N")
+    fe = SubElement(el, "fields")
+    for f in cfg.get("variables", cfg.get("fields", [])):
+        field = SubElement(fe, "field")
+        _sub(field, "field_name",    f.get("field_name") or f.get("name", ""))
+        _sub(field, "variable_name", f.get("variable_name", ""))
+        # Códigos válidos: JVM | PARENT_JOB | GP_JOB | ROOT_JOB (ver SetVariableMeta)
+        _sub(field, "variable_type", f.get("scope") or f.get("variable_type", "JVM"))
+        _sub(field, "default_value", str(f.get("default_value", "")))
+
+
+def _step_GetVariable(el: Element, cfg: dict) -> None:
+    fe = SubElement(el, "fields")
+    for f in cfg.get("variables", cfg.get("fields", [])):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f.get("name", ""))
+        _sub(field, "variable",  f.get("variable") or f.get("variable_name", ""))
+        _sub(field, "type",      f.get("type", "String"))
+        _sub(field, "format",    f.get("format", ""))
+        _sub(field, "currency")
+        _sub(field, "decimal")
+        _sub(field, "group")
+        _sub(field, "length",    str(f.get("length", -1)))
+        _sub(field, "precision", str(f.get("precision", -1)))
+        _sub(field, "trim_type", f.get("trim_type", "none"))
+
+
+def _step_Abort(el: Element, cfg: dict) -> None:
+    """AbortMeta.readData hace AbortOption.valueOf(str) — enum Java, case-sensitive —
+    cuando 'abort_option' viene no vacío. Un valor fuera de {ABORT, ABORT_WITH_ERROR}
+    o con distinto casing tira IllegalArgumentException al abrir el .ktr en Spoon."""
+    option = "ABORT_WITH_ERROR" if cfg.get("abort_with_error", True) else "ABORT"
+    _sub(el, "row_threshold",   str(cfg.get("row_threshold", 0)))
+    _sub(el, "message",         cfg.get("message", "Proceso abortado"))
+    _sub(el, "always_log_rows", "N")
+    _sub(el, "abort_option",    option)
+
+
+def _step_BlockingStep(el: Element, cfg: dict) -> None:
+    _sub(el, "pass_all_rows", "Y" if cfg.get("pass_all_rows", True) else "N")
+    _sub(el, "directory",     cfg.get("directory", "%%java.io.tmpdir%%"))
+    _sub(el, "prefix",        cfg.get("prefix", "block"))
+    _sub(el, "cache_size",    str(cfg.get("cache_size", 2000)))
+    _sub(el, "compress",      "N")
+
+
+def _step_TextFileInput(el: Element, cfg: dict) -> None:
+    filename = cfg.get("filename", "")
+    if not filename:
+        logger.warning("TextFileInput: 'filename' vacío — Spoon no tendrá archivo que leer")
+    _sub(el, "accept_filenames",       "N")
+    _sub(el, "passing_through_fields", "N")
+    _sub(el, "accept_field")
+    _sub(el, "accept_stepname")
+    _sub(el, "separator",              cfg.get("separator", ";"))
+    _sub(el, "enclosure",              cfg.get("enclosure", '"'))
+    _sub(el, "enclosure_breaks",       "N")
+    _sub(el, "escapechar")
+    _sub(el, "header",                 "Y" if cfg.get("header", True) else "N")
+    _sub(el, "nr_headerlines",         str(cfg.get("header_lines", 1)))
+    _sub(el, "footer",                 "N")
+    _sub(el, "nr_footerlines",         "0")
+    _sub(el, "line_wrapped",           "N")
+    _sub(el, "nr_wraps",               "0")
+    _sub(el, "layout_paged",           "N")
+    _sub(el, "nr_lines_per_page",      "0")
+    _sub(el, "nr_lines_doc_header",    "0")
+    _sub(el, "add_to_result_filenames", "Y")
+    _sub(el, "noempty",                "Y" if cfg.get("no_empty_lines", True) else "N")
+    _sub(el, "include",                "N")
+    _sub(el, "include_field")
+    _sub(el, "rownum",                 "N")
+    _sub(el, "rownumByFile",           "N")
+    _sub(el, "rownum_field")
+    _sub(el, "format",                 cfg.get("format", "mixed"))
+    _sub(el, "encoding",               cfg.get("encoding", ""))
+
+    file_el = SubElement(el, "file")
+    _sub(file_el, "name",               filename)
+    _sub(file_el, "filemask")
+    _sub(file_el, "exclude_filemask")
+    _sub(file_el, "file_required",      "N")
+    _sub(file_el, "include_subfolders", "N")
+    _sub(file_el, "type",               "CSV")
+    _sub(file_el, "compression",        "None")
+
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f.get("name", ""))
+        _sub(field, "type",      f.get("type", "String"))
+        _sub(field, "format",    f.get("format", ""))
+        _sub(field, "currency")
+        _sub(field, "decimal")
+        _sub(field, "group")
+        _sub(field, "nullif")
+        _sub(field, "ifnull")
+        _sub(field, "position",  "-1")
+        _sub(field, "length",    str(f.get("length", -1)))
+        _sub(field, "precision", str(f.get("precision", -1)))
+        _sub(field, "trim_type", f.get("trim_type", "none"))
+        _sub(field, "repeat",    "N")
+
+    _sub(el, "limit",              "0")
+    _sub(el, "error_ignored",      "N")
+    _sub(el, "skip_bad_files",     "N")
+    _sub(el, "file_error_field")
+    _sub(el, "file_error_message_field")
+    _sub(el, "error_line_skipped", "N")
+    _sub(el, "error_count_field")
+    _sub(el, "error_fields_field")
+    _sub(el, "error_text_field")
+    _sub(el, "bad_line_files_destination_directory")
+    _sub(el, "bad_line_files_extension")
+    _sub(el, "error_line_files_destination_directory")
+    _sub(el, "error_line_files_extension")
+    _sub(el, "line_number_files_destination_directory")
+    _sub(el, "line_number_files_extension")
+    _sub(el, "date_format_lenient", "Y")
+
+
+def _step_TextFileOutput(el: Element, cfg: dict) -> None:
+    filename = cfg.get("filename", "")
+    if not filename:
+        logger.warning("TextFileOutput: 'filename' vacío — Spoon no tendrá archivo destino")
+    _sub(el, "separator",              cfg.get("separator", ";"))
+    _sub(el, "enclosure",              cfg.get("enclosure", '"'))
+    _sub(el, "enclosure_forced",       "N")
+    _sub(el, "enclosure_fix_disabled", "N")
+    _sub(el, "header",                 "Y" if cfg.get("header", True) else "N")
+    _sub(el, "footer",                 "N")
+    _sub(el, "format",                 cfg.get("format", "DOS"))
+    _sub(el, "compression",            "None")
+    _sub(el, "encoding",               cfg.get("encoding", ""))
+    _sub(el, "endedLine")
+    _sub(el, "fileNameInField",        "N")
+    _sub(el, "fileNameField")
+
+    file_el = SubElement(el, "file")
+    _sub(file_el, "name",                     filename)
+    _sub(file_el, "extention",                cfg.get("extension", "txt"))
+    _sub(file_el, "append",                   "Y" if cfg.get("append", False) else "N")
+    _sub(file_el, "split",                    "N")
+    _sub(file_el, "haspartno",                "N")
+    _sub(file_el, "add_date",                 "N")
+    _sub(file_el, "add_time",                 "N")
+    _sub(file_el, "SpecifyFormat",            "N")
+    _sub(file_el, "date_time_format")
+    _sub(file_el, "add_to_result_filenames",  "Y")
+    _sub(file_el, "create_parent_folder",     "Y")
+    _sub(file_el, "servlet_output",           "N")
+    _sub(file_el, "do_not_open_new_file_init", "N")
+    _sub(file_el, "pad",                      "N")
+    _sub(file_el, "fast_dump",                "N")
+    _sub(file_el, "splitevery",               "0")
+
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f.get("name", ""))
+        _sub(field, "type",      f.get("type", "String"))
+        _sub(field, "format",    f.get("format", ""))
+        _sub(field, "currency")
+        _sub(field, "decimal")
+        _sub(field, "group")
+        _sub(field, "trim_type", f.get("trim_type", "none"))
+        _sub(field, "nullif")
+        _sub(field, "length",    str(f.get("length", -1)))
+        _sub(field, "precision", str(f.get("precision", -1)))
+
+
+def _step_ExcelInput(el: Element, cfg: dict) -> None:
+    filename = cfg.get("filename", "")
+    if not filename:
+        logger.warning("ExcelInput: 'filename' vacío — Spoon no tendrá archivo que leer")
+    _sub(el, "header",       "Y" if cfg.get("header", True) else "N")
+    _sub(el, "noempty",      "Y")
+    _sub(el, "stoponempty",  "N")
+    _sub(el, "sheetrownumfield")
+    _sub(el, "rownumfield")
+    _sub(el, "sheetfield")
+    _sub(el, "filefield")
+    _sub(el, "limit",        "0")
+    _sub(el, "encoding",     cfg.get("encoding", ""))
+    _sub(el, "add_to_result_filenames", "Y")
+    _sub(el, "accept_filenames", "N")
+    _sub(el, "accept_field")
+    _sub(el, "accept_stepname")
+
+    file_el = SubElement(el, "file")
+    _sub(file_el, "name",               filename)
+    _sub(file_el, "filemask")
+    _sub(file_el, "exclude_filemask")
+    _sub(file_el, "file_required",      "N")
+    _sub(file_el, "include_subfolders", "N")
+
+    sheets_el = SubElement(el, "sheets")
+    for s in cfg.get("sheets", [{"name": cfg.get("sheet_name", "Sheet1")}]):
+        sheet = SubElement(sheets_el, "sheet")
+        _sub(sheet, "name",     s.get("name", "Sheet1"))
+        _sub(sheet, "startrow", str(s.get("start_row", 0)))
+        _sub(sheet, "startcol", str(s.get("start_col", 0)))
+
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f.get("name", ""))
+        _sub(field, "type",      f.get("type", "String"))
+        _sub(field, "length",    str(f.get("length", -1)))
+        _sub(field, "precision", str(f.get("precision", -1)))
+        _sub(field, "trim_type", f.get("trim_type", "none"))
+        _sub(field, "repeat",    "N")
+        _sub(field, "format",    f.get("format", ""))
+        _sub(field, "currency")
+        _sub(field, "decimal")
+        _sub(field, "group")
+
+    _sub(el, "strict_types",      "N")
+    _sub(el, "error_ignored",     "N")
+    _sub(el, "error_line_skipped", "N")
+    _sub(el, "bad_line_files_destination_directory")
+    _sub(el, "bad_line_files_extension")
+    _sub(el, "error_line_files_destination_directory")
+    _sub(el, "error_line_files_extension")
+
+
+def _step_ExcelOutput(el: Element, cfg: dict) -> None:
+    filename = cfg.get("filename", "")
+    if not filename:
+        logger.warning("ExcelOutput: 'filename' vacío — Spoon no tendrá archivo destino")
+    _sub(el, "header", "Y" if cfg.get("header", True) else "N")
+    _sub(el, "footer", "N")
+    _sub(el, "encoding", cfg.get("encoding", ""))
+    _sub(el, "append",  "N")
+    _sub(el, "add_to_result_filenames", "Y")
+
+    file_el = SubElement(el, "file")
+    _sub(file_el, "name",                      filename)
+    _sub(file_el, "extention",                 cfg.get("extension", "xls"))
+    _sub(file_el, "do_not_open_newfile_init",  "N")
+    _sub(file_el, "create_parent_folder",      "Y")
+    _sub(file_el, "split",                     "N")
+    _sub(file_el, "add_date",                  "N")
+    _sub(file_el, "add_time",                  "N")
+    _sub(file_el, "SpecifyFormat",             "N")
+    _sub(file_el, "date_time_format")
+    _sub(file_el, "usetempfiles",              "N")
+    _sub(file_el, "tempdirectory")
+    _sub(file_el, "autosizecolums",            "Y")
+    _sub(file_el, "nullisblank",               "N")
+    _sub(file_el, "protect_sheet",             "N")
+    _sub(file_el, "password")
+    _sub(file_el, "splitevery",                "0")
+    _sub(file_el, "sheetname",                 cfg.get("sheet_name", "Sheet1"))
+
+    tmpl = SubElement(el, "template")
+    _sub(tmpl, "enabled", "N")
+    _sub(tmpl, "append",  "N")
+    _sub(tmpl, "filename")
+
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",   f.get("name", ""))
+        _sub(field, "type",   f.get("type", "String"))
+        _sub(field, "format", f.get("format", ""))
+
+    # Bloque <custom> (apariencia): getFontXByCode()/getFontColorByCode() en
+    # ExcelOutputMeta devuelven 0 ante código vacío o no reconocido (sin excepción),
+    # así que estos valores son solo estéticos, nunca críticos para la carga.
+    custom = SubElement(el, "custom")
+    _sub(custom, "header_font_name",        "Arial")
+    _sub(custom, "header_font_size",        "10")
+    _sub(custom, "header_font_bold",        "Y")
+    _sub(custom, "header_font_italic",      "N")
+    _sub(custom, "header_font_underline",   "none")
+    _sub(custom, "header_font_orientation", "horizontal")
+    _sub(custom, "header_font_color",       "0")
+    _sub(custom, "header_background_color", "-1")
+    _sub(custom, "header_row_height",       "-1")
+    _sub(custom, "header_alignment",        "left")
+    _sub(custom, "header_image")
+    _sub(custom, "row_font_name",           "Arial")
+    _sub(custom, "row_font_size",           "10")
+    _sub(custom, "row_font_color",          "0")
+    _sub(custom, "row_background_color",   "-1")
+
+
+def _step_JsonInput(el: Element, cfg: dict) -> None:
+    filename = cfg.get("filename", "")
+    in_fields = bool(cfg.get("source_field"))
+    if not filename and not in_fields:
+        logger.warning("JsonInput: ni 'filename' ni 'source_field' configurados — sin origen de datos")
+    _sub(el, "include",              "N")
+    _sub(el, "include_field")
+    _sub(el, "rownum",               "N")
+    _sub(el, "addresultfile",        "Y")
+    _sub(el, "readurl",              "N")
+    _sub(el, "removeSourceField",    "N")
+    _sub(el, "IsIgnoreEmptyFile",    "N")
+    _sub(el, "doNotFailIfNoFile",    "N")
+    _sub(el, "ignoreMissingPath",    "N")
+    _sub(el, "defaultPathLeafToNull", "Y")
+    _sub(el, "IsInFields",           "Y" if in_fields else "N")
+    _sub(el, "rownum_field")
+
+    file_el = SubElement(el, "file")
+    _sub(file_el, "name",               filename)
+    _sub(file_el, "filemask")
+    _sub(file_el, "exclude_filemask")
+    _sub(file_el, "file_required",      "N")
+    _sub(file_el, "include_subfolders", "N")
+
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f.get("name", ""))
+        _sub(field, "path",      f.get("path", ""))
+        _sub(field, "type",      f.get("type", "String"))
+        _sub(field, "format",    f.get("format", ""))
+        _sub(field, "currency")
+        _sub(field, "decimal")
+        _sub(field, "group")
+        _sub(field, "length",    str(f.get("length", -1)))
+        _sub(field, "precision", str(f.get("precision", -1)))
+        _sub(field, "trim_type", f.get("trim_type", "none"))
+        _sub(field, "repeat",    "N")
+
+    _sub(el, "limit",      "0")
+    _sub(el, "IsAFile",    "N")
+    _sub(el, "valueField", cfg.get("source_field", ""))
+    _sub(el, "shortFileFieldName")
+    _sub(el, "pathFieldName")
+    _sub(el, "hiddenFieldName")
+    _sub(el, "lastModificationTimeFieldName")
+    _sub(el, "uriNameFieldName")
+    _sub(el, "rootUriNameFieldName")
+    _sub(el, "extensionFieldName")
+    _sub(el, "sizeFieldName")
+
+
+def _step_JsonOutput(el: Element, cfg: dict) -> None:
+    fields = cfg.get("fields", [])
+    if not fields:
+        logger.warning("JsonOutput: sin 'fields' — el JSON generado estará vacío")
+    _sub(el, "outputValue",        cfg.get("output_field", "json_output"))
+    _sub(el, "jsonBloc",           cfg.get("json_block", "data"))
+    _sub(el, "nrRowsInBloc",       str(cfg.get("rows_per_block", 1)))
+    _sub(el, "operation_type",     cfg.get("operation_type", "writetofile"))
+    _sub(el, "compatibility_mode", "N")
+    _sub(el, "encoding",           cfg.get("encoding", ""))
+    _sub(el, "AddToResult",        "Y")
+
+    file_el = SubElement(el, "file")
+    _sub(file_el, "name",                 cfg.get("filename", ""))
+    _sub(file_el, "create_parent_folder", "Y")
+    _sub(file_el, "extention",            cfg.get("extension", "json"))
+    _sub(file_el, "append",               "N")
+    _sub(file_el, "split",                "N")
+    _sub(file_el, "haspartno",            "N")
+    _sub(file_el, "add_date",             "N")
+    _sub(file_el, "add_time",             "N")
+    _sub(file_el, "DoNotOpenNewFileInit", "N")
+    _sub(file_el, "servlet_output",       "N")
+
+    fe = SubElement(el, "fields")
+    for f in fields:
+        field = SubElement(fe, "field")
+        _sub(field, "name",    f.get("name", ""))
+        _sub(field, "element", f.get("element") or f.get("name", ""))
+
+
+def _step_ScriptValueMod(el: Element, cfg: dict) -> None:
+    """Modified Java Script Value. ScriptValuesMetaMod soporta dos formatos XML: uno
+    legacy con un único tag <script> (el que se usa acá) y otro con <jsScripts>/
+    <jsScript><jsScript_type> donde jsScript_type se parsea con Integer.parseInt SIN
+    Const.toInt de por medio — un tag vacío ahí rompe la carga del step con
+    NumberFormatException. Usar siempre el <script> legacy evita ese camino por completo."""
+    script = cfg.get("script") or "// sin transformacion definida"
+    _sub(el, "script",            script)
+    _sub(el, "compatible",        "Y")
+    _sub(el, "optimizationLevel", str(cfg.get("optimization_level", 9)))
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f.get("name", ""))
+        _sub(field, "rename",    f.get("rename") or f.get("name", ""))
+        _sub(field, "type",      f.get("type", "String"))
+        _sub(field, "length",    str(f.get("length", -1)))
+        _sub(field, "precision", str(f.get("precision", -1)))
+        _sub(field, "replace",   "Y" if f.get("replace", False) else "N")
+
+
+def _step_AnalyticQuery(el: Element, cfg: dict) -> None:
+    """AnalyticQueryMeta.readData hace Integer.parseInt(getTagValue(fnode,'valuefield'))
+    SIN Const.toInt de por medio — un 'valuefield' vacío tira NumberFormatException al
+    abrir el .ktr en Spoon, el mismo bug que ya vimos en NumberRange. Nunca dejarlo sin
+    un entero real."""
+    group_el = SubElement(el, "group")
+    for g in cfg.get("group_fields", []):
+        ge = SubElement(group_el, "field")
+        _sub(ge, "name", g if isinstance(g, str) else g.get("name", ""))
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "aggregate",  f.get("result_field") or f.get("aggregate", ""))
+        _sub(field, "subject",    f.get("subject_field") or f.get("subject", ""))
+        _sub(field, "type",       str(f.get("type", "LEAD")).upper())
+        _sub(field, "valuefield", str(f.get("offset", f.get("valuefield", 1))) or "1")
 
 
 # ─── Alias map ────────────────────────────────────────────────────────────────
@@ -797,6 +1399,7 @@ STEP_TYPE_ALIASES = {
     # Control de flujo
     "Mapping (sub-transformation)": "Mapping",
     "Transformation executor":   "TransExecutor",
+    "Get System Info":           "GetSystemInfo",
 }
 
 
@@ -812,10 +1415,17 @@ STEP_BUILDERS = {
     # Entrada
     "TableInput":          _step_TableInput,
     "CsvInput":            _step_CsvInput,
+    "TextFileInput":       _step_TextFileInput,
+    "ExcelInput":          _step_ExcelInput,
+    "JsonInput":           _step_JsonInput,
     # Salida
     "TableOutput":         _step_TableOutput,
     "InsertUpdate":        _step_InsertUpdate,
     "Update":              _step_Update,
+    "Delete":              _step_Delete,
+    "TextFileOutput":      _step_TextFileOutput,
+    "ExcelOutput":         _step_ExcelOutput,
+    "JsonOutput":          _step_JsonOutput,
     # Selección / orden / filtros / unique
     "SelectValues":        _step_SelectValues,
     "FilterRows":          _step_FilterRows,
@@ -824,8 +1434,11 @@ STEP_BUILDERS = {
     "MemoryGroupBy":       _step_GroupBy,
     "Unique":              _step_Unique,
     "UniqueRowsByHashSet": _step_Unique,
+    "RegexEval":           _step_RegexEval,
+    "AnalyticQuery":       _step_AnalyticQuery,
     # Joins / lookups
     "MergeJoin":           _step_MergeJoin,
+    "JoinRows":            _step_JoinRows,
     "StreamLookup":        _step_StreamLookup,
     "MergeRows":           _step_MergeRows,
     "DBLookup":            _step_DBLookup,
@@ -834,7 +1447,9 @@ STEP_BUILDERS = {
     "CombinationLookup":   _step_CombinationLookup,
     # Cálculo / texto / constantes
     "Calculator":          _step_Calculator,
+    "Formula":             _step_Formula,
     "Constant":            _step_Constant,
+    "AddSequence":         _step_AddSequence,
     "StringOperations":    _step_StringOperations,
     "ReplaceString":       _step_ReplaceString,
     "ConcatFields":        _step_ConcatFields,
@@ -843,11 +1458,33 @@ STEP_BUILDERS = {
     "NumberRange":         _step_NumberRange,
     "SplitFieldToRows":    _step_SplitFieldToRows,
     "SplitFieldToRows3":   _step_SplitFieldToRows,
+    "FieldSplitter":       _step_FieldSplitter,
     "Denormaliser":        _step_Denormaliser,
+    "ScriptValueMod":      _step_ScriptValueMod,
     # Calidad / control
     "DataValidator":       _step_DataValidator,
     "WriteToLog":          _step_WriteToLog,
+    "ExecSQL":             _step_ExecSQL,
+    "SetVariable":         _step_SetVariable,
+    "GetVariable":         _step_GetVariable,
+    "Abort":               _step_Abort,
+    "BlockingStep":        _step_BlockingStep,
     "Dummy":               _step_Dummy,
+    "GetSystemInfo":       _step_GetSystemInfo,
+}
+
+
+# ─── Master whitelist: IDs válidos de plugin PDI 9.x ──────────────────────────
+# Debe reflejar la lista "NOMBRES DE PLUGIN PDI" de system_etl.txt 1:1. Un
+# `type` que el modelo devuelva fuera de este set no es un plugin real de
+# Kettle — abrir ese .ktr en Spoon falla con "plugin missing". build_ktr()
+# corrige cualquier type fuera de lista a Dummy antes de serializar, en vez
+# de depender de que el modelo nunca alucine un id.
+KNOWN_PDI_STEP_TYPES = set(STEP_BUILDERS.keys()) | set(STEP_TYPE_ALIASES.values()) | {
+    "AddSequence", "Formula", "RegexEval", "JoinRows", "ExecSQL",
+    "SetVariable", "GetVariable", "Abort", "BlockingStep",
+    "TextFileInput", "TextFileOutput", "ExcelInput", "ExcelOutput",
+    "JsonInput", "JsonOutput", "ScriptValueMod", "AnalyticQuery",
 }
 
 
@@ -938,6 +1575,7 @@ def build_ktr(
     ktr_data: dict,
     process_name: str = "",
     real_connections: dict[str, dict] | None = None,
+    required_columns_by_table: dict[str, list[str]] | None = None,
 ) -> tuple[str, str, list[str]]:
     """
     Convert KTR JSON dict from Gemini response to .ktr XML string.
@@ -947,6 +1585,10 @@ def build_ktr(
     modelo para esa conexión puntual. Conexiones sin entrada en el dict quedan
     con el placeholder que emitió el modelo (comportamiento actual).
 
+    required_columns_by_table: {tabla: [columnas NOT NULL sin default]}, derivado
+    por el caller a partir del DDL de staging/DWH (ver etl_generator). Opcional —
+    None desactiva ese chequeo puntual sin afectar el resto del build.
+
     Returns (ktr_xml_string, filename, warnings). Returns ("", "", []) if ktr_data is empty.
     """
     if not ktr_data:
@@ -955,6 +1597,18 @@ def build_ktr(
     warnings = _validate_ktr(ktr_data)
     for w in warnings:
         logger.warning("KTR validation: %s", w)
+
+    # Red de seguridad general (Fase 2): ningún .ktr sale con el texto de una
+    # función SQL como valor constante de un campo Date/Timestamp, sin importar
+    # si el modelo respetó o no la indicación del prompt.
+    default_warnings = scrub_function_default_constants(ktr_data, STEP_TYPE_ALIASES)
+    for w in default_warnings:
+        logger.warning("KTR default validation: %s", w)
+    warnings.extend(default_warnings)
+
+    warnings.extend(
+        check_missing_required_fields(ktr_data, STEP_TYPE_ALIASES, required_columns_by_table)
+    )
 
     name        = ktr_data.get("name") or process_name or "Transformacion_ETL"
     description = ktr_data.get("description", "")
@@ -1025,6 +1679,12 @@ def build_ktr(
     _sub(info, "extended_description")
     _sub(info, "trans_version")
     _sub(info, "trans_status",         "0")
+    # "Make the transformation database transactional" en Spoon: comparte UNA
+    # conexión física por nombre de conexión entre todos los steps que la usan
+    # (commit al final), en vez de abrir una conexión por step. Propiedad
+    # general del .ktr — evita agotar el pool de la BD destino sin importar
+    # cuántos steps de BD tenga la transformación.
+    _sub(info, "unique_connections", "Y" if settings.shared_connections else "N")
     dir_el = SubElement(info, "directory")
     dir_el.text = "/"
 
@@ -1065,6 +1725,20 @@ def build_ktr(
         # Normalizar tipo: el modelo puede devolver nombres con espacios ("Table Input")
         # o internos ("TableInput"). El alias map traduce ambos al canónico.
         canonical_type = STEP_TYPE_ALIASES.get(step_type, step_type)
+
+        # Rechazo/corrección: un type fuera del whitelist de plugins PDI reales
+        # no es "un tipo no soportado por el backend" — es un id inexistente en
+        # Kettle, y Spoon rompe con "plugin missing" al abrir el .ktr. Se fuerza
+        # a Dummy (mantiene el grafo/hops intactos) en vez de emitirlo tal cual.
+        if canonical_type not in KNOWN_PDI_STEP_TYPES:
+            warnings.append(
+                f"Step '{step.get('name')}' usa type '{step_type}' — no es un plugin PDI 9.x "
+                f"reconocido, se reemplazó por 'Dummy'. Reconfigurar manualmente en Spoon."
+            )
+            logger.warning("KTR: step type '%s' no está en KNOWN_PDI_STEP_TYPES, forzado a Dummy", step_type)
+            canonical_type = "Dummy"
+            cfg = {}
+
         if canonical_type != step_type:
             logger.info("KTR: step type '%s' normalizado a '%s'", step_type, canonical_type)
             # Reescribir el <type> en el XML para que Spoon lo reconozca

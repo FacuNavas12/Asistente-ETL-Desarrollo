@@ -81,6 +81,7 @@ class GeminiLLM(BaseLLM):
         api_key: str,
         project_id: str,
         location: str,
+        request_timeout_s: float = 240.0,
     ) -> None:
         self._model = model
         self._temperature = temperature
@@ -89,6 +90,7 @@ class GeminiLLM(BaseLLM):
         self._api_key = api_key
         self._project_id = project_id
         self._location = location
+        self._request_timeout_s = request_timeout_s
 
     def _get_client(self) -> genai.Client:
         return _cached_client(self._provider, self._api_key, self._project_id, self._location)
@@ -150,6 +152,9 @@ class GeminiLLM(BaseLLM):
             temperature=self._temperature,
             max_output_tokens=self._max_tokens,
             thinking_config=types.ThinkingConfig(thinking_budget=0),
+            # timeout en ms — evita que una respuesta colgada (sin datos, sin
+            # error HTTP) bloquee el job indefinidamente (ver AnthropicLLM).
+            http_options=types.HttpOptions(timeout=int(self._request_timeout_s * 1000)),
         )
         if schema is not None:
             config_kwargs["response_mime_type"] = "application/json"
@@ -228,6 +233,7 @@ class GeminiLLM(BaseLLM):
                 max_output_tokens=self._max_tokens,
                 response_mime_type="application/json",
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
+                http_options=types.HttpOptions(timeout=int(self._request_timeout_s * 1000)),
             ),
         )
         latency_ms = int((time.monotonic() - start) * 1000)

@@ -48,11 +48,27 @@ class Settings(BaseSettings):
     # ── Driver ODBC SQL Server ────────────────────────────────────────────────
     mssql_odbc_driver: str = "ODBC Driver 18 for SQL Server"
 
+    # ── Conexiones del .ktr generado ──────────────────────────────────────────
+    # Y (default): la transformación se marca "database transactional" en Spoon
+    # (<unique_connections>) — Kettle abre UNA conexión física por nombre de
+    # conexión y la comparte entre todos los steps que la referencian, en vez de
+    # una conexión por step. Evita agotar el pool de la BD destino sin importar
+    # cuántos steps de BD tenga la transformación. Propiedad general del .ktr,
+    # no depende del tamaño de pool de ningún proveedor puntual.
+    shared_connections: bool = True
+
     # ── Parámetros de generación ──────────────────────────────────────────────
     main_temperature: float = 0.1    # RNF10 — reproducibilidad
     main_max_tokens: int = 32768     # subido desde 16384 — caso 01 (demografía) lo excedía
     secondary_temperature: float = 0.0  # determinismo total para validaciones
     secondary_max_tokens: int = 8192
+
+    # Timeout por intento de llamada al LLM (segundos). El SDK de Anthropic usa
+    # 600s por defecto — combinado con los 4 reintentos del wrapper, un stream
+    # que se cuelga (sin datos, sin error) podía bloquear un job hasta ~40 min
+    # antes de fallar. Un timeout explícito y más corto convierte un cuelgue en
+    # un error claro y rápido en vez de un job trancado en "pending".
+    llm_request_timeout_s: float = 240.0
 
     @field_validator("credentials_encryption_keys", mode="before")
     @classmethod

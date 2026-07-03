@@ -115,6 +115,13 @@ class CanonicalField(BaseModel):
     references: Optional[ForeignKeyRef] = None
     inferred_by: Literal["database", "frictionless", "ddl", "user"] = "user"
 
+    # Default de columna — estructura, nunca dato. default_kind clasifica
+    # default_expr como "literal" (emitible como constante) o "function"
+    # (NOW(), gen_random_uuid(), nextval(...): la debe aplicar la BD, nunca
+    # el ETL). None cuando la columna no tiene DEFAULT declarado.
+    default_expr: Optional[str] = None
+    default_kind: Optional[Literal["literal", "function"]] = None
+
     # Semántica — llena el usuario
     semantics: ColumnSemantics = ColumnSemantics()
 

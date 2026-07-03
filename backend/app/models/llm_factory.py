@@ -28,6 +28,7 @@ def build_llm(settings: Settings, role: str = "main") -> BaseLLM:
             max_tokens=max_tokens,
             api_key=settings.anthropic_api_key,
             region=settings.anthropic_inference_region,
+            request_timeout_s=settings.llm_request_timeout_s,
         )
 
     from app.models.gemini_llm import GeminiLLM
@@ -39,4 +40,5 @@ def build_llm(settings: Settings, role: str = "main") -> BaseLLM:
         api_key=settings.google_api_key,
         project_id=settings.gcp_project_id,
         location=settings.gcp_location,
+        request_timeout_s=settings.llm_request_timeout_s,
     )

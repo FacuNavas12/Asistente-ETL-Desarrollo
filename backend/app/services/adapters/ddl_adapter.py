@@ -21,6 +21,7 @@ from app.schemas.canonical import (
     FieldFormat,
     ForeignKeyRef,
 )
+from app.services.sql_defaults import looks_like_sql_function
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,7 @@ def _create_table_to_schema(stmt: exp.Create, dialect: str | None) -> CanonicalS
     for expr in col_exprs:
         if not isinstance(expr, exp.ColumnDef):
             continue
-        field = _col_def_to_field(expr, table_pk_cols, fk_by_col)
+        field = _col_def_to_field(expr, table_pk_cols, fk_by_col, dialect)
         fields.append(field)
 
     pk_cols = [f.name for f in fields if f.is_primary_key]
@@ -190,6 +191,7 @@ def _col_def_to_field(
     col_def: exp.ColumnDef,
     table_pk_cols: set[str],
     fk_by_col: dict[str, ForeignKeyRef],
+    dialect: str | None = None,
 ) -> CanonicalField:
     col_name = col_def.this.name
     dtype    = col_def.kind
@@ -201,6 +203,8 @@ def _col_def_to_field(
     length:    Optional[int] = None
     is_not_null = False
     is_pk       = col_name in table_pk_cols
+    default_expr: Optional[str] = None
+    default_kind: Optional[str] = None
 
     if dtype is not None:
         dtype_type = dtype.this
@@ -228,6 +232,15 @@ def _col_def_to_field(
             is_not_null = True
         if isinstance(constraint.kind, exp.PrimaryKeyColumnConstraint):
             is_pk = True
+        if isinstance(constraint.kind, exp.DefaultColumnConstraint):
+            default_node = constraint.kind.this
+            if default_node is not None:
+                try:
+                    default_expr = default_node.sql(dialect=dialect or None)
+                except Exception:
+                    default_expr = str(default_node)
+                is_function  = isinstance(default_node, exp.Func) or looks_like_sql_function(default_expr)
+                default_kind = "function" if is_function else "literal"
 
     return CanonicalField(
         name=col_name,
@@ -241,6 +254,8 @@ def _col_def_to_field(
         is_foreign_key=col_name in fk_by_col,
         references=fk_by_col.get(col_name),
         inferred_by="ddl",
+        default_expr=default_expr,
+        default_kind=default_kind,  # type: ignore[arg-type]
     )
 
 

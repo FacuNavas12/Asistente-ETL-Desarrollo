@@ -58,7 +58,10 @@ def _make_llm(captured: list[str], response_json: dict | None = None) -> BaseLLM
         "validaciones": [],
         "documentacion": "",
         "advertencias_buenas_practicas": [],
-        "ktr": {},
+        # No-vacío a propósito: _build_response_from_data ahora rechaza un "ktr"
+        # vacío como respuesta incompleta del modelo (ver etl_generator.py).
+        # Estos tests solo verifican el prompt enviado, no el resultado del build.
+        "ktr": {"name": "test", "description": "", "connections": [], "steps": [], "hops": []},
     }
     payload = json.dumps(response_json or default_resp)
 

@@ -18,8 +18,32 @@ from app.models.llm_base import BaseLLM, LLMResponse
 from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse, MetadataResponse
 from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
+from app.services.adapters.ddl_adapter import parse_ddl
 from app.services.ktr_builder import build_ktr
 from app.services.lineage_builder import build_lineage
+
+
+def _required_columns_from_ddl(*ddls: str) -> dict[str, list[str]]:
+    """Parsea DDL(s) de staging/DWH y devuelve {tabla: [columnas NOT NULL sin
+    default]} — insumo del validador de campos obligatorios en build_ktr().
+    Best-effort: un DDL no parseable solo se loggea, nunca corta el flujo."""
+    result: dict[str, list[str]] = {}
+    for ddl in ddls:
+        if not ddl or not ddl.strip():
+            continue
+        try:
+            schemas = parse_ddl(ddl, dialect=None)
+        except Exception as exc:
+            _log.warning("No se pudo parsear DDL para chequeo de campos obligatorios: %s", exc)
+            continue
+        for schema in schemas:
+            cols = [
+                f.name for f in schema.fields
+                if f.constraints.required and f.default_kind is None
+            ]
+            if cols:
+                result[schema.source_name] = cols
+    return result
 
 
 class KtrBuildError(Exception):
@@ -98,9 +122,24 @@ def _build_response_from_data(
     metadata: MetadataResponse,
     real_connections: dict[str, dict] | None = None,
     connection_warnings: list[str] | None = None,
+    required_columns_by_table: dict[str, list[str]] | None = None,
 ) -> ETLGenerateResponse:
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_data = data.get("ktr", {})
+
+    # El modelo puede devolver tool_use incompleto (Anthropic no garantiza
+    # "required" del schema como OpenAI strict mode) — sobre todo con modelos
+    # livianos (Haiku) ante un schema grande. Si falta "ktr" o "proceso_etl",
+    # NO hay nada que construir: fallar acá con un mensaje claro en vez de
+    # seguir y terminar con build_status=built + ktr_xml vacío (falso positivo).
+    missing_keys = [k for k in ("proceso_etl", "ktr") if not data.get(k)]
+    if missing_keys:
+        raise ValueError(
+            f"El modelo devolvió una respuesta incompleta — faltan o están vacías las claves "
+            f"{missing_keys} del JSON esperado. Con modelos livianos (ej. Haiku) esto pasa cuando "
+            f"el schema de salida es grande para su capacidad — probá con un modelo más grande "
+            f"(ANTHROPIC_MODEL) o reintentá."
+        )
 
     # Diagnóstico de causa raíz: mostrar los primeros steps del JSON crudo del modelo
     import json as _json
@@ -130,7 +169,11 @@ def _build_response_from_data(
         )
 
     try:
-        ktr_xml, ktr_filename, ktr_warnings = build_ktr(ktr_data, process_name, real_connections=real_connections)
+        ktr_xml, ktr_filename, ktr_warnings = build_ktr(
+            ktr_data, process_name,
+            real_connections=real_connections,
+            required_columns_by_table=required_columns_by_table,
+        )
     except Exception as e:
         _log.error("build_ktr failed: %s — conservando raw_data para reintento manual", str(e))
         raise KtrBuildError(data, e) from e
@@ -154,7 +197,10 @@ def _build_response_from_data(
     )
 
 
-def _build_response(resp: LLMResponse) -> ETLGenerateResponse:
+def _build_response(
+    resp: LLMResponse,
+    required_columns_by_table: dict[str, list[str]] | None = None,
+) -> ETLGenerateResponse:
     # json_data is always populated when schema= was passed to llm.complete()
     data = resp.json_data
     if data is None:
@@ -167,7 +213,7 @@ def _build_response(resp: LLMResponse) -> ETLGenerateResponse:
         tokens_output=resp.output_tokens,
         region_inferencia=resp.provider,
     )
-    return _build_response_from_data(data, metadata)
+    return _build_response_from_data(data, metadata, required_columns_by_table=required_columns_by_table)
 
 
 async def build_etl_from_raw(raw_llm_data: dict) -> ETLGenerateResponse:
@@ -237,7 +283,8 @@ async def generate_etl_from_inference(
     resp       = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
     if on_llm_done is not None:
         await on_llm_done()
-    return _build_response(resp)
+    required_columns_by_table = _required_columns_from_ddl(req.stg_definition, req.dwh_model)
+    return _build_response(resp, required_columns_by_table=required_columns_by_table)
 
 
 # ─── Flujo async con conexiones en paralelo ───────────────────────────────────
@@ -276,6 +323,7 @@ def _try_build(job_id, db: Session) -> None:
             metadata,
             real_connections=real_connections,
             connection_warnings=conn_warnings,
+            required_columns_by_table=job.model_json.get("required_columns_by_table"),
         )
     except KtrBuildError as exc:
         job.build_status = KtrBuildStatus.failed
@@ -333,7 +381,11 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
         if job is None:
             return  # el usuario abandonó y el TTL ya barrió la fila
         job.model_status = ModelStatus.done
-        job.model_json = {"raw_data": data, "metadata": metadata.model_dump()}
+        job.model_json = {
+            "raw_data": data,
+            "metadata": metadata.model_dump(),
+            "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, req.dwh_model),
+        }
         db.commit()
 
         _try_build(job_id, db)

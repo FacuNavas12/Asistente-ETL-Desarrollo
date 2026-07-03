@@ -33,6 +33,13 @@ class ColumnProfile(BaseModel):
     # Only when format is ambiguous AND cardinality is high enough to avoid
     # revealing the value set. Values are masked (e.g. j***@***.com).
     masked_examples: Optional[list[str]] = None
+    # Estructura de la columna (NOT NULL / PK) — nunca dato. required=True sin
+    # default_kind indica que el ETL debe proveer el valor obligatoriamente.
+    required: bool = False
+    # "literal" (emitible como constante) o "function" (NOW(), nextval(...):
+    # la debe aplicar la BD destino, el ETL nunca la emite como valor). None
+    # cuando la columna no declara DEFAULT.
+    default_kind: Optional[Literal["literal", "function"]] = None
 
 
 class InternalTableRef(BaseModel):
