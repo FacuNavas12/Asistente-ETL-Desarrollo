@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<transformation>
+  <info>
+    <name>connections_sample</name>
+    <description>Fixture de test: dos conexiones (postgres + sqlserver) con password ofuscado real, estructura fiel a export de Spoon 9.x.</description>
+    <extended_description/>
+    <trans_version/>
+    <trans_status>0</trans_status>
+    <directory>/</directory>
+  </info>
+  <connection>
+    <name>pg_test</name>
+    <server>localhost</server>
+    <type>POSTGRESQL</type>
+    <access>Native</access>
+    <database>testdb</database>
+    <port>5432</port>
+    <username>pg_test_user</username>
+    <password>Encrypted 2be98afc86aa78283940dab63caadbfcd</password>
+    <servername/>
+    <data_tablespace/>
+    <index_tablespace/>
+    <attributes/>
+  </connection>
+  <connection>
+    <name>mssql_test</name>
+    <server>localhost</server>
+    <type>MSSQLNATIVE</type>
+    <access>Native</access>
+    <database>testdb</database>
+    <port>1433</port>
+    <username>mssql_test_user</username>
+    <password>Encrypted 2be98afa519d48388940dab63caadbfcd</password>
+    <servername/>
+    <data_tablespace/>
+    <index_tablespace/>
+    <attributes/>
+  </connection>
+  <order>
+    <hop>
+      <from>Leer PG</from>
+      <to>Escribir MSSQL</to>
+      <enabled>Y</enabled>
+    </hop>
+  </order>
+  <step>
+    <name>Leer PG</name>
+    <type>TableInput</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <connection>pg_test</connection>
+    <sql>SELECT 1</sql>
+    <limit>0</limit>
+    <lookup/>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>N</variables_active>
+    <lazy_conversion_active>N</lazy_conversion_active>
+    <GUI>
+      <xloc>100</xloc>
+      <yloc>100</yloc>
+      <draw>Y</draw>
+    </GUI>
+  </step>
+  <step>
+    <name>Escribir MSSQL</name>
+    <type>TableOutput</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <connection>mssql_test</connection>
+    <schema/>
+    <table>destino</table>
+    <commit>1000</commit>
+    <truncate>N</truncate>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>N</specify_fields>
+    <fields/>
+    <GUI>
+      <xloc>300</xloc>
+      <yloc>100</yloc>
+      <draw>Y</draw>
+    </GUI>
+  </step>
+  <step_error_handling/>
+  <slave-step-copy-partition-distribution/>
+  <slave_transformation>N</slave_transformation>
+</transformation>

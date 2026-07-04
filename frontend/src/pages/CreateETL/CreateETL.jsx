@@ -10,11 +10,16 @@ import BusinessRules from "./components/BussinesRules/BusinessRules";
 import DescripcionObjetivo from "./components/Goal/GoalDescription";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import InferenceReview from "./components/InferenceReview/InferenceReview";
+import DestinationConnections from "./components/Processing/DestinationConnections";
 import { SAMPLE_ETL } from "./utils/sampleEtl";
-import { inferStructures, refineInference, generateFromInferenceStream } from "@/services/etlService";
+import {
+  inferStructures, refineInference, buildFromRaw,
+  generateAsync, submitJobConnections, getJobStatus,
+} from "@/services/etlService";
 import { useToast } from "@/components/ui/Toast";
-import { downloadEtlSkeleton } from "@/utils/etlExport";
-import { importEtlSkeleton } from "@/utils/etlImport";
+import { downloadEtlSkeleton, downloadLlmRaw } from "@/utils/etlExport";
+import { importEtlSkeleton, importLlmRaw } from "@/utils/etlImport";
+import CreateETLOptions from "./components/CreateETLOptions";
 import "./css/createETL.css";
 import "./css/etlError.css";
 
@@ -58,6 +63,7 @@ export default function CreateETL() {
   const [step,           setStep]           = useState(STEP.FORM);
   const [isEditingName,  setIsEditingName]  = useState(false);
   const [nameInputVal,   setNameInputVal]   = useState(defaultName);
+  const [syncStatus,     setSyncStatus]     = useState(null); // null | "pending" | "synced" | "failed"
   const [inferResult,    setInferResult]    = useState(() => {
     if (initSource?.inferResult) return initSource.inferResult;
     if (initSource?.stg_definition || initSource?.dwh_model) {
@@ -70,9 +76,18 @@ export default function CreateETL() {
   const [errors,         setErrors]         = useState([]);
   const [etlPhase,       setEtlPhase]       = useState("waiting");
   const [ktrLogs,        setKtrLogs]        = useState([]);
+  // Raw LLM response saved when build_ktr() fails server-side, so the (expensive) model
+  // output isn't lost. null when there's nothing to reuse yet.
+  const [rawLlmData,     setRawLlmData]     = useState(null);
+  // job_id del flujo async (generate-async): el modelo corre en background mientras
+  // el usuario completa las conexiones destino en paralelo (ver handleConfirm).
+  const [jobId,          setJobId]          = useState(null);
+  const connectionsMapRef       = useRef({});
+  const pollTimeoutRef          = useRef(null);
   const pendingNavigateRef      = useRef(null);
   const pendingClearStateRef    = useRef(false);
   const importInputRef          = useRef(null);
+  const importRawInputRef       = useRef(null);
   const currentEtlIdRef      = useRef(location.state?.etlId ?? null);
   // Track serialized tables to distinguish real changes from reference-only re-renders
   const origenTablesSerialRef = useRef(JSON.stringify(initSource?.origenTables ?? []));
@@ -85,6 +100,7 @@ export default function CreateETL() {
     if (inferResult) {
       setInferResult(null);
       setInferHistory([]);
+      setRawLlmData(null);
     }
   }, [origenTables]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -94,6 +110,13 @@ export default function CreateETL() {
     const t = setTimeout(() => setKtrLogs(prev => prev.filter(l => !l.fading)), 400);
     return () => clearTimeout(t);
   }, [ktrLogs]);
+
+  // Stop polling /status if the component unmounts mid-generation
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    };
+  }, []);
 
   // Block all route navigation (Back button, links, programmatic) while form is dirty
   const blocker = useBlocker(isDirty);
@@ -145,30 +168,32 @@ export default function CreateETL() {
     setIsEditingName(false);
   };
 
-  const handleGuardar = () => {
+  const _saveSnapshot = async () => {
     const values = getValues();
-    const id = saveInProgressEtl(values.etlName, {
+    const { id, syncStatus: ss } = await saveInProgressEtl(values.etlName, {
       ...values,
       inferResult,
       stg_definition: inferResult?.stg_definition ?? null,
       dwh_model:      inferResult?.dwh_model       ?? null,
     }, currentEtlIdRef.current);
     currentEtlIdRef.current = id;
-    addToast("Transformación guardada");
+    setSyncStatus(ss);
+    return values;
+  };
+
+  const handleGuardar = async () => {
+    const values = await _saveSnapshot();
+    addToast("Guardado");
     pendingNavigateRef.current = "/home";
     reset(values); // isDirty → false → useEffect fires → navigate
   };
 
-  const handleGuardarFromReview = () => {
-    const values = getValues();
-    const id = saveInProgressEtl(values.etlName, {
-      ...values,
-      inferResult,
-      stg_definition: inferResult?.stg_definition ?? null,
-      dwh_model:      inferResult?.dwh_model       ?? null,
-    }, currentEtlIdRef.current);
-    currentEtlIdRef.current = id;
-    addToast("Transformación guardada");
+  const handleGuardarFromReview = async () => {
+    await _saveSnapshot();
+  };
+
+  const handleRetrySync = async () => {
+    await _saveSnapshot();
   };
 
   const handleLimpiar = () => {
@@ -182,6 +207,7 @@ export default function CreateETL() {
     setNameInputVal("Nueva Transformación");
     setInferResult(null);
     setInferHistory([]);
+    setRawLlmData(null);
     clearDraft();
     setErrors([]);
     setStep(STEP.FORM);
@@ -209,6 +235,7 @@ export default function CreateETL() {
       setNameInputVal(name);
       setInferResult(null);
       setInferHistory([]);
+      setRawLlmData(null);
       setErrors([]);
       setStep(STEP.FORM);
     } catch (err) {
@@ -283,56 +310,157 @@ export default function CreateETL() {
     }
   };
 
-  // ── DESDE REVISIÓN: confirmar y generar ETL ───────────────────────────────
+  // ── Persiste el ETL generado y navega a su detalle ────────────────────────
+  const _finishEtl = async (apiResult) => {
+    const id = await addEtl({
+      etlName,
+      descripcionObjetivo,
+      origenTables,
+      reglasNegocio,
+      stg_definition: inferResult?.stg_definition ?? "",
+      dwh_model:      inferResult?.dwh_model       ?? "",
+    }, apiResult, etlName);
+    setRawLlmData(null);
+    const dest = `/etl/${id}`;
+    if (isDirty) {
+      pendingNavigateRef.current = dest;
+      reset(getValues());
+    } else {
+      navigate(dest);
+    }
+  };
+
+  // Si todas las tablas de origen comparten la misma conexión, se usa automático
+  // (conn_origen) — el usuario no vuelve a cargarla en el paso de confirmación.
+  const _deriveOrigenConnectionId = () => {
+    const ids = [...new Set(
+      (Array.isArray(origenTables) ? origenTables : [])
+        .map(t => t.connection_id)
+        .filter(Boolean)
+    )];
+    return ids.length === 1 ? ids[0] : null;
+  };
+
+  // Techo de polling alineado con _JOB_TTL_MINUTES del backend (30 min): si el
+  // job nunca llega a un build_status terminal en ese lapso, algo se colgó del
+  // lado del servidor — no tiene sentido seguir poleando indefinidamente.
+  const POLL_INTERVAL_MS = 1200;
+  const POLL_MAX_ATTEMPTS = Math.ceil((30 * 60 * 1000) / POLL_INTERVAL_MS);
+
+  const _pollJobStatus = (job_id) => {
+    let attempts = 0;
+    const tick = async () => {
+      attempts += 1;
+      try {
+        const status = await getJobStatus(job_id);
+        if (status.model_status === "done") setEtlPhase("building");
+
+        if (status.build_status === "built") {
+          await _finishEtl(status.result);
+          return;
+        }
+        if (status.build_status === "failed") {
+          if (status.raw_llm_data) setRawLlmData(status.raw_llm_data);
+          setStep(STEP.REVIEW);
+          setErrors([`Error al generar el ETL: ${status.error ?? "fallo desconocido"}`]);
+          return;
+        }
+      } catch (err) {
+        setStep(STEP.REVIEW);
+        setErrors([`Error al consultar el estado de la generación: ${err.message}`]);
+        return;
+      }
+      if (attempts >= POLL_MAX_ATTEMPTS) {
+        setStep(STEP.REVIEW);
+        setErrors(["La generación del ETL tardó demasiado y fue cancelada. Intentá de nuevo."]);
+        return;
+      }
+      pollTimeoutRef.current = setTimeout(tick, POLL_INTERVAL_MS);
+    };
+    tick();
+  };
+
+  // Se llama cada vez que una conexión destino (staging/DWH) termina de crearse
+  // y testearse en DestinationConnections. Reenvía el mapa COMPLETO acumulado —
+  // el endpoint reemplaza el mapa entero, no hace merge — sin importar si el
+  // modelo ya terminó o no (la barrera del lado del servidor maneja el orden).
+  const handleConnectionReady = (logicalName, connId) => {
+    connectionsMapRef.current = { ...connectionsMapRef.current, [logicalName]: connId };
+    if (!jobId) return;
+    submitJobConnections(jobId, connectionsMapRef.current).catch(err => {
+      setErrors([`Error al registrar la conexión: ${err.message}`]);
+    });
+  };
+
+  // ── DESDE REVISIÓN: confirmar y generar ETL ──────────────────────────────
+  // Dispara el modelo en background (generate-async) y arranca el formulario
+  // de conexiones destino en paralelo — no se espera al modelo para empezar
+  // a pedirlas. build_ktr() en el backend actúa de barrera entre ambos.
   const handleConfirm = async () => {
     setErrors([]);
     setEtlPhase("waiting");
     setKtrLogs([]);
+    setRawLlmData(null);
+    setJobId(null);
+    connectionsMapRef.current = { conn_origen: _deriveOrigenConnectionId() };
     setStep(STEP.PROCESSING);
 
-    let apiResult = null;
-
     try {
-      await generateFromInferenceStream(
-        {
-          descripcionObjetivo,
-          origenTables,
-          stg_definition: inferResult.stg_definition,
-          dwh_model:      inferResult.dwh_model,
-          reglasNegocio,
-        },
-        {
-          onLlmDone: () => setEtlPhase("building"),
-          onKtrLog: (msg) => setKtrLogs(prev => {
-            const next = prev.map((l, i) =>
-              prev.length >= 4 && i === 0 ? { ...l, fading: true } : l
-            );
-            return [...next, { id: Date.now() + Math.random(), message: msg, fading: false }];
-          }),
-          onResult: (data) => { apiResult = data; },
-        },
-      );
-
-      if (!apiResult) throw new Error("No se recibió resultado del servidor.");
-
-      const id = addEtl({
-        etlName,
+      const { job_id } = await generateAsync({
         descripcionObjetivo,
         origenTables,
+        stg_definition: inferResult.stg_definition,
+        dwh_model:      inferResult.dwh_model,
         reglasNegocio,
-        stg_definition: inferResult?.stg_definition ?? "",
-        dwh_model:      inferResult?.dwh_model       ?? "",
-      }, apiResult, etlName);
-      const dest = `/etl/${id}`;
-      if (isDirty) {
-        pendingNavigateRef.current = dest;
-        reset(getValues());
-      } else {
-        navigate(dest);
+      });
+      setJobId(job_id);
+
+      if (connectionsMapRef.current.conn_origen) {
+        submitJobConnections(job_id, connectionsMapRef.current).catch(() => {});
       }
+
+      _pollJobStatus(job_id);
     } catch (err) {
       setStep(STEP.REVIEW);
       setErrors([`Error al generar el ETL: ${err.message}`]);
+    }
+  };
+
+  // ── DESDE REVISIÓN: reutilizar una respuesta del modelo ya guardada ──────
+  // Salta la llamada al LLM: reconstruye el .ktr en backend a partir de rawLlmData.
+  const handleReuseResponse = async () => {
+    if (!rawLlmData) return;
+    setErrors([]);
+    setEtlPhase("building");
+    setKtrLogs([]);
+    setJobId(null); // reconstrucción directa desde JSON guardado — sin flujo async / conexiones paralelas
+    setStep(STEP.PROCESSING);
+
+    try {
+      const apiResult = await buildFromRaw(rawLlmData);
+      await _finishEtl(apiResult);
+    } catch (err) {
+      if (err.rawLlmData) setRawLlmData(err.rawLlmData);
+      setStep(STEP.REVIEW);
+      setErrors([`Error al reconstruir el .ktr: ${err.message}`]);
+    }
+  };
+
+  const handleDownloadRaw = () => {
+    if (!rawLlmData) return;
+    downloadLlmRaw(rawLlmData, etlName);
+  };
+
+  const handleImportRaw = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const data = await importLlmRaw(file);
+      setRawLlmData(data);
+      setErrors([]);
+    } catch (err) {
+      setErrors([`Error al importar respuesta del modelo: ${err.message}`]);
     }
   };
 
@@ -373,8 +501,27 @@ export default function CreateETL() {
               <span className="etl-title-edit-hint">Editar</span>
             </h1>
           )}
+          {syncStatus && (
+            <span className={`etl-sync-badge etl-sync-badge--${syncStatus}`}>
+              {syncStatus === "pending" && "Guardando…"}
+              {syncStatus === "synced"  && "✓ Guardado"}
+              {syncStatus === "failed"  && (
+                <button className="etl-sync-retry" onClick={handleRetrySync}>
+                  ⚠ Error de sync · Reintentar
+                </button>
+              )}
+            </span>
+          )}
+
           {step === STEP.REVIEW && (
             <div className="etl-header-actions">
+              <input
+                ref={importRawInputRef}
+                type="file"
+                accept=".json"
+                style={{ display: "none" }}
+                onChange={handleImportRaw}
+              />
               <button className="etl-save-btn" onClick={handleGuardarFromReview}>
                 Guardar
               </button>
@@ -390,30 +537,12 @@ export default function CreateETL() {
                 style={{ display: "none" }}
                 onChange={handleImport}
               />
-              <button
-                className="etl-clear-btn"
-                onClick={() => importInputRef.current?.click()}
-                title="Importar transformación desde archivo .json"
-              >
-                Importar
-              </button>
-              <button
-                className="etl-clear-btn"
-                onClick={handleDownload}
-                title="Descargar transformación como archivo .json"
-              >
-                Descargar
-              </button>
-              <button
-                className="etl-clear-btn"
-                onClick={handleCargarEjemplo}
-                title="Completar el formulario con un caso de ejemplo (ventas)"
-              >
-                Cargar ejemplo
-              </button>
-              <button className="etl-clear-btn" disabled={!isDirty} onClick={handleLimpiar}>
-                Limpiar
-              </button>
+              <CreateETLOptions
+                importInputRef={importInputRef}
+                onDescargar={handleDownload}
+                onLimpiar={handleLimpiar}
+                onCargarEjemplo={handleCargarEjemplo}
+              />
               <button
                 className="etl-save-btn"
                 disabled={!isDirty}
@@ -422,7 +551,7 @@ export default function CreateETL() {
                 Guardar
               </button>
               <button className="etl-infer-header-btn" onClick={handleInfer}>
-                Inferir STG y DWH
+                Inferir
               </button>
               {inferResult && (
                 <button
@@ -442,7 +571,18 @@ export default function CreateETL() {
           </div>
         )}
 
-        {step === STEP.PROCESSING && (
+        {step === STEP.PROCESSING && jobId && (
+          <div className="etl-processing etl-processing--split">
+            <div className="etl-processing__connections">
+              <DestinationConnections onConnectionReady={handleConnectionReady} />
+            </div>
+            <div className="etl-processing__checks">
+              <EtlChecks phase={etlPhase} ktrLogs={ktrLogs} />
+            </div>
+          </div>
+        )}
+
+        {step === STEP.PROCESSING && !jobId && (
           <div className="etl-processing">
             <EtlChecks phase={etlPhase} ktrLogs={ktrLogs} />
           </div>
@@ -461,6 +601,10 @@ export default function CreateETL() {
               onRefine={handleRefine}
               onBack={() => setStep(STEP.FORM)}
               isRefining={isRefining}
+              rawLlmData={rawLlmData}
+              onReuseResponse={handleReuseResponse}
+              onDownloadRaw={handleDownloadRaw}
+              onImportRaw={() => importRawInputRef.current?.click()}
             />
           </div>
         )}

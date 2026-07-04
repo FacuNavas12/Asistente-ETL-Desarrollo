@@ -46,6 +46,41 @@ export async function generateFromInference({
   });
 }
 
+// ── Flujo async: modelo + conexiones destino en paralelo ─────────────────────
+// generateAsync dispara el modelo en background y devuelve job_id de inmediato
+// (no espera al modelo) para que el cliente arranque el formulario de
+// conexiones al mismo tiempo. submitJobConnections se llama con el mapa
+// COMPLETO acumulado hasta el momento (el endpoint reemplaza el mapa entero,
+// no hace merge). getJobStatus se polea hasta build_status "built"/"failed".
+
+export async function generateAsync({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio }) {
+  return apiFetch("/api/v1/etl/generate-async", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio }),
+  });
+}
+
+export async function submitJobConnections(jobId, connections) {
+  return apiFetch(`/api/v1/etl/${jobId}/connections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(connections),
+  });
+}
+
+export async function getJobStatus(jobId) {
+  return apiFetch(`/api/v1/etl/${jobId}/status`);
+}
+
+export async function buildFromRaw(raw_llm_data) {
+  return apiFetch("/api/v1/etl/build-from-raw", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ raw_llm_data }),
+  });
+}
+
 export async function generateFromInferenceStream(
   { descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio },
   { onLlmDone, onKtrLog, onResult, onError } = {},
@@ -86,6 +121,7 @@ export async function generateFromInferenceStream(
       else if (event.type === "result")  { onResult?.(event.data); }
       else if (event.type === "error")   {
         const err = new Error(event.message);
+        err.rawLlmData = event.raw_llm_data ?? null;
         onError?.(event.message);
         throw err;
       }

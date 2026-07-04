@@ -23,6 +23,7 @@ from app.schemas.context_schemas import ModelContext, ModelTableContext
 from app.services import profiler as profiler_svc
 from app.services.adapters import db_adapter
 from app.services.adapters.schema_to_context import canonical_to_model_context
+from app.services.sql_defaults import classify_default_expr
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,15 @@ def _profile_from_db(table, db: Session) -> CanonicalSchema:
         sample_result = get_sample_rows(conn, schema, tname, limit=20)
         logger.debug("sample bias for %s: %s", qualified, sample_result.bias)
         profiles = profiler_svc.profile_columns(col_names, stats, sample_result.rows)
+
+        # Enriquecer con estructura (NOT NULL / DEFAULT) que profile_columns no conoce
+        # — viene de information_schema.columns (get_columns), no de la muestra de filas.
+        col_info_by_name = {ci.name: ci for ci in col_infos}
+        for p in profiles:
+            ci = col_info_by_name.get(p.name)
+            if ci is not None:
+                p.required = not ci.nullable
+                p.default_kind = classify_default_expr(ci.default)
 
         return db_adapter.build(
             col_infos,
@@ -175,7 +185,8 @@ def format_model_context_for_prompt(ctx: ModelContext) -> str:
     WHITELIST — only these ColumnProfile fields are written:
       name, inferred_type, null_pct, distinct_count,
       leading_trailing_spaces_pct, casing_distribution,
-      min_length, max_length, format_hint, masked_examples.
+      min_length, max_length, format_hint, masked_examples,
+      required, default_kind.
 
     Absent: connection_id, raw data values, InternalTableRef, InternalContext.
     """
@@ -201,6 +212,12 @@ def format_model_context_for_prompt(ctx: ModelContext) -> str:
                 parts.append(f"formato: {col.format_hint}")
             if col.masked_examples:
                 parts.append(f"ejemplos: {', '.join(col.masked_examples)}")
+            if col.default_kind == "function":
+                parts.append("default: FUNCIÓN/EXPRESIÓN DE BD — NUNCA emitir su valor, omitir columna y dejar que la BD la calcule")
+            elif col.default_kind == "literal":
+                parts.append("default: literal de BD (puede omitirse o emitirse como constante)")
+            elif col.required:
+                parts.append("NOT NULL sin default — el ETL DEBE proveer este valor")
             lines.append(" | ".join(parts))
 
     return "\n".join(lines)

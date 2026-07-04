@@ -30,7 +30,11 @@ def _get_engine() -> Engine:
 
 
 def create_tables() -> None:
-    import app.models.connection  # noqa: F401 — registers Connection model with Base
+    # TODO: Alembic para versionar el schema más adelante
+    import app.models.connection  # noqa: F401
+    import app.models.etl  # noqa: F401
+    import app.models.job  # noqa: F401
+    import app.models.ktr_build_job  # noqa: F401
     Base.metadata.create_all(bind=_get_engine())
 
 
@@ -49,3 +53,12 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def get_session_factory() -> sessionmaker:
+    """FastAPI dependency wrapping _get_session_factory() so background tasks
+    (asyncio.create_task, outside the request's own Session lifetime) can open
+    their own session using the same factory the request used — overridable in
+    tests via app.dependency_overrides, unlike importing _get_session_factory
+    directly."""
+    return _get_session_factory()

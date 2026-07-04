@@ -18,7 +18,10 @@ function CopyButton({ text }) {
   );
 }
 
-export default function InferenceReview({ inferResult, onConfirm, onRefine, onBack, isRefining }) {
+export default function InferenceReview({
+  inferResult, onConfirm, onRefine, onBack, isRefining,
+  rawLlmData, onReuseResponse, onDownloadRaw, onImportRaw,
+}) {
   const [correction, setCorrection] = useState("");
 
   const handleRefine = () => {
@@ -71,6 +74,27 @@ export default function InferenceReview({ inferResult, onConfirm, onRefine, onBa
         </div>
       </div>
 
+      {rawLlmData ? (
+        <div className="infer-review__raw-banner">
+          <p>
+            El modelo ya respondió, pero la construcción del .ktr falló en un intento anterior.
+            Podés descargar esa respuesta para no perderla, o reutilizarla directamente sin volver a llamar al modelo.
+          </p>
+          <div className="infer-review__raw-actions">
+            <button className="infer-btn infer-btn--secondary" onClick={onDownloadRaw}>
+              ⬇ Descargar respuesta
+            </button>
+            <button className="infer-btn infer-btn--secondary" onClick={onImportRaw}>
+              ⬆ Importar otra respuesta
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className="infer-review__raw-import-link" onClick={onImportRaw}>
+          ⬆ Importar una respuesta del modelo guardada anteriormente
+        </button>
+      )}
+
       <div className="infer-review__correction">
         <label className="infer-review__correction-label">¿Querés ajustar algo?</label>
         <div className="infer-review__correction-row">
@@ -105,6 +129,16 @@ export default function InferenceReview({ inferResult, onConfirm, onRefine, onBa
           >
             Confirmar y generar ETL
           </button>
+          {rawLlmData && (
+            <button
+              className="infer-btn infer-btn--primary"
+              onClick={onReuseResponse}
+              disabled={isRefining}
+              title="Reconstruye el .ktr con la respuesta ya guardada, sin llamar al modelo de nuevo"
+            >
+              ↻ Reutilizar respuesta
+            </button>
+          )}
         </div>
       </div>
     </div>

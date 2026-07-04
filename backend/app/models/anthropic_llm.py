@@ -77,12 +77,14 @@ class AnthropicLLM(BaseLLM):
         max_tokens: int,
         api_key: str,
         region: str,
+        request_timeout_s: float = 240.0,
     ) -> None:
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._api_key = api_key
         self._region = region
+        self._request_timeout_s = request_timeout_s
 
     def _get_client(self) -> anthropic.AsyncAnthropic:
         return _cached_client(self._api_key, self._region)
@@ -142,6 +144,11 @@ class AnthropicLLM(BaseLLM):
             temperature=self._temperature,
             system=system,
             messages=[{"role": "user", "content": prompt}],
+            # Sin esto, un stream que se cuelga (sin datos, sin error HTTP) usa el
+            # default del SDK (~600s) y, con los 4 reintentos de arriba, puede
+            # dejar un job "pending" hasta ~40 min antes de fallar. Acotado acá
+            # para que un cuelgue se resuelva en un error claro y rápido.
+            timeout=self._request_timeout_s,
         )
 
         if schema is not None:
@@ -220,6 +227,7 @@ class AnthropicLLM(BaseLLM):
             temperature=self._temperature,
             system=fallback_system,
             messages=[{"role": "user", "content": prompt}],
+            timeout=self._request_timeout_s,
         )
         latency_ms = int((time.monotonic() - start) * 1000)
 

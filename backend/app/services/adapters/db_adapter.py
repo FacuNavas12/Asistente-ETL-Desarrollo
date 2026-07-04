@@ -15,6 +15,7 @@ from app.schemas.canonical import (
     TableProfile,
 )
 from app.schemas.connection import ColumnInfo
+from app.services.sql_defaults import classify_default_expr
 from app.services.type_mappings import map_sql_type
 
 
@@ -61,6 +62,8 @@ def build(
                 is_foreign_key=ci.name in fk_by_col,
                 references=fk_by_col.get(ci.name),
                 inferred_by="database",
+                default_expr=ci.default,
+                default_kind=classify_default_expr(ci.default),
             )
         )
 

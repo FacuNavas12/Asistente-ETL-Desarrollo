@@ -287,10 +287,24 @@
   color: #6366f1;
 }
 
-.etl-card__delete {
+/* ── Top-right action cluster ──────────────────────────────────────────── */
+.etl-card__top-actions {
   position: absolute;
   top: 10px;
   right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.etl-card:hover .etl-card__top-actions {
+  opacity: 1;
+}
+
+.etl-card__delete {
   width: 26px;
   height: 26px;
   border-radius: 7px;
@@ -303,16 +317,78 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
-  z-index: 1;
-}
-
-.etl-card:hover .etl-card__delete {
-  opacity: 1;
+  transition: background 0.15s, color 0.15s;
 }
 
 .etl-card__delete:hover {
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
+}
+
+/* ── EtlCard three-dot menu ────────────────────────────────────────────── */
+.etl-card-menu {
+  position: relative;
+}
+
+.etl-card-menu__trigger {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.etl-card-menu__trigger:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.etl-card-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.etl-card-menu__item {
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Outfit', sans-serif;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  color: var(--text-1);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.etl-card-menu__item:hover:not(:disabled) {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.etl-card-menu__item:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
 }

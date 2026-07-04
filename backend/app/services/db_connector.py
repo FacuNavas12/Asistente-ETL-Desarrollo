@@ -39,6 +39,10 @@ _SYSTEM_SCHEMAS: frozenset[str] = frozenset({
     "db_owner", "db_accessadmin", "db_securityadmin", "db_ddladmin",
     "db_backupoperator", "db_datareader", "db_datawriter",
     "db_denydatareader", "db_denydatawriter",
+    # Supabase (Postgres gestionado — schemas internos de la plataforma, no de usuario)
+    "auth", "storage", "realtime", "vault", "extensions",
+    "graphql", "graphql_public", "pgbouncer", "pgsodium", "pgsodium_masks",
+    "supabase_functions", "supabase_migrations", "cron", "net",
 })
 
 

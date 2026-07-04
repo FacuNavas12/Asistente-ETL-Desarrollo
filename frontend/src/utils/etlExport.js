@@ -40,7 +40,7 @@ function safeFilename(name) {
  *                             reglasNegocio, stg_definition?, dwh_model? }
  * @param {string} name      — display name for the ETL
  */
-export function downloadEtlSkeleton(formData, name) {
+export function buildEtlSkeletonExport(formData, name) {
   const payload = {
     type: "etl_skeleton",
     version: EXPORT_VERSION,
@@ -56,10 +56,15 @@ export function downloadEtlSkeleton(formData, name) {
     },
   };
 
-  triggerDownload(
-    serialize(payload),
-    `etl-skeleton-${safeFilename(payload.name)}.json`,
-  );
+  return {
+    content: serialize(payload),
+    filename: `etl-skeleton-${safeFilename(payload.name)}.json`,
+  };
+}
+
+export function downloadEtlSkeleton(formData, name) {
+  const { content, filename } = buildEtlSkeletonExport(formData, name);
+  triggerDownload(content, filename);
 }
 
 /**
@@ -90,5 +95,28 @@ export function downloadEtlFull(etl) {
   triggerDownload(
     serialize(payload),
     `etl-full-${safeFilename(etl.name)}.json`,
+  );
+}
+
+/**
+ * Export the raw LLM response captured when build_ktr() failed server-side.
+ * Lets the user keep the (expensive) model output and retry .ktr construction
+ * later via buildFromRaw() without calling the LLM again.
+ *
+ * @param {object} rawLlmData — the raw `data` dict from the model (proceso_etl, ktr, etc.)
+ * @param {string} name       — display name for the ETL
+ */
+export function downloadLlmRaw(rawLlmData, name) {
+  const payload = {
+    type: "etl_llm_raw",
+    version: EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    name: name ?? "sin-nombre",
+    raw_llm_data: rawLlmData,
+  };
+
+  triggerDownload(
+    serialize(payload),
+    `etl-llm-raw-${safeFilename(payload.name)}.json`,
   );
 }

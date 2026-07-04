@@ -176,3 +176,25 @@ export async function parseEtlFile(file) {
   validateFormData(data.formData);
   return { type: "skeleton", formData: data.formData };
 }
+
+/**
+ * Import a raw LLM response file (from downloadLlmRaw, saved after a build_ktr failure).
+ * Returns the raw dict ready to pass to buildFromRaw() to retry .ktr construction
+ * without calling the LLM again.
+ *
+ * @param {File} file
+ * @returns {Promise<object>} raw_llm_data
+ * @throws {Error} with human-readable message on any validation failure
+ */
+export async function importLlmRaw(file) {
+  const data = await parseJSON(file);
+
+  checkType(data, "etl_llm_raw");
+  checkVersion(data);
+
+  if (!data.raw_llm_data || typeof data.raw_llm_data !== "object") {
+    throw new Error("El archivo no contiene raw_llm_data");
+  }
+
+  return data.raw_llm_data;
+}

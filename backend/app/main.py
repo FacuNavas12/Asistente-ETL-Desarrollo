@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.log_filters import PasswordFilter
 from app.routers import ai, connections, schema
+from app.routers import etl as etl_router
+from app.routers import job as job_router
 
 _log_dir = Path(__file__).resolve().parent.parent / "logs"
 _log_dir.mkdir(exist_ok=True)
@@ -57,11 +59,49 @@ logging.basicConfig(
 logging.getLogger().addFilter(PasswordFilter())
 
 
+async def _purge_expired_ktr_jobs(session_factory) -> None:
+    """Barrido periódico de ktr_build_jobs vencidos (TTL 30 min) — cubre el caso
+    de un usuario que arranca la generación y abandona el formulario de
+    conexiones sin volver. El chequeo lazy en _job_or_404 ya evita servir una
+    fila vencida; esto solo evita que se acumulen filas huérfanas."""
+    from asyncio import sleep
+    from datetime import datetime, timezone
+
+    from app.models.ktr_build_job import KtrBuildJob
+
+    while True:
+        await sleep(300)
+        db = session_factory()
+        try:
+            db.query(KtrBuildJob).filter(KtrBuildJob.expires_at < datetime.now(timezone.utc)).delete()
+            db.commit()
+        except Exception:
+            logging.getLogger(__name__).exception("Error al purgar ktr_build_jobs vencidos")
+        finally:
+            db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.core.database import create_tables
+    from asyncio import create_task
+
+    from app.core.database import create_tables, _get_session_factory
+    from app.outbox import get_outbox
+    from app.outbox.runner import run_in_process
+
     create_tables()
+
+    # Entrypoint A — in-process drain loop.
+    # To switch to an external process/cron (entrypoint B), remove this task
+    # and wire app.outbox.runner.run_drain_once_sync() to your scheduler.
+    # Pieces 1 (OutboxPort) and 2 (drainer.drain) are not touched.
+    _drain_task = create_task(run_in_process(get_outbox(), _get_session_factory()))
+    _ktr_ttl_task = create_task(_purge_expired_ktr_jobs(_get_session_factory()))
+
     yield
+
+    _drain_task.cancel()
+    _ktr_ttl_task.cancel()
 
 
 app = FastAPI(title="Acelerador ETL — API", version="0.1.0", lifespan=lifespan)
@@ -77,6 +117,8 @@ app.add_middleware(
 app.include_router(ai.router)
 app.include_router(connections.router)
 app.include_router(schema.router)
+app.include_router(etl_router.router)
+app.include_router(job_router.router)
 
 
 @app.get("/")
