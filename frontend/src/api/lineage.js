@@ -13,11 +13,11 @@ async function parseResponse(res) {
   throw new Error(msg);
 }
 
-export async function computeLineage(ktrXml) {
+export async function computeLineage(ktrXml, ktr2Xml) {
   const res = await fetch(`${BASE}/api/ai/lineage-from-ktr`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ktr_xml: ktrXml }),
+    body: JSON.stringify({ ktr_xml: ktrXml, ktr2_xml: ktr2Xml || undefined }),
   });
   return parseResponse(res);
 }

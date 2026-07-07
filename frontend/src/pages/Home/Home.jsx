@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
+import { ETL_STATUS } from "@/constants/status";
 import Layout from "@/components/layout/Layout";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import EtlCard from "./components/EtlCard";
@@ -62,23 +63,34 @@ function EmptyState({ filter }) {
 
 export default function Home() {
   const navigate = useNavigate();
-  const { etls, jobs, deleteEtl } = useEtl();
+  const { visibleEtls: allVisibleEtls, jobs, hideEtlLocally, deleteEtlPermanently } = useEtl();
   const [filter, setFilter] = useState("all");
+  const [hideTarget, setHideTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const visibleEtls = filter !== "job" ? etls : [];
+  const visibleEtls = filter !== "job" ? allVisibleEtls : [];
   const visibleJobs = filter !== "etl" ? jobs : [];
   const isEmpty     = visibleEtls.length === 0 && visibleJobs.length === 0;
 
   return (
     <Layout>
+      {hideTarget && (
+        <ConfirmModal
+          title="¿Quitar esta Transformación de tu vista?"
+          message="Se oculta solo en este navegador. Sigue existiendo en el servidor y podés volver a acceder a ella desde otro dispositivo."
+          confirmLabel="Quitar"
+          cancelLabel="Cancelar"
+          onConfirm={() => { hideEtlLocally(hideTarget); setHideTarget(null); }}
+          onCancel={() => setHideTarget(null)}
+        />
+      )}
       {deleteTarget && (
         <ConfirmModal
-          title="¿Eliminar esta Transformación?"
-          message="Esta acción la eliminará permanentemente del almacenamiento local. Si no la descargaste antes, no hay forma de recuperarla."
-          confirmLabel="Eliminar"
+          title="¿Eliminar esta Transformación definitivamente?"
+          message="Esta acción borra el registro del servidor de forma permanente. No hay forma de recuperarlo."
+          confirmLabel="Eliminar definitivamente"
           cancelLabel="Cancelar"
-          onConfirm={() => { deleteEtl(deleteTarget); setDeleteTarget(null); }}
+          onConfirm={() => { deleteEtlPermanently(deleteTarget); setDeleteTarget(null); }}
           onCancel={() => setDeleteTarget(null)}
         />
       )}
@@ -88,7 +100,7 @@ export default function Home() {
             <h1 className="home-title">Inicio</h1>
             <div className="home-count">
               <span className="home-count__label">Transformaciones</span>
-              <span className="home-count__badge">{etls.length}</span>
+              <span className="home-count__badge">{allVisibleEtls.length}</span>
             </div>
             <div className="home-count">
               <span className="home-count__label">Jobs</span>
@@ -125,7 +137,8 @@ export default function Home() {
                     navigate(`/etl/${etl.id}`);
                   }
                 }}
-                onDelete={() => setDeleteTarget(etl.id)}
+                onDelete={() => setHideTarget(etl.id)}
+                onDeletePermanent={() => setDeleteTarget(etl.id)}
               />
             ))}
             {visibleJobs.map((job, i) => (

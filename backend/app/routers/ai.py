@@ -40,7 +40,7 @@ from app.services.etl_generator import (
 from app.services.validator import validate_etl
 from app.services.documenter import document_etl
 from app.services.structure_inferrer import infer_structures, refine_structures
-from app.services.lineage_builder import build_lineage_from_xml
+from app.services.lineage_builder import build_lineage_from_xml, stitch_lineage_from_xml
 from app.schemas.lineage import Lineage
 from app.schemas.job_schemas import (
     JobAnalyzeResponse,
@@ -311,12 +311,21 @@ async def generate_from_inference_sse(
 
 class _KtrXmlBody(BaseModel):
     ktr_xml: str
+    ktr2_xml: Optional[str] = None
 
 @router.post("/api/ai/lineage-from-ktr", response_model=Lineage)
 async def lineage_from_ktr(body: _KtrXmlBody):
-    """Parsea un .ktr XML ya serializado y devuelve el grafo de linaje. Sin llamada al modelo."""
+    """Parsea 1 o 2 .ktr XML ya serializados y devuelve el grafo de linaje. Sin llamada al modelo.
+
+    ktr2_xml es opcional: si viene (flujo de 2 KTR + 1 .kjb), cose origen→STG→DWH
+    con stitch_lineage_from_xml(). El orden es fijo por convención de nuestro propio
+    flujo de generación (ktr_xml = KTR_1 origen→STG, ktr2_xml = KTR_2 STG→DWH) —
+    no depende del .kjb para deducirlo.
+    """
     if not body.ktr_xml:
         raise HTTPException(status_code=422, detail="ktr_xml no puede estar vacío.")
+    if body.ktr2_xml:
+        return stitch_lineage_from_xml(body.ktr_xml, body.ktr2_xml)
     return build_lineage_from_xml(body.ktr_xml)
 
 

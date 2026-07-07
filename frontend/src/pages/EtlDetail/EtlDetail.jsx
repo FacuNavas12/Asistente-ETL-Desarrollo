@@ -39,7 +39,7 @@ export default function EtlDetail() {
     setLineageLoading(true);
     setLineageError(null);
 
-    computeLineage(ktrXml)
+    computeLineage(ktrXml, etl.result?.ktr2_xml)
       .then(data => {
         setLineageData(data);
         setLineageLoading(false);

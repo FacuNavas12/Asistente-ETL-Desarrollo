@@ -38,7 +38,7 @@ Backend reads env vars from `backend/.env`. El proveedor LLM se selecciona con `
 
 ## Architecture
 
-React SPA with Auth0 auth talking to FastAPI backend. Backend proxies LLM (Gemini o Anthropic, switchable en runtime via `LLM_PROVIDER`) and manages schema extraction. No database — ETL state persists to `localStorage` (permanent) and `sessionStorage` (draft, 2h TTL) via `EtlContext`.
+React SPA with Auth0 auth talking to FastAPI backend. Backend proxies LLM (Gemini o Anthropic, switchable en runtime via `LLM_PROVIDER`) and manages schema extraction. ETL/Job state persiste en DB (SQLAlchemy, `backend/app/core/database.py`, default SQLite via `DATABASE_URL`, sin Alembic todavía — `create_tables()` hace `Base.metadata.create_all`) en tablas `etls` / `jobs` / `ktr_build_jobs` / `connections`; `result`/`result_json`/`form_data` son columnas `JSON` opacas (sin schema fijo en DB, el contrato vive en los Pydantic schemas del backend). `EtlContext.jsx` en el frontend solo mantiene un draft en `sessionStorage` (2h TTL) mientras se arma el formulario — el ETL confirmado se persiste vía API contra esa DB, no en `localStorage`.
 
 **Principio de diseño NO negociable:** al LLM solo se le envía la ESTRUCTURA de las tablas (esquema, tipos, formatos, reglas), nunca filas de datos.
 
@@ -98,6 +98,10 @@ app/
     anthropic_llm.py              — AnthropicLLM: ídem para Anthropic
     llm_factory.py                — build_llm(settings, role) → BaseLLM; sin singletons
     connection.py                 — Connection ORM model, DbType enum (postgresql | sqlserver)
+    base.py                       — WorkflowItemMixin (id/name/status/form_data/result JSON/created_at/updated_at)
+    etl.py                        — Etl ORM model (tabla `etls`, usa WorkflowItemMixin)
+    job.py                        — Job ORM model (tabla `jobs`, usa WorkflowItemMixin)
+    ktr_build_job.py               — KtrBuildJob ORM model (tabla `ktr_build_jobs`, flujo async de generación 2-KTR)
   schemas/
     canonical.py                  — CanonicalSchema, CanonicalField, CanonicalType (central)
     etl_schemas.py                — ETLRequest, TablaOrigen (con canonical_schema), ColumnaOrigen
@@ -112,8 +116,13 @@ app/
     profiler.py                   — fetch_db_column_stats(), compute_file_column_stats(), profile_columns() → ColumnProfile
     dialect.py                    — DialectProfiler protocol + impl PostgreSQL / SQLServer / Fake
     masker.py                     — format-preserving masking de ejemplos antes de que entren al perfil
-    etl_generator.py              — construye prompt, llama LLM, parsea JSON → ETLGenerateResponse
-    ktr_builder.py                — serializa ktr JSON → XML .ktr para Pentaho PDI
+    etl_generator.py              — construye prompt(s), llama LLM, arma ETLGenerateResponse.
+                                    Flujo 2-KTR: 2 llamadas al LLM (origen→STG / STG→DWH) +
+                                    build_kjb_xml() (.kjb) + stitch_lineage(); legacy: 1 llamada, 1 KTR.
+    ktr_builder/                  — paquete (antes módulo único): build_ktr(ktr_data, ...) → (xml, filename, warnings),
+                                    serializa un ktr JSON → XML .ktr para Pentaho PDI (se llama 1x por KTR)
+    lineage_builder.py            — build_lineage()/stitch_lineage() (dict KTR) y variantes _from_xml();
+                                    stitch_lineage cose origen→STG→DWH matcheando tablas STG entre KTR_1 y KTR_2
     validator.py                  — validación de estructuras
     documenter.py                 — generación de documentación ETL
     structure_inferrer.py         — inferencia de estructura

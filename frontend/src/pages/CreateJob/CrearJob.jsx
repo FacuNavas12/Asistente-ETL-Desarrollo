@@ -144,7 +144,7 @@ export default function CrearJob() {
   const handleExportSuperset = async () => {
     setSupersetBusy(true);
     try {
-      // Matchear los KTRs del job con ETLs guardados por ktr_filename (con y sin extensión)
+      // Matchear los KTRs del job con ETLs guardados por ktr_filename/ktr2_filename (con y sin extensión)
       const jobFilenames = new Set(
         (jobResult.job_plan.execution_order ?? []).flatMap(e => [
           e.filename,
@@ -152,9 +152,10 @@ export default function CrearJob() {
         ]).filter(Boolean)
       );
       const matchingEtls = etls.filter(e => {
-        const ktr = e.result?.ktr_filename;
-        if (!ktr) return false;
-        return jobFilenames.has(ktr) || jobFilenames.has(ktr.replace(/\.ktr$/i, ""));
+        const candidates = [e.result?.ktr_filename, e.result?.ktr2_filename].filter(Boolean);
+        return candidates.some(
+          ktr => jobFilenames.has(ktr) || jobFilenames.has(ktr.replace(/\.ktr$/i, ""))
+        );
       });
 
       let dwh_sample = matchingEtls.reduce((acc, e) => ({ ...acc, ...(e.result?.dwh_sample ?? {}) }), {});

@@ -392,3 +392,12 @@
   opacity: 0.38;
   cursor: not-allowed;
 }
+
+.etl-card-menu__item--danger {
+  color: var(--error, #e55);
+}
+
+.etl-card-menu__item--danger:hover:not(:disabled) {
+  background: #ef444418;
+  color: var(--error, #e55);
+}

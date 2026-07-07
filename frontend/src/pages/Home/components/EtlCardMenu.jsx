@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { downloadKtrFromEtl, downloadAll } from "@/utils/etlCardActions";
 
-export default function EtlCardMenu({ etl }) {
+export default function EtlCardMenu({ etl, onDeletePermanent }) {
   const [open, setOpen] = useState(false);
   const ref             = useRef(null);
   const navigate        = useNavigate();
@@ -53,6 +53,12 @@ export default function EtlCardMenu({ etl }) {
             onClick={(e) => handle(e, () => navigate("/superset"))}
           >
             Abrir en Superset
+          </button>
+          <button
+            className="etl-card-menu__item etl-card-menu__item--danger"
+            onClick={(e) => handle(e, onDeletePermanent)}
+          >
+            Eliminar definitivamente
           </button>
         </div>
       )}

@@ -253,3 +253,8 @@ def _parse_ktr_xml(ktr_xml: str) -> dict:
 def build_lineage_from_xml(ktr_xml: str) -> Lineage:
     """Genera el linaje directamente desde el string XML de un .ktr ya serializado."""
     return build_lineage(_parse_ktr_xml(ktr_xml))
+
+
+def stitch_lineage_from_xml(ktr_xml_1: str, ktr_xml_2: str) -> Lineage:
+    """Igual que stitch_lineage() pero parseando ambos KTR desde su XML serializado."""
+    return stitch_lineage(_parse_ktr_xml(ktr_xml_1), _parse_ktr_xml(ktr_xml_2))

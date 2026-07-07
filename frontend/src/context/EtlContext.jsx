@@ -7,6 +7,14 @@ const EtlContext = createContext();
 const DRAFT_KEY  = "etl_draft";
 const DRAFT_TTL  = 2 * 60 * 60 * 1000;
 const SCHEMA_VERSION = "1.0";
+const HIDDEN_IDS_KEY = "etl_hidden_ids";
+
+function loadHiddenIds() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIDDEN_IDS_KEY));
+    return Array.isArray(raw) ? raw : [];
+  } catch { return []; }
+}
 
 function isSchemaVersionValid(formData) {
   const tables = formData?.origenTables ?? [];
@@ -51,6 +59,7 @@ export function EtlProvider({ children }) {
   const [etls, setEtls] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [draft, setDraftState] = useState(loadDraft);
+  const [hiddenIds, setHiddenIds] = useState(loadHiddenIds);
 
   useEffect(() => {
     listEtls().then(setEtls).catch(console.error);
@@ -120,10 +129,29 @@ export function EtlProvider({ children }) {
     return { id: record.id, syncStatus: record.syncStatus };
   };
 
-  const deleteEtl = async (id) => {
+  /** Oculta el ETL solo en este navegador (localStorage). No borra nada en el backend. */
+  const hideEtlLocally = (id) => {
+    setHiddenIds(prev => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      localStorage.setItem(HIDDEN_IDS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  /** Borra el ETL definitivamente: backend + fila en Supabase. Irreversible. */
+  const deleteEtlPermanently = async (id) => {
     await deleteEtlById(id);
     setEtls(prev => prev.filter(e => e.id !== id));
+    setHiddenIds(prev => {
+      if (!prev.includes(id)) return prev;
+      const next = prev.filter(hid => hid !== id);
+      localStorage.setItem(HIDDEN_IDS_KEY, JSON.stringify(next));
+      return next;
+    });
   };
+
+  const visibleEtls = etls.filter(e => !hiddenIds.includes(e.id));
 
   // ── Jobs ────────────────────────────────────────────────────────────────
   const addJob = async (formData, apiResult) => {
@@ -158,14 +186,17 @@ export function EtlProvider({ children }) {
 
   const clearAll = () => {
     clearAllStoredData();
+    localStorage.removeItem(HIDDEN_IDS_KEY);
     setEtls([]);
     setJobs([]);
     setDraftState(null);
+    setHiddenIds([]);
   };
 
   return (
     <EtlContext.Provider value={{
-      etls, draft, saveDraft, clearDraft, addEtl, savePendingEtl, saveInProgressEtl, deleteEtl,
+      etls, visibleEtls, draft, saveDraft, clearDraft, addEtl, savePendingEtl, saveInProgressEtl,
+      hideEtlLocally, deleteEtlPermanently,
       jobs, addJob, savePendingJob,
       clearAll,
     }}>

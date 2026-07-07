@@ -3,7 +3,7 @@ import EtlCardMenu from "./EtlCardMenu";
 
 const ETL_ICONS = ["⚡", "🔄", "📊", "🔗", "🗃️", "⚙️", "🧩", "📦"];
 
-export default function EtlCard({ etl, index, onClick, onDelete }) {
+export default function EtlCard({ etl, index, onClick, onDelete, onDeletePermanent }) {
   const status       = ETL_STATUS[etl.status] ?? ETL_STATUS.done;
   const isIncomplete = etl.status === "pending" || etl.status === "en_proceso";
   const action       = isIncomplete ? "Continuar →" : "Ver detalle →";
@@ -15,11 +15,11 @@ export default function EtlCard({ etl, index, onClick, onDelete }) {
       onClick={onClick}
     >
       <div className="etl-card__top-actions">
-        <EtlCardMenu etl={etl} />
+        <EtlCardMenu etl={etl} onDeletePermanent={onDeletePermanent} />
         <button
           className="etl-card__delete"
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          title="Eliminar"
+          title="Quitar de esta vista"
         >
           ×
         </button>
