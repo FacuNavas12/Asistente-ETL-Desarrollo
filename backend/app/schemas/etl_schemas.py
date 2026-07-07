@@ -124,6 +124,13 @@ class ETLGenerateResponse(BaseModel):
     dwh_sample: Dict[str, List[Dict[str, Any]]] = {}
     ktr_xml: str = ""
     ktr_filename: str = ""
+    # Flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH orquestados en secuencia).
+    # Vacíos ("") en el flujo monolítico legacy (build-from-raw) — el frontend
+    # los trata como "no hay KTR_2/.kjb para este resultado".
+    ktr2_xml: str = ""
+    ktr2_filename: str = ""
+    kjb_xml: str = ""
+    kjb_filename: str = ""
     lineage: Optional["Lineage"] = None
     metadata: MetadataResponse
 

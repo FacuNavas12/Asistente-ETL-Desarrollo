@@ -24,14 +24,33 @@ _STEPS_NEEDING_CONNECTION = {
 }
 
 
-def _resolve_connection(cfg: dict, canonical_type: str, connection_names: list) -> str:
+def _resolve_connection(
+    cfg: dict,
+    canonical_type: str,
+    connection_names: list,
+    pass_source_connection: str | None = None,
+    pass_dest_connection: str | None = None,
+) -> str:
     """
     Devuelve el nombre de conexión a usar en el step.
-    Prioridad: campo 'connection' del config → campo 'connection_name' → inferencia por tabla.
+    Prioridad: campo 'connection' del config → rol de pase (si se pasó) → inferencia por tabla.
+
+    pass_source_connection / pass_dest_connection: usados por el flujo de generación
+    en 2 KTR (origen→STG / STG→DWH). Cada build_ktr() cubre un solo pase con exactamente
+    2 conexiones relevantes — TableInput siempre lee la conexión origen de ESE pase,
+    cualquier otro step que necesite conexión (TableOutput, DimensionLookup, DBLookup,
+    etc.) escribe/consulta la conexión destino de ESE pase. No hace falta mirar nombre
+    de tabla para esto: el rol alcanza porque dentro de un pase solo hay 2 capas.
+    Ambos None (flujo monolítico actual) preserva el comportamiento previo sin cambios.
     """
     conn = (cfg.get("connection") or cfg.get("connection_name") or "").strip()
     if conn:
         return conn
+
+    if pass_source_connection or pass_dest_connection:
+        inferred = pass_source_connection if canonical_type == "TableInput" else pass_dest_connection
+        if inferred and inferred in connection_names:
+            return inferred
 
     table = (cfg.get("table") or cfg.get("schema_table") or "").lower().strip()
 

@@ -334,7 +334,7 @@ K3. Antes de cada `MergeJoin`, los dos streams de entrada DEBEN tener su propio 
 K4. Para `FilterRows`: incluir `true_target` y `false_target` en `config`, y generar hops normales hacia ambos steps destino.
 K5. Los nombres en `hops[].from` y `hops[].to` deben ser EXACTAMENTE iguales a los nombres en `steps[].name` — incluyendo mayúsculas, espacios y underscores. Cualquier diferencia rompe el grafo.
 K6. El `type` en `connections` SIEMPRE es `"GENERIC"`. El usuario selecciona el driver real en Spoon.
-K7. Crear una conexión por capa: `conn_origen` para la fuente, `conn_staging` para staging, `conn_dwh` para el DWH. Si origen y staging comparten base de datos, usar una sola conexión.
+K7. Crear una conexión por capa: `conn_origen` para la fuente, `conn_staging` para staging, `conn_dwh` para el DWH. Si origen y staging comparten base de datos, usar una sola conexión. Si el prompt declara un "ALCANCE DE ESTA LLAMADA" (llamada acotada a un tramo, no las 3 capas completas), declará ÚNICAMENTE las conexiones de ese tramo — dos, no tres. No declares ni referencies la conexión de la capa fuera de alcance.
 K8. No uses tildes, ñ ni caracteres especiales en los valores de `steps[].name` — solo letras, números, espacios simples y guiones bajos. Los nombres de campos en `config` pueden mantener las convenciones del esquema original.
 K9. Para cada tabla de staging que se cargue, incluir un `TableOutput` con `truncate: true` (carga full) o un `InsertUpdate` (carga incremental según reglas de negocio).
 K10. Para cada dimensión del DWH, usar `DimensionLookup` para generar el surrogate key. Para la tabla de hechos, usar `InsertUpdate` con la clave natural más los surrogate keys obtenidos de las dimensiones.

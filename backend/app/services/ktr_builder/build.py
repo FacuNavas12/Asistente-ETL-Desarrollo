@@ -54,6 +54,8 @@ def build_ktr(
     process_name: str = "",
     real_connections: dict[str, dict] | None = None,
     required_columns_by_table: dict[str, list[str]] | None = None,
+    pass_source_connection: str | None = None,
+    pass_dest_connection: str | None = None,
 ) -> tuple[str, str, list[str]]:
     """
     Convert KTR JSON dict from Gemini response to .ktr XML string.
@@ -66,6 +68,12 @@ def build_ktr(
     required_columns_by_table: {tabla: [columnas NOT NULL sin default]}, derivado
     por el caller a partir del DDL de staging/DWH (ver etl_generator). Opcional —
     None desactiva ese chequeo puntual sin afectar el resto del build.
+
+    pass_source_connection / pass_dest_connection: nombres de conexión lógicos a
+    usar como fallback por rol de step (TableInput → source, resto → dest) cuando
+    el modelo omite 'connection' en el config. Pensado para el flujo de 2 KTR
+    (origen→STG y STG→DWH) — ver _resolve_connection(). None/None preserva el
+    fallback de inferencia por prefijo de tabla ya existente.
 
     Returns (ktr_xml_string, filename, warnings). Returns ("", "", []) if ktr_data is empty.
     """
@@ -129,7 +137,11 @@ def build_ktr(
             cfg = raw if isinstance(raw, dict) else {}
             step.setdefault("config", cfg)
             explicit = (cfg.get("connection") or cfg.get("connection_name") or "").strip()
-            resolved = _resolve_connection(cfg, canonical, connection_names)
+            resolved = _resolve_connection(
+                cfg, canonical, connection_names,
+                pass_source_connection=pass_source_connection,
+                pass_dest_connection=pass_dest_connection,
+            )
             if explicit and explicit not in connection_names:
                 warnings.append(
                     f"Step '{step.get('name')}' referencia conexión '{explicit}' no declarada en 'connections' — se usó '{resolved}' como fallback."
