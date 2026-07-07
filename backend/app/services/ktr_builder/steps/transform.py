@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from xml.etree.ElementTree import Element, SubElement
 
-from app.services.ktr_builder.common import _sub
+from app.services.ktr_builder.common import _sub, _yn
 
 logger = logging.getLogger(__name__)
 
@@ -98,12 +98,12 @@ def _step_SortRows(el: Element, cfg: dict) -> None:
         field = SubElement(fe, "field")
         if isinstance(f, dict):
             name = f.get("name") or f.get("field") or f.get("column") or ""
-            asc  = f.get("ascending", True)
+            asc  = _yn(f.get("ascending"), default=True)
         else:
             name = str(f)
-            asc  = True
+            asc  = "Y"
         _sub(field, "name",           name)
-        _sub(field, "ascending",      "Y" if asc else "N")
+        _sub(field, "ascending",      asc)
         _sub(field, "case_sensitive", "N")
 
 

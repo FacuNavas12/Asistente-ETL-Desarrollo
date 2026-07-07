@@ -2,7 +2,55 @@
 a construir el XML. Ver ktr_xml_validator.py para la validación post-XML."""
 from __future__ import annotations
 
+import json
+import re
+
 from app.services.ktr_builder.registry import STEP_TYPE_ALIASES
+
+
+def _parse_cfg(raw) -> dict:
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            return {}
+    return raw or {}
+
+
+def _select_column_names(sql: str) -> list[str]:
+    """Nombres de columna de un SELECT simple, EN ORDEN y sin deduplicar (a
+    diferencia de fields_validate._select_columns) — acá interesa detectar
+    duplicados, no calcular el set de campos disponibles. [] si no se puede
+    parsear con certeza (SELECT *, expresión no reconocida)."""
+    if not sql or not sql.strip():
+        return []
+    m = re.search(r"select\s+(.*?)\s+from\s", sql, re.IGNORECASE | re.DOTALL)
+    if not m or "*" in m.group(1):
+        return []
+    parts, current, depth = [], "", 0
+    for ch in m.group(1):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append(current)
+            current = ""
+        else:
+            current += ch
+    parts.append(current)
+
+    names = []
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        alias_match = re.search(r"\bas\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", p, re.IGNORECASE)
+        token = alias_match.group(1) if alias_match else (p.split()[-1] if " " in p else p)
+        token = token.split(".")[-1].strip('`"[]')
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", token):
+            names.append(token.lower())
+    return names
 
 
 def _validate_ktr(ktr: dict) -> list[str]:
@@ -24,5 +72,22 @@ def _validate_ktr(ktr: dict) -> list[str]:
             warnings.append(f"Hop hace referencia a step inexistente: '{hop.get('from')}'")
         if hop.get("to") not in step_names:
             warnings.append(f"Hop hace referencia a step inexistente: '{hop.get('to')}'")
+
+    for step in ktr.get("steps", []):
+        canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
+        if canonical != "TableInput":
+            continue
+        cfg = _parse_cfg(step.get("config", {}))
+        names = _select_column_names(cfg.get("sql", ""))
+        seen, dupes = set(), []
+        for n in names:
+            if n in seen and n not in dupes:
+                dupes.append(n)
+            seen.add(n)
+        for d in dupes:
+            warnings.append(
+                f"TableInput '{step.get('name')}': columna '{d}' repetida en el SELECT — "
+                "Kettle expone ambas con el mismo nombre y solo una llega aguas abajo."
+            )
 
     return warnings

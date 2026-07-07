@@ -46,7 +46,11 @@ def _step_GetSystemInfo(el: Element, cfg: dict) -> None:
 
     fe = SubElement(el, "fields")
     for f in fields:
-        info_type = str(f.get("info_type", "system date (fixed)")).strip().lower()
+        # El LLM puede declarar el info_type bajo la clave "type" (consistente
+        # con el resto de los steps) o "info_type" — aceptar ambas evita que
+        # se pierda silenciosamente y caiga al default.
+        raw_type = f.get("info_type") or f.get("type") or "system date (fixed)"
+        info_type = str(raw_type).strip().lower()
         if info_type not in _SYSTEM_INFO_KNOWN_TYPES:
             logger.warning(
                 "GetSystemInfo: info_type '%s' no reconocido, forzado a 'system date (fixed)'",

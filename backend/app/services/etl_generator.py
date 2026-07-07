@@ -362,13 +362,20 @@ def _build_response(
 
 async def build_etl_from_raw(raw_llm_data: dict) -> ETLGenerateResponse:
     """Reconstruye el ETL a partir de una respuesta cruda del modelo guardada previamente
-    (p. ej. tras un fallo de build_ktr). No llama al LLM."""
+    (p. ej. tras un fallo de build_ktr). No llama al LLM.
+
+    raw_llm_data trae uno de dos shapes según qué flujo falló:
+    - flujo legacy monolítico: dict plano con "proceso_etl"/"ktr" en el nivel top.
+    - flujo de 2 KTR: {"ktr_1": {...plano...}, "ktr_2": {...plano...}} (ver
+      KtrBuildError en _build_response_from_two_ktr_data)."""
     metadata = MetadataResponse(
         modelo_usado="(respuesta reutilizada)",
         tokens_input=0,
         tokens_output=0,
         region_inferencia="local",
     )
+    if "ktr_1" in raw_llm_data and "ktr_2" in raw_llm_data:
+        return _build_response_from_two_ktr_data(raw_llm_data["ktr_1"], raw_llm_data["ktr_2"], metadata)
     return _build_response_from_data(raw_llm_data, metadata)
 
 

@@ -186,7 +186,11 @@ class ETLFromInferenceRequest(BaseModel):
 
 class BuildFromRawRequest(BaseModel):
     """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada
-    previamente por el frontend (descargada tras un fallo de build_ktr). Sin llamada al LLM."""
+    previamente por el frontend (descargada tras un fallo de build_ktr). Sin llamada al LLM.
+
+    raw_llm_data trae dict plano (flujo legacy monolítico, claves proceso_etl/ktr
+    en el nivel top) o {"ktr_1": {...}, "ktr_2": {...}} (flujo de 2 KTR) — ver
+    build_etl_from_raw() en etl_generator.py, que detecta el shape."""
     raw_llm_data: Dict[str, Any]
 
 

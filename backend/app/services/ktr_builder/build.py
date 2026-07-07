@@ -16,15 +16,15 @@ from xml.dom import minidom
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from app.core.config import settings
-from app.services.ktr_builder.common import _sub
+from app.services.ktr_builder.common import _sub, KtrBuilderError
 from app.services.ktr_builder.connection import _build_connection, _resolve_connection, _STEPS_NEEDING_CONNECTION
+from app.services.ktr_builder.fields_validate import validate_field_resolution
 from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.registry import (
     _CRITICAL_FIELDS,
-    _step_generic,
-    KNOWN_PDI_STEP_TYPES,
     STEP_BUILDERS,
     STEP_TYPE_ALIASES,
+    unmapped_config_keys,
 )
 from app.services.ktr_builder.validate import _validate_ktr
 from app.services.ktr_default_validator import (
@@ -95,6 +95,15 @@ def build_ktr(
     warnings.extend(
         check_missing_required_fields(ktr_data, STEP_TYPE_ALIASES, required_columns_by_table)
     )
+
+    # Validación de resolución de campos: un campo que un step consumidor
+    # referencia (TableOutput, DimensionLookup, DBLookup, ...) pero que ningún
+    # step aguas arriba produce es el mismo síntoma que Spoon reporta en
+    # runtime como "Could not find field X in stream" — se detecta acá en
+    # build-time y aborta, en vez de entregar un .ktr que rompe al ejecutar.
+    field_errors = validate_field_resolution(ktr_data, STEP_TYPE_ALIASES)
+    if field_errors:
+        raise KtrBuilderError(" | ".join(field_errors))
 
     name        = ktr_data.get("name") or process_name or "Transformacion_ETL"
     description = ktr_data.get("description", "")
@@ -204,18 +213,16 @@ def build_ktr(
         # o internos ("TableInput"). El alias map traduce ambos al canónico.
         canonical_type = STEP_TYPE_ALIASES.get(step_type, step_type)
 
-        # Rechazo/corrección: un type fuera del whitelist de plugins PDI reales
-        # no es "un tipo no soportado por el backend" — es un id inexistente en
-        # Kettle, y Spoon rompe con "plugin missing" al abrir el .ktr. Se fuerza
-        # a Dummy (mantiene el grafo/hops intactos) en vez de emitirlo tal cual.
-        if canonical_type not in KNOWN_PDI_STEP_TYPES:
-            warnings.append(
-                f"Step '{step.get('name')}' usa type '{step_type}' — no es un plugin PDI 9.x "
-                f"reconocido, se reemplazó por 'Dummy'. Reconfigurar manualmente en Spoon."
+        # Un type sin emisor registrado (ni siquiera detrás de un alias) no es
+        # un plugin PDI real o no está soportado por este builder — Spoon
+        # rompería con "plugin missing"/step vacío. Se aborta el build con un
+        # mensaje claro en vez de degradar en silencio a Dummy: un .ktr que
+        # "abre" pero le falta un step entero es peor que uno que no se genera.
+        builder = STEP_BUILDERS.get(canonical_type)
+        if builder is None:
+            raise KtrBuilderError(
+                f"Tipo de step no soportado: '{step_type}' en paso '{step.get('name')}'"
             )
-            logger.warning("KTR: step type '%s' no está en KNOWN_PDI_STEP_TYPES, forzado a Dummy", step_type)
-            canonical_type = "Dummy"
-            cfg = {}
 
         if canonical_type != step_type:
             logger.info("KTR: step type '%s' normalizado a '%s'", step_type, canonical_type)
@@ -223,12 +230,13 @@ def build_ktr(
             type_el = step_el.find("type")
             if type_el is not None:
                 type_el.text = canonical_type
-        builder = STEP_BUILDERS.get(canonical_type)
-        if builder:
-            builder(step_el, cfg)
-        else:
-            logger.warning("KTR: step type '%s' (canonical: '%s') not supported, using generic builder", step_type, canonical_type)
-            _step_generic(step_el, cfg)
+
+        for key in unmapped_config_keys(canonical_type, cfg):
+            msg = f"clave de config no mapeada '{key}' en '{step.get('name')}'"
+            logger.warning("KTR fidelidad: %s", msg)
+            warnings.append(msg)
+
+        builder(step_el, cfg)
 
         gui = SubElement(step_el, "GUI")
         _sub(gui, "xloc", str(step.get("x", 100)))

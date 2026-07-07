@@ -5,22 +5,34 @@ from __future__ import annotations
 import logging
 from xml.etree.ElementTree import Element, SubElement
 
-from app.services.ktr_builder.common import _sub
+from app.services.ktr_builder.common import _sub, _yn
 
 logger = logging.getLogger(__name__)
 
 
 def _step_TableOutput(el: Element, cfg: dict) -> None:
     table = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or ""
+    fields = cfg.get("fields", [])
     _sub(el, "connection",     cfg.get("connection", ""))
     _sub(el, "schema",         cfg.get("schema", ""))
     _sub(el, "table",          table)
-    _sub(el, "commit",         "1000")
-    _sub(el, "truncate",       "Y" if cfg.get("truncate") else "N")
-    _sub(el, "ignore_errors",  "N")
-    _sub(el, "use_batch",      "Y")
-    fields = cfg.get("fields", [])
-    _sub(el, "specify_fields", "Y" if fields else "N")
+    _sub(el, "commit",         str(cfg.get("commit", 1000)))
+    truncate      = _yn(cfg.get("truncate"), default=False)
+    ignore_errors = _yn(cfg.get("ignore_errors"), default=False)
+    use_batch     = _yn(cfg.get("use_batch"), default=True)
+    if ignore_errors == "Y" and use_batch == "Y":
+        # PDI: ignore_errors=Y es incompatible con batch inserts (el batch se
+        # descarta entero ante un error de fila, así que "ignorar errores" no
+        # tiene efecto con batching activo). Forzar use_batch=N en vez de
+        # apagar ignore_errors en silencio, que es lo que el modelo pidió.
+        logger.warning(
+            "TableOutput: ignore_errors=Y con use_batch=Y es incompatible en PDI, forzando use_batch=N"
+        )
+        use_batch = "N"
+    _sub(el, "truncate",       truncate)
+    _sub(el, "ignore_errors",  ignore_errors)
+    _sub(el, "use_batch",      use_batch)
+    _sub(el, "specify_fields", _yn(cfg.get("specify_fields"), default=bool(fields)))
     fe = SubElement(el, "fields")
     for f in fields:
         field = SubElement(fe, "field")
