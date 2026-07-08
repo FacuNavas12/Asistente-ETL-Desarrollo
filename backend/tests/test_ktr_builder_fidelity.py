@@ -186,6 +186,238 @@ def test_field_resolution_passes_when_field_present():
     assert _find_step(xml, "Lookup SK Producto").findtext("type") == "DimensionLookup"
 
 
+def test_numberrange_output_field_not_false_positive():
+    # 'categoria_cliente' es agregado por NumberRange (config.output_field), no
+    # está en el TableInput de origen — antes se contaba como campo faltante.
+    ktr = _minimal_ktr(
+        steps=[
+            {
+                "name": "Leer Staging Clientes",
+                "type": "TableInput",
+                "config": {"sql": "SELECT id_cliente, monto_total FROM stg_clientes"},
+            },
+            {
+                "name": "Clasificar Cliente",
+                "type": "NumberRange",
+                "config": {
+                    "input_field": "monto_total",
+                    "output_field": "categoria_cliente",
+                    "ranges": [{"lower": 0, "upper": 1000, "value": "bajo"}],
+                },
+            },
+            {
+                "name": "Cargar Staging",
+                "type": "TableOutput",
+                "config": {
+                    "table": "stg_clientes_clasificados",
+                    "connection": "conn_origen",
+                    "fields": [{"column_name": "categoria_cliente", "stream_name": "categoria_cliente"}],
+                },
+            },
+        ],
+        hops=[
+            {"from": "Leer Staging Clientes", "to": "Clasificar Cliente"},
+            {"from": "Clasificar Cliente", "to": "Cargar Staging"},
+        ],
+    )
+    xml, _, _ = build_ktr(ktr)
+    assert _find_step(xml, "Clasificar Cliente").findtext("outputField") == "categoria_cliente"
+
+
+def test_groupby_aggregate_field_not_false_positive():
+    ktr = _minimal_ktr(
+        steps=[
+            {
+                "name": "Leer Ventas",
+                "type": "TableInput",
+                "config": {"sql": "SELECT id_cliente, importe FROM stg_ventas"},
+            },
+            {
+                "name": "Totalizar por Cliente",
+                "type": "MemoryGroupBy",
+                "config": {
+                    "group_fields": ["id_cliente"],
+                    "aggregates": [{"name": "total_importe", "field": "importe", "type": "SUM"}],
+                },
+            },
+            {
+                "name": "Cargar Staging",
+                "type": "TableOutput",
+                "config": {
+                    "table": "stg_totales",
+                    "connection": "conn_origen",
+                    "fields": [
+                        {"column_name": "id_cliente", "stream_name": "id_cliente"},
+                        {"column_name": "total_importe", "stream_name": "total_importe"},
+                    ],
+                },
+            },
+        ],
+        hops=[
+            {"from": "Leer Ventas", "to": "Totalizar por Cliente"},
+            {"from": "Totalizar por Cliente", "to": "Cargar Staging"},
+        ],
+    )
+    xml, _, _ = build_ktr(ktr)
+    assert _find_step(xml, "Totalizar por Cliente").findtext("type") == "MemoryGroupBy"
+
+
+def test_groupby_narrows_stream_drops_ungrouped_field():
+    # importe no sobrevive a un GroupBy que no lo agrupa ni agrega -> debe fallar.
+    ktr = _minimal_ktr(
+        steps=[
+            {
+                "name": "Leer Ventas",
+                "type": "TableInput",
+                "config": {"sql": "SELECT id_cliente, importe FROM stg_ventas"},
+            },
+            {
+                "name": "Totalizar por Cliente",
+                "type": "GroupBy",
+                "config": {
+                    "group_fields": ["id_cliente"],
+                    "aggregates": [{"name": "total_importe", "field": "importe", "type": "SUM"}],
+                },
+            },
+            {
+                "name": "Cargar Staging",
+                "type": "TableOutput",
+                "config": {
+                    "table": "stg_totales",
+                    "connection": "conn_origen",
+                    "fields": [{"column_name": "importe", "stream_name": "importe"}],
+                },
+            },
+        ],
+        hops=[
+            {"from": "Leer Ventas", "to": "Totalizar por Cliente"},
+            {"from": "Totalizar por Cliente", "to": "Cargar Staging"},
+        ],
+    )
+    with pytest.raises(KtrBuilderError, match="importe"):
+        build_ktr(ktr)
+
+
+def test_calculator_field_not_false_positive():
+    ktr = _minimal_ktr(
+        steps=[
+            {"name": "In", "type": "TableInput", "config": {"sql": "SELECT importe FROM stg_ventas"}},
+            {
+                "name": "Convertir a USD",
+                "type": "Calculator",
+                "config": {"calculations": [{"field_name": "importe_usd", "calc_type": "DIVIDE", "field_a": "importe", "field_b": "tc"}]},
+            },
+            {
+                "name": "Cargar Staging",
+                "type": "TableOutput",
+                "config": {
+                    "table": "stg_ventas_usd",
+                    "connection": "conn_origen",
+                    "fields": [{"column_name": "importe_usd", "stream_name": "importe_usd"}],
+                },
+            },
+        ],
+        hops=[
+            {"from": "In", "to": "Convertir a USD"},
+            {"from": "Convertir a USD", "to": "Cargar Staging"},
+        ],
+    )
+    xml, _, _ = build_ktr(ktr)
+    assert _find_step(xml, "Convertir a USD").find("calculation/field_name").text == "importe_usd"
+
+
+def test_calculator_removed_from_result_excludes_field():
+    ktr = _minimal_ktr(
+        steps=[
+            {"name": "In", "type": "TableInput", "config": {"sql": "SELECT importe FROM stg_ventas"}},
+            {
+                "name": "Convertir a USD",
+                "type": "Calculator",
+                "config": {"calculations": [{"field_name": "importe_usd", "calc_type": "DIVIDE", "field_a": "importe", "field_b": "tc", "removed_from_result": "Y"}]},
+            },
+            {
+                "name": "Cargar Staging",
+                "type": "TableOutput",
+                "config": {
+                    "table": "stg_ventas_usd",
+                    "connection": "conn_origen",
+                    "fields": [{"column_name": "importe_usd", "stream_name": "importe_usd"}],
+                },
+            },
+        ],
+        hops=[
+            {"from": "In", "to": "Convertir a USD"},
+            {"from": "Convertir a USD", "to": "Cargar Staging"},
+        ],
+    )
+    with pytest.raises(KtrBuilderError, match="importe_usd"):
+        build_ktr(ktr)
+
+
+def test_dblookup_return_field_not_false_positive():
+    ktr = _minimal_ktr(
+        steps=[
+            {"name": "In", "type": "TableInput", "config": {"sql": "SELECT cod_cliente FROM stg_ventas"}},
+            {
+                "name": "Lookup SK Cliente",
+                "type": "DBLookup",
+                "config": {
+                    "connection": "conn_dwh",
+                    "table": "dim_cliente",
+                    "keys": [{"stream_field": "cod_cliente", "lookup_field": "cod_cliente"}],
+                    "return_fields": [{"name": "sk_cliente"}],
+                },
+            },
+            {
+                "name": "Cargar Fact",
+                "type": "TableOutput",
+                "config": {
+                    "table": "fact_ventas",
+                    "connection": "conn_dwh",
+                    "fields": [{"column_name": "sk_cliente", "stream_name": "sk_cliente"}],
+                },
+            },
+        ],
+        hops=[
+            {"from": "In", "to": "Lookup SK Cliente"},
+            {"from": "Lookup SK Cliente", "to": "Cargar Fact"},
+        ],
+    )
+    xml, _, _ = build_ktr(ktr)
+    assert _find_step(xml, "Lookup SK Cliente").find("lookup/value/name").text == "sk_cliente"
+
+
+def test_dblookup_empty_config_reports_incomplete_producer():
+    # Mismo hueco visto en KTR_2: el DBLookup no declara return_fields, así que
+    # el mensaje debe apuntar al productor incompleto ('Lookup SK Cliente'), no
+    # solo al consumidor lejano que finalmente no encuentra el campo.
+    ktr = _minimal_ktr(
+        steps=[
+            {"name": "In", "type": "TableInput", "config": {"sql": "SELECT cod_cliente FROM stg_ventas"}},
+            {
+                "name": "Lookup SK Cliente",
+                "type": "DBLookup",
+                "config": {"connection": "conn_dwh", "table": "dim_cliente"},
+            },
+            {
+                "name": "Cargar Fact",
+                "type": "TableOutput",
+                "config": {
+                    "table": "fact_ventas",
+                    "connection": "conn_dwh",
+                    "fields": [{"column_name": "sk_cliente", "stream_name": "sk_cliente"}],
+                },
+            },
+        ],
+        hops=[
+            {"from": "In", "to": "Lookup SK Cliente"},
+            {"from": "Lookup SK Cliente", "to": "Cargar Fact"},
+        ],
+    )
+    with pytest.raises(KtrBuilderError, match=r"'Lookup SK Cliente'.*no declara campos de retorno"):
+        build_ktr(ktr)
+
+
 def test_tableinput_duplicate_select_column_warns():
     ktr = _minimal_ktr(
         steps=[

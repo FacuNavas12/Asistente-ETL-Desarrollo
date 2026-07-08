@@ -209,6 +209,18 @@ Ejemplo correcto:
 {"connection": "conn_dwh", "table": "dim_tipo_pago", "return_field": "sk_tipo_pago",
  "keys": [{"stream_field": "tipo_pago", "table_field": "tipo_pago"}]}
 ```
+**DBLookup (Database lookup)** — buscar UN valor puntual contra una tabla SIN generar surrogate key ni manejar SCD (para eso usar `DimensionLookup`). `keys` (condición WHERE) y `return_fields` (columnas que trae al stream) son AMBOS OBLIGATORIOS y NUNCA pueden quedar vacíos — un `DBLookup` con `return_fields: []` no aporta ningún campo nuevo al stream y cualquier step aguas abajo que dependa de su resultado (ej. cargar la FK en la tabla de hechos) falla:
+```json
+{"connection": "conn_dwh", "table": "dim_cliente",
+ "keys":          [{"stream_field": "cod_cliente", "lookup_field": "bk_cliente", "condition": "="}],
+ "return_fields": [{"name": "sk_cliente", "rename": "sk_cliente", "type": "Integer"}]}
+```
+**StreamLookup** — buscar valores en OTRO stream ya en memoria (sin tocar la BD), a partir de una clave compartida. `keys` (clave de cruce) y `values` (campos que trae del stream de lookup) son AMBOS OBLIGATORIOS:
+```json
+{"step": "Nombre del step que alimenta el lookup (ej. Clasificar Cliente)",
+ "keys":   [{"stream": "cliente_id", "lookup": "cliente_id"}],
+ "values": [{"name": "categoria_cliente", "rename": "categoria_cliente", "type": "String"}]}
+```
 **WriteToLog** — punto de trazabilidad en el log de ejecución:
 ```json
 {"level": "Basic", "message": "Descripcion del punto de control", "fields": ["campo1", "campo2"]}
@@ -339,17 +351,22 @@ K8. No uses tildes, ñ ni caracteres especiales en los valores de `steps[].name`
 K9. Para cada tabla de staging que se cargue, incluir un `TableOutput` con `truncate: true` (carga full) o un `InsertUpdate` (carga incremental según reglas de negocio).
 K10. Para cada dimensión del DWH, usar `DimensionLookup` para generar el surrogate key. Para la tabla de hechos, usar `InsertUpdate` con la clave natural más los surrogate keys obtenidos de las dimensiones.
 K11. **SQL explícito en TableInput [CRÍTICO]:** El campo `sql` de cada `TableInput` DEBE listar las columnas del origen por nombre, tal como aparecen en el `## ESQUEMA DE ORIGEN` provisto. `SELECT 1` y `SELECT *` están prohibidos: el primero rompe el flujo de datos aguas abajo (no hay columnas que procesar), el segundo oculta el esquema en Spoon. Si no podés determinar el SQL correcto porque falta información del esquema, reportá un `error` en `validaciones` indicando qué tabla necesita especificación, y generá un paso `Dummy` como placeholder — nunca un `TableInput` con SQL de placeholder.
-K12. **Nombres de tabla y configs obligatorios [CRÍTICO]:** (a) En los steps `TableOutput`, `InsertUpdate`, `DimensionLookup` y `CombinationLookup`, el campo `table` dentro de `config` NUNCA puede ser string vacío o `null` — usar el nombre exacto de la tabla del modelo DWH o staging provisto en `## ESQUEMA DE STAGING` y `## MODELO DE DWH`. (b) En los steps `Calculator`, `ValueMapper`, `NumberRange`, `IfNull` y `SelectValues`, el campo `config` NUNCA puede ser `{}` — debe contener al menos los campos mínimos documentados en las configuraciones válidas de este prompt. Si no tenés la información para poblar un config, reportá un `warning` en `validaciones` — no generes un cascarón con nombre correcto pero sin configuración.
+K12. **Nombres de tabla y configs obligatorios [CRÍTICO]:** (a) En los steps `TableOutput`, `InsertUpdate`, `DimensionLookup`, `CombinationLookup` y `DBLookup`, el campo `table` dentro de `config` NUNCA puede ser string vacío o `null` — usar el nombre exacto de la tabla del modelo DWH o staging provisto en `## ESQUEMA DE STAGING` y `## MODELO DE DWH`. (b) En los steps `Calculator`, `ValueMapper`, `NumberRange`, `IfNull` y `SelectValues`, el campo `config` NUNCA puede ser `{}` — debe contener al menos los campos mínimos documentados en las configuraciones válidas de este prompt. Si no tenés la información para poblar un config, reportá un `warning` en `validaciones` — no generes un cascarón con nombre correcto pero sin configuración. (c) En `DBLookup`, `keys` Y `return_fields` son AMBOS obligatorios y no vacíos — un `DBLookup` que solo trae `connection`+`table` no busca nada ni aporta ningún campo, y todo lo que dependa de su resultado aguas abajo rompe. Lo mismo aplica a `keys`+`values` en `StreamLookup` y a `keys` en `DimensionLookup`/`CombinationLookup`.
 K13. **Una fuente por TableInput [CRÍTICO]:** Cada `TableInput` debe leer de exactamente UNA tabla — JOINs en el SQL están prohibidos. Para combinar dos fuentes, usar dos `TableInput` separados conectados a un `MergeJoin` (con sus respectivos `SortRows` — ver K3). Esto garantiza que el linaje de datos sea trazable y que cada tabla origen aparezca como nodo independiente.
 K14. **MergeRows step1/step2 [CRÍTICO]:** El step `Merge rows (diff)` requiere exactamente DOS flujos de entrada. SIEMPRE incluir en su config `"step1"` y `"step2"` con el nombre EXACTO (character by character) de los steps que le alimentan mediante hops. Nunca dejar vacíos ni null. Si los valores son incorrectos, PDI falla con "The source step to read from [null] couldn't be found."
+K15. **Todo campo referenciado debe estar seleccionado aguas arriba [CRÍTICO]:** Si un step usa un campo del stream por nombre (`date_field`/`keys[].stream_field`/`keys[].stream` de un lookup, campo de un `SortRows`/`Unique`/`GroupBy`, `stream_name` de un `TableOutput`, etc.), ese nombre EXACTO debe aparecer en el `SELECT` del `TableInput` (o en los `fields` del step productor) más cercano aguas arriba de ese step. Esto incluye campos "técnicos" como `stg_fecha_carga` cuando un `DimensionLookup` los usa como `date_field` — si la tabla de staging los tiene, el `TableInput` que la lee DEBE seleccionarlos explícitamente, aunque no se usen para nada más. Un validador de build-time aborta la generación del `.ktr` si detecta un campo consumido que ningún step aguas arriba produce — no lo dejes pasar.
+K16. **Nunca repitas una columna en el mismo SELECT [CRÍTICO]:** El `sql` de un `TableInput` nunca debe listar la misma columna (o el mismo alias) dos veces. Kettle expone ambas ocurrencias con el mismo nombre de campo y solo una llega aguas abajo de forma predecible — revisá el SQL generado antes de emitirlo.
 ---
 
 ## VERIFICACIÓN OBLIGATORIA ANTES DE EMITIR EL JSON
 Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es NO, corregís el campo afectado. Si la corrección requiere información que no tenés, agregás una entrada en `validaciones` con tipo `error`.
 
 1. ¿Cada `TableInput` tiene `config.sql` con columnas explícitas (no `SELECT 1`, no `SELECT *`)? → Si NO: reemplazá por el SQL correcto o generá un `Dummy` + `error` en validaciones.
-2. ¿Cada `TableOutput`, `InsertUpdate`, `DimensionLookup` tiene `config.table` con nombre no vacío? → Si NO: completá con el nombre de tabla del modelo provisto.
+2. ¿Cada `TableOutput`, `InsertUpdate`, `DimensionLookup`, `CombinationLookup`, `DBLookup` tiene `config.table` con nombre no vacío? → Si NO: completá con el nombre de tabla del modelo provisto.
 3. ¿Cada `Calculator`, `ValueMapper`, `NumberRange`, `IfNull`, `SelectValues` tiene `config` no vacío? → Si NO: completá con los campos mínimos o reportá `warning`.
+3b. ¿Cada `DBLookup` tiene `keys` Y `return_fields` no vacíos, y cada `StreamLookup` tiene `keys` Y `values` no vacíos? → Si NO: completalos (ver ejemplos de configuración) — un lookup sin campos de retorno no produce nada y rompe todo lo que dependa de él aguas abajo.
+3c. ¿Todo campo usado por nombre en un step (`date_field`, `keys[].stream_field`, campo de `SortRows`/`Unique`/`GroupBy`, etc.) aparece en el `SELECT` del `TableInput` más cercano aguas arriba? → Si NO: agregá la columna faltante a ese `SELECT` (incluso si es un campo técnico como `stg_fecha_carga` que no se usa para nada más).
+3d. ¿Algún `TableInput` repite la misma columna dos veces en su `SELECT`? → Si SÍ: quitá el duplicado.
 4. ¿Cada regla de negocio del `## REGLAS DE NEGOCIO` está materializada en al menos un step del KTR con config no vacío? → Si NO: agregá el step faltante.
 5. ¿Los dedup (Unique) que conservan el más reciente tienen SortRows con dos claves (entidad ASC + fecha DESC)? → Si NO: corregí el SortRows.
 6. ¿Todos los `hops[].from` y `hops[].to` coinciden exactamente con `steps[].name` (mayúsculas, espacios, guiones bajos)? → Si NO: corregí los hops inconsistentes.

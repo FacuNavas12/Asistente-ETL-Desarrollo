@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 import re
 
+from app.services.ktr_builder.common import _yn
+
 
 def _parse_cfg(raw) -> dict:
     if isinstance(raw, str):
@@ -87,8 +89,28 @@ def _step_output_fields(canonical_type: str, cfg: dict, upstream: set[str] | Non
         return upstream | added
 
     if canonical_type == "Calculator":
-        added = {c.get("field_name") for c in cfg.get("calculations", []) if c.get("field_name")}
+        added = {
+            c.get("field_name") for c in cfg.get("calculations", [])
+            if c.get("field_name") and _yn(c.get("removed_from_result", c.get("remove"))) != "Y"
+        }
         return upstream | added
+
+    if canonical_type == "NumberRange":
+        return upstream | {cfg.get("output_field", "range")}
+
+    if canonical_type in ("GroupBy", "MemoryGroupBy"):
+        # GroupBy descarta el resto del stream: solo sobreviven los campos de
+        # agrupación y los resultados de agregación (mismo comportamiento que
+        # GroupByMeta/MemoryGroupByMeta en Kettle).
+        group = {
+            gf if isinstance(gf, str) else gf.get("name", "")
+            for gf in cfg.get("group_fields", [])
+        }
+        aggregates = {
+            agg.get("name") or agg.get("result_field") or agg.get("aggregate") or agg.get("output_field")
+            for agg in cfg.get("aggregates", [])
+        }
+        return (group | aggregates) - {None, ""}
 
     if canonical_type == "Formula":
         added = {
@@ -208,6 +230,64 @@ def _required_fields(canonical_type: str, cfg: dict) -> set[str]:
     return set()
 
 
+def _incomplete_producer_reason(canonical_type: str, cfg: dict) -> str | None:
+    """Si el step es de un tipo que normalmente aporta campos nuevos al stream
+    pero su config no trae lo mínimo para hacerlo, devuelve una razón legible.
+    None si el tipo no aplica o está configurado lo suficiente para producir
+    algo (no valida que el campo específico faltante venga de acá — solo que
+    el step está "vacío" y es sospechoso de ser el hueco real)."""
+    if canonical_type == "DBLookup":
+        if not cfg.get("return_fields", cfg.get("returns", [])):
+            return "no declara campos de retorno (return_fields) en su config"
+    elif canonical_type in ("DimensionLookup", "CombinationLookup"):
+        if not cfg.get("keys"):
+            return "no declara keys de búsqueda en su config"
+    elif canonical_type == "StreamLookup":
+        if not cfg.get("values", cfg.get("fields", [])):
+            return "no declara values a traer del stream de lookup en su config"
+    elif canonical_type == "Calculator":
+        if not cfg.get("calculations"):
+            return "no declara calculations en su config"
+    elif canonical_type == "Formula":
+        if not cfg.get("formulas", cfg.get("fields", [])):
+            return "no declara formulas en su config"
+    elif canonical_type in ("GroupBy", "MemoryGroupBy"):
+        if not cfg.get("aggregates"):
+            return "no declara aggregates en su config"
+    elif canonical_type == "NumberRange":
+        if not cfg.get("input_field"):
+            return "no declara input_field en su config"
+    return None
+
+
+def _nearest_incomplete_ancestor(
+    start: str,
+    preds: dict[str, list[str]],
+    step_by_name: dict[str, dict],
+    step_type_aliases: dict[str, str],
+    order_index: dict[str, int],
+) -> tuple[str, str, str] | None:
+    """Recorre hacia atrás todo el árbol de predecesores de `start` buscando
+    el step con config incompleto más cercano (mayor order_index = más cerca
+    del consumidor). None si ningún ancestro califica."""
+    seen: set[str] = set()
+    stack = list(preds.get(start, []))
+    best: tuple[str, str, str] | None = None
+    while stack:
+        p = stack.pop()
+        if p in seen:
+            continue
+        seen.add(p)
+        step = step_by_name.get(p)
+        if step is not None:
+            canonical = step_type_aliases.get(step.get("type", ""), step.get("type", ""))
+            reason = _incomplete_producer_reason(canonical, _parse_cfg(step.get("config", {})))
+            if reason and (best is None or order_index.get(p, -1) > order_index.get(best[0], -1)):
+                best = (p, canonical, reason)
+        stack.extend(preds.get(p, []))
+    return best
+
+
 def validate_field_resolution(ktr_data: dict, step_type_aliases: dict[str, str]) -> list[str]:
     """Recorre el grafo por hops en orden topológico. Devuelve errores (no
     warnings) — a diferencia del resto del módulo esto SIEMPRE bloquea el
@@ -243,6 +323,7 @@ def validate_field_resolution(ktr_data: dict, step_type_aliases: dict[str, str])
         if name not in order:
             order.append(name)  # ciclo/desconectado — no lo bloquea esta validación
 
+    order_index = {name: i for i, name in enumerate(order)}
     produced: dict[str, set[str] | None] = {}
     errors: list[str] = []
 
@@ -262,11 +343,21 @@ def validate_field_resolution(ktr_data: dict, step_type_aliases: dict[str, str])
             missing = _required_fields(canonical, cfg) - upstream
             if missing:
                 producers = pred_names or ["(sin step de entrada)"]
+                incomplete = _nearest_incomplete_ancestor(
+                    name, preds, step_by_name, step_type_aliases, order_index
+                )
                 for field in sorted(missing):
-                    errors.append(
-                        f"Campo '{field}' requerido por '{name}' no está en el stream "
-                        f"(productores aguas arriba: {producers})."
-                    )
+                    if incomplete:
+                        bad_name, bad_type, reason = incomplete
+                        errors.append(
+                            f"Campo '{field}' no se produce: '{bad_name}' ({bad_type}) {reason} "
+                            f"(consumidor aguas abajo: '{name}')."
+                        )
+                    else:
+                        errors.append(
+                            f"Campo '{field}' requerido por '{name}' no está en el stream "
+                            f"(productores aguas arriba: {producers})."
+                        )
 
         produced[name] = _step_output_fields(canonical, cfg, upstream)
 
