@@ -263,6 +263,13 @@ Ejemplo correcto:
 ```json
 {"output_field": "nro_linea", "use_database": false, "start_at": 1, "increment_by": 1, "max_value": 999999999}
 ```
+**Calculator** — operaciones predefinidas (suma, resta, multiplicación, redondeo, fecha) entre campos o contra una constante. `calculations` es OBLIGATORIO y NUNCA puede quedar vacío (`{"calculations": []}` no aporta ningún campo nuevo al stream y cualquier step aguas abajo que lo referencie falla):
+```json
+{"calculations": [
+  {"field_name": "monto_usd", "calc_type": "MULTIPLY", "field_a": "monto", "field_b": "FACTOR_UYU_USD", "value_type": "Number", "value_length": 15, "value_precision": 2},
+  {"field_name": "anio_venta", "calc_type": "YEAR_OF_DATE", "field_a": "fecha_venta", "value_type": "Integer"}
+]}
+```
 **Formula** — expresiones libformula (sintaxis tipo OpenOffice, más potente que Calculator):
 ```json
 {"formulas": [{"field_name": "total_con_iva", "formula": "[monto] * 1.22", "type": "Number", "length": 15, "precision": 2}]}

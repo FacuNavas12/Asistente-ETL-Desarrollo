@@ -19,7 +19,7 @@ from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGene
 from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
 from app.services.adapters.ddl_adapter import parse_ddl
-from app.services.ktr_builder import build_ktr
+from app.services.ktr_builder import build_ktr, repair_ktr_steps
 from app.services.ktr_builder.build import _sanitize
 from app.services.lineage_builder import build_lineage, stitch_lineage
 
@@ -165,6 +165,7 @@ def _build_response_from_data(
     real_connections: dict[str, dict] | None = None,
     connection_warnings: list[str] | None = None,
     required_columns_by_table: dict[str, list[str]] | None = None,
+    extra_warnings: list[str] | None = None,
 ) -> ETLGenerateResponse:
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_data = data.get("ktr", {})
@@ -223,6 +224,7 @@ def _build_response_from_data(
     advertencias = [
         *data.get("advertencias_buenas_practicas", []),
         *(connection_warnings or []),
+        *(extra_warnings or []),
         *ktr_warnings,
     ]
 
@@ -246,6 +248,7 @@ def _build_response_from_two_ktr_data(
     real_connections: dict[str, dict] | None = None,
     connection_warnings: list[str] | None = None,
     required_columns_by_table: dict[str, list[str]] | None = None,
+    extra_warnings: list[str] | None = None,
 ) -> ETLGenerateResponse:
     """Construye la respuesta del flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH).
     No reusa _build_response_from_data() porque cada build_ktr() acá necesita
@@ -320,6 +323,7 @@ def _build_response_from_two_ktr_data(
         *data_1.get("advertencias_buenas_practicas", []),
         *data_2.get("advertencias_buenas_practicas", []),
         *(connection_warnings or []),
+        *(extra_warnings or []),
         *warnings_1,
         *warnings_2,
     ]
@@ -344,6 +348,7 @@ def _build_response_from_two_ktr_data(
 def _build_response(
     resp: LLMResponse,
     required_columns_by_table: dict[str, list[str]] | None = None,
+    extra_warnings: list[str] | None = None,
 ) -> ETLGenerateResponse:
     # json_data is always populated when schema= was passed to llm.complete()
     data = resp.json_data
@@ -357,7 +362,11 @@ def _build_response(
         tokens_output=resp.output_tokens,
         region_inferencia=resp.provider,
     )
-    return _build_response_from_data(data, metadata, required_columns_by_table=required_columns_by_table)
+    return _build_response_from_data(
+        data, metadata,
+        required_columns_by_table=required_columns_by_table,
+        extra_warnings=extra_warnings,
+    )
 
 
 async def build_etl_from_raw(raw_llm_data: dict) -> ETLGenerateResponse:
@@ -388,7 +397,13 @@ async def generate_etl(
     origen_txt = context_builder.format_model_context_for_prompt(ctx)
     prompt     = _build_prompt(req, origen_txt)
     resp       = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
-    return _build_response(resp)
+
+    repair_warnings: list[str] = []
+    if resp.json_data and resp.json_data.get("ktr"):
+        context_text = f"{req.stagingDef!r}\n\n{req.dwhModel!r}"
+        resp.json_data["ktr"], repair_warnings = await repair_ktr_steps(resp.json_data["ktr"], llm, context_text)
+
+    return _build_response(resp, extra_warnings=repair_warnings)
 
 
 def _build_prompt_from_inference(
@@ -543,6 +558,10 @@ async def generate_etl_from_inference(
         )
         raise ValueError("LLM returned no structured data — cannot parse ETL response")
 
+    context_text = f"{req.stg_definition}\n\n{req.dwh_model}"
+    data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
+    data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
+
     metadata = MetadataResponse(
         modelo_usado=resp_2.model,
         tokens_input=(resp_1.input_tokens or 0) + (resp_2.input_tokens or 0),
@@ -553,6 +572,7 @@ async def generate_etl_from_inference(
     return _build_response_from_two_ktr_data(
         data_1, data_2, metadata,
         required_columns_by_table=required_columns_by_table,
+        extra_warnings=[*repair_warnings_1, *repair_warnings_2],
     )
 
 
@@ -594,6 +614,7 @@ def _try_build(job_id, db: Session) -> None:
             real_connections=real_connections,
             connection_warnings=conn_warnings,
             required_columns_by_table=job.model_json.get("required_columns_by_table"),
+            extra_warnings=job.model_json.get("repair_warnings"),
         )
     except KtrBuildError as exc:
         job.build_status = KtrBuildStatus.failed
@@ -638,6 +659,10 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             data_2 = resp_2.json_data
             if data_1 is None or data_2 is None:
                 raise ValueError("El modelo no devolvió datos estructurados.")
+
+            context_text = f"{req.stg_definition}\n\n{req.dwh_model}"
+            data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
+            data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
         except Exception as exc:
             job = db.get(KtrBuildJob, job_id)
             if job is not None:
@@ -662,6 +687,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             "raw_data_2": data_2,
             "metadata": metadata.model_dump(),
             "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, req.dwh_model),
+            "repair_warnings": [*repair_warnings_1, *repair_warnings_2],
         }
         db.commit()
 

@@ -418,6 +418,52 @@ def test_dblookup_empty_config_reports_incomplete_producer():
         build_ktr(ktr)
 
 
+def test_calculator_empty_calculations_aborts():
+    # Caso real documentado: "Convertir a USD"/"Generar Atributos de Tiempo"
+    # llegaban con config = {"calculations": []} — sin campos.formulas/fields, un
+    # Calculator vacío no aporta nada al stream y todo lo que dependa de él rompe.
+    ktr = _minimal_ktr(
+        steps=[
+            {"name": "In", "type": "TableInput", "config": {"sql": "SELECT monto FROM stg_ventas"}},
+            {"name": "Convertir a USD", "type": "Calculator", "config": {"calculations": []}},
+        ],
+        hops=[{"from": "In", "to": "Convertir a USD"}],
+    )
+    with pytest.raises(KtrBuilderError, match=r"'Convertir a USD'.*no declara calculations"):
+        build_ktr(ktr)
+
+
+def test_formula_empty_formulas_aborts():
+    ktr = _minimal_ktr(
+        steps=[
+            {"name": "In", "type": "TableInput", "config": {"sql": "SELECT monto FROM stg_ventas"}},
+            {"name": "Calcular Importe Neto", "type": "Formula", "config": {"formulas": []}},
+        ],
+        hops=[{"from": "In", "to": "Calcular Importe Neto"}],
+    )
+    with pytest.raises(KtrBuilderError, match=r"'Calcular Importe Neto'.*no declara formulas"):
+        build_ktr(ktr)
+
+
+def test_streamlookup_empty_values_aborts():
+    # keys presente (condición de cruce) pero values vacío: el lookup no trae
+    # ningún campo nuevo al stream — mismo hueco visto en "Unir Clasificacion
+    # Cliente" (categoria_cliente nunca llega a los consumidores aguas abajo).
+    ktr = _minimal_ktr(
+        steps=[
+            {"name": "In", "type": "TableInput", "config": {"sql": "SELECT cliente_id FROM stg_ventas"}},
+            {
+                "name": "Unir Clasificacion Cliente",
+                "type": "StreamLookup",
+                "config": {"step": "Clasificar Cliente", "keys": [{"stream": "cliente_id", "lookup": "cliente_id"}], "values": []},
+            },
+        ],
+        hops=[{"from": "In", "to": "Unir Clasificacion Cliente"}],
+    )
+    with pytest.raises(KtrBuilderError, match=r"'Unir Clasificacion Cliente'.*no declara values"):
+        build_ktr(ktr)
+
+
 def test_tableinput_duplicate_select_column_warns():
     ktr = _minimal_ktr(
         steps=[
