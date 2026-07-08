@@ -231,8 +231,11 @@ _CRITICAL_FIELDS: dict[str, list[str]] = {
     "InsertUpdate":      ["table"],
     "Update":            ["table"],
     "Delete":            ["table"],
-    "DimensionLookup":   ["table", "returnfield"],
-    "CombinationLookup": ["table", "returnfield"],
+    # "return_field" es la clave canónica post-normalize_config() (ver
+    # contracts.py) — returnfield/sk_field/surrogate_key son alias que ya
+    # se resolvieron a esta antes de llegar acá.
+    "DimensionLookup":   ["table", "return_field"],
+    "CombinationLookup": ["table", "return_field"],
     "DBLookup":          ["table"],
     "MergeRows":         ["step1", "step2"],
     "MergeJoin":         ["step1", "step2"],

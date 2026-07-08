@@ -5,259 +5,49 @@ DBLookup, etc.) exista en el stream que le llega. Mismo síntoma que Spoon
 reporta en runtime como "Could not find field X in stream" — acá se detecta
 en build-time, antes de serializar el XML.
 
+La semántica de qué produce/consume cada tipo de step vive en STEP_CONTRACTS
+(contracts.py) — este módulo solo recorre el grafo y aplica esa semántica,
+no la reimplementa.
+
 Cuando la producción de un step no se puede resolver con certeza (SQL de
-TableInput no parseable, SELECT *, step sin semántica relevada acá) se marca
+TableInput no parseable, SELECT *, step sin contrato relevado acá) se marca
 como desconocida y no se valida aguas abajo de ese punto — preferimos no
 detectar un hueco real antes que bloquear un .ktr válido por falso positivo.
 """
 from __future__ import annotations
 
-import json
-import re
-
-from app.services.ktr_builder.common import _yn
-
-
-def _parse_cfg(raw) -> dict:
-    if isinstance(raw, str):
-        try:
-            return json.loads(raw) if raw.strip() else {}
-        except json.JSONDecodeError:
-            return {}
-    return raw or {}
-
-
-def _select_columns(sql: str) -> set[str] | None:
-    """Extrae nombres de columna de un SELECT simple (sin subqueries). None si
-    no se puede resolver con certeza (SELECT *, expresión no reconocida) —
-    en ese caso el step se trata como fuente desconocida."""
-    if not sql or not sql.strip():
-        return None
-    m = re.search(r"select\s+(.*?)\s+from\s", sql, re.IGNORECASE | re.DOTALL)
-    if not m:
-        return None
-    cols_str = m.group(1)
-    if "*" in cols_str:
-        return None
-
-    parts, current, depth = [], "", 0
-    for ch in cols_str:
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-        if ch == "," and depth == 0:
-            parts.append(current)
-            current = ""
-        else:
-            current += ch
-    parts.append(current)
-
-    cols: set[str] = set()
-    for p in parts:
-        p = p.strip()
-        if not p:
-            continue
-        alias_match = re.search(r"\bas\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", p, re.IGNORECASE)
-        if alias_match:
-            cols.add(alias_match.group(1))
-            continue
-        token = p.split()[-1] if " " in p else p
-        token = token.split(".")[-1].strip('`"[]')
-        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", token):
-            cols.add(token)
-        else:
-            return None  # expresión no resoluble -> se pierde certeza para todo el SELECT
-    return cols
+from app.services.ktr_builder.contracts import STEP_CONTRACTS, missing_required_keys
+from app.services.ktr_builder.contracts import parse_cfg as _parse_cfg
 
 
 def _step_output_fields(canonical_type: str, cfg: dict, upstream: set[str] | None) -> set[str] | None:
     """Campos que el step produce hacia adelante. None = desconocido (no
     validar consumidores aguas abajo de este punto)."""
-    if canonical_type == "TableInput":
-        return _select_columns(cfg.get("sql", ""))
-
-    if canonical_type in ("CsvInput", "ExcelInput", "JsonInput", "TextFileInput"):
-        names = {f.get("name") for f in cfg.get("fields", []) if isinstance(f, dict) and f.get("name")}
-        return names or None
-
-    if upstream is None:
-        return None
-
-    if canonical_type in ("Constant", "GetSystemInfo"):
-        added = {f.get("name") for f in cfg.get("fields", []) if isinstance(f, dict) and f.get("name")}
-        return upstream | added
-
-    if canonical_type == "Calculator":
-        added = {
-            c.get("field_name") for c in cfg.get("calculations", [])
-            if c.get("field_name") and _yn(c.get("removed_from_result", c.get("remove"))) != "Y"
-        }
-        return upstream | added
-
-    if canonical_type == "NumberRange":
-        return upstream | {cfg.get("output_field", "range")}
-
-    if canonical_type in ("GroupBy", "MemoryGroupBy"):
-        # GroupBy descarta el resto del stream: solo sobreviven los campos de
-        # agrupación y los resultados de agregación (mismo comportamiento que
-        # GroupByMeta/MemoryGroupByMeta en Kettle).
-        group = {
-            gf if isinstance(gf, str) else gf.get("name", "")
-            for gf in cfg.get("group_fields", [])
-        }
-        aggregates = {
-            agg.get("name") or agg.get("result_field") or agg.get("aggregate") or agg.get("output_field")
-            for agg in cfg.get("aggregates", [])
-        }
-        return (group | aggregates) - {None, ""}
-
-    if canonical_type == "Formula":
-        added = {
-            f.get("field_name") or f.get("name")
-            for f in cfg.get("formulas", cfg.get("fields", []))
-            if (f.get("field_name") or f.get("name"))
-        }
-        return upstream | added
-
-    if canonical_type == "SelectValues":
-        select_fields = cfg.get("select") or cfg.get("fields") or cfg.get("columns") or []
-        remove_fields = {
-            r if isinstance(r, str) else r.get("name", "")
-            for r in cfg.get("remove", [])
-        }
-        if select_fields:
-            out = set()
-            for f in select_fields:
-                if isinstance(f, str):
-                    out.add(f)
-                else:
-                    out.add(f.get("rename") or f.get("name", ""))
-            return out - {""}
-        return upstream - remove_fields
-
-    if canonical_type in ("DimensionLookup", "CombinationLookup"):
-        return_field = (cfg.get("return_field") or cfg.get("returnfield") or
-                        cfg.get("sk_field") or cfg.get("surrogate_key") or "id_sk")
-        return upstream | {return_field}
-
-    if canonical_type == "DBLookup":
-        added = {
-            r.get("rename") or r.get("name")
-            for r in cfg.get("return_fields", cfg.get("returns", []))
-            if (r.get("rename") or r.get("name"))
-        }
-        return upstream | added
-
-    if canonical_type == "StreamLookup":
-        added = {
-            v.get("rename") or v.get("name")
-            for v in cfg.get("values", cfg.get("fields", []))
-            if (v.get("rename") or v.get("name"))
-        }
-        return upstream | added
-
-    # Passthrough conservador: cualquier step sin semántica relevada acá no
+    contract = STEP_CONTRACTS.get(canonical_type)
+    if contract is not None and contract.produces is not None:
+        return contract.produces(cfg, upstream)
+    # Passthrough conservador: cualquier step sin contrato relevado acá no
     # elimina campos del stream (evita falsos positivos en tipos no auditados).
     return upstream
 
 
 def _required_fields(canonical_type: str, cfg: dict) -> set[str]:
     """Campos que ese step consumidor necesita encontrar en el stream de entrada."""
-    if canonical_type == "TableOutput":
-        return {
-            f.get("stream_name") or f.get("source")
-            for f in cfg.get("fields", [])
-            if (f.get("stream_name") or f.get("source"))
-        }
-    if canonical_type in ("InsertUpdate", "Update"):
-        req = {
-            k.get("stream_field") or k.get("name")
-            for k in cfg.get("keys", [])
-            if (k.get("stream_field") or k.get("name"))
-        }
-        req |= {
-            f.get("stream_field") or f.get("name")
-            for f in cfg.get("fields", [])
-            if (f.get("stream_field") or f.get("name"))
-        }
-        return req
-    if canonical_type == "Delete":
-        return {
-            k.get("stream_field") or k.get("name")
-            for k in cfg.get("keys", [])
-            if (k.get("stream_field") or k.get("name"))
-        }
-    if canonical_type == "DimensionLookup":
-        req = {
-            k.get("stream") or k.get("stream_field") or k.get("name")
-            for k in cfg.get("keys", [])
-            if (k.get("stream") or k.get("stream_field") or k.get("name"))
-        }
-        if cfg.get("date_field"):
-            req.add(cfg["date_field"])
-        return req
-    if canonical_type == "CombinationLookup":
-        return {
-            k.get("stream") or k.get("name")
-            for k in cfg.get("keys", [])
-            if (k.get("stream") or k.get("name"))
-        }
-    if canonical_type == "DBLookup":
-        return {
-            k.get("stream_field") or k.get("name")
-            for k in cfg.get("keys", [])
-            if (k.get("stream_field") or k.get("name"))
-        }
-    if canonical_type == "StreamLookup":
-        return {
-            k.get("stream") or k.get("name")
-            for k in cfg.get("keys", [])
-            if (k.get("stream") or k.get("name"))
-        }
-    if canonical_type == "SortRows":
-        out = set()
-        for f in cfg.get("fields", cfg.get("sort_fields", [])):
-            name = (f.get("name") or f.get("field") or f.get("column")) if isinstance(f, dict) else f
-            if name:
-                out.add(name)
-        return out
-    if canonical_type == "Unique":
-        return {
-            (f if isinstance(f, str) else f.get("name", ""))
-            for f in cfg.get("fields", [])
-        } - {""}
+    contract = STEP_CONTRACTS.get(canonical_type)
+    if contract is not None and contract.consumes is not None:
+        return contract.consumes(cfg)
     return set()
 
 
 def _incomplete_producer_reason(canonical_type: str, cfg: dict) -> str | None:
     """Si el step es de un tipo que normalmente aporta campos nuevos al stream
-    pero su config no trae lo mínimo para hacerlo, devuelve una razón legible.
-    None si el tipo no aplica o está configurado lo suficiente para producir
-    algo (no valida que el campo específico faltante venga de acá — solo que
-    el step está "vacío" y es sospechoso de ser el hueco real)."""
-    if canonical_type == "DBLookup":
-        if not cfg.get("return_fields", cfg.get("returns", [])):
-            return "no declara campos de retorno (return_fields) en su config"
-    elif canonical_type in ("DimensionLookup", "CombinationLookup"):
-        if not cfg.get("keys"):
-            return "no declara keys de búsqueda en su config"
-    elif canonical_type == "StreamLookup":
-        if not cfg.get("values", cfg.get("fields", [])):
-            return "no declara values a traer del stream de lookup en su config"
-    elif canonical_type == "Calculator":
-        if not cfg.get("calculations"):
-            return "no declara calculations en su config"
-    elif canonical_type == "Formula":
-        if not cfg.get("formulas", cfg.get("fields", [])):
-            return "no declara formulas en su config"
-    elif canonical_type in ("GroupBy", "MemoryGroupBy"):
-        if not cfg.get("aggregates"):
-            return "no declara aggregates en su config"
-    elif canonical_type == "NumberRange":
-        if not cfg.get("input_field"):
-            return "no declara input_field en su config"
-    return None
+    pero su config no trae lo mínimo para hacerlo (required_keys del
+    contrato), devuelve una razón legible. None si el tipo no aplica o está
+    configurado lo suficiente (no valida que el campo específico faltante
+    venga de acá — solo que el step está "vacío" y es sospechoso de ser el
+    hueco real)."""
+    missing = missing_required_keys(canonical_type, cfg)
+    return missing[0][1] if missing else None
 
 
 def _nearest_incomplete_ancestor(

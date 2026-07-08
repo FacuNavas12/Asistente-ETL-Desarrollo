@@ -18,6 +18,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 from app.core.config import settings
 from app.services.ktr_builder.common import _sub, KtrBuilderError
 from app.services.ktr_builder.connection import _build_connection, _resolve_connection, _STEPS_NEEDING_CONNECTION
+from app.services.ktr_builder.contracts import missing_required_keys, normalize_config, parse_cfg
 from app.services.ktr_builder.fields_validate import validate_field_resolution
 from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.registry import (
@@ -79,6 +80,23 @@ def build_ktr(
     """
     if not ktr_data:
         return "", "", []
+
+    # Pass único de normalización: alias de clave -> canónica (StepContract,
+    # ver contracts.py) ANTES de cualquier validación o emisión, así el
+    # emisor XML y el validador de grafo de campos ven siempre las mismas
+    # claves (mata el drift tipo inputField/input_field en origen) y el
+    # config queda como dict (no string JSON) para el resto de esta función.
+    # required_keys ausentes abortan acá mismo, apuntando al step culpable,
+    # en vez de dejar que Spoon falle en runtime con un step "vacío".
+    incomplete: list[str] = []
+    for step in ktr_data.get("steps", []):
+        canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
+        cfg = normalize_config(canonical, parse_cfg(step.get("config", {})))
+        step["config"] = cfg
+        for key, reason in missing_required_keys(canonical, cfg):
+            incomplete.append(f"Config incompleto en '{step.get('name')}' ({canonical}): {reason}")
+    if incomplete:
+        raise KtrBuilderError(" | ".join(incomplete))
 
     warnings = _validate_ktr(ktr_data)
     for w in warnings:

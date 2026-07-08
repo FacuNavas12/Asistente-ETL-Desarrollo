@@ -465,3 +465,83 @@ def test_unmapped_config_key_warns():
     )
     _, _, warnings = build_ktr(ktr)
     assert any("no_existe_esta_clave" in w for w in warnings)
+
+
+# ─── StepContract registry: normalize_config() + required_keys ────────────
+
+def test_numberrange_camelcase_alias_normalized():
+    # El LLM puede devolver camelCase (inputField/outputField) en vez del
+    # snake_case documentado en el prompt. normalize_config() debe resolverlo
+    # ANTES de emitir y de validar — ni el emisor ni el validador deben ver
+    # 'inputField' crudo, ni dar falso positivo de campo faltante.
+    ktr = _minimal_ktr(
+        steps=[
+            {
+                "name": "Leer Staging Clientes",
+                "type": "TableInput",
+                "config": {"sql": "SELECT id_cliente, monto_total FROM stg_clientes"},
+            },
+            {
+                "name": "Clasificar Cliente",
+                "type": "NumberRange",
+                "config": {
+                    "inputField": "monto_total",
+                    "outputField": "categoria_cliente",
+                    "ranges": [{"lower": 0, "upper": 1000, "value": "bajo"}],
+                },
+            },
+            {
+                "name": "Cargar Staging",
+                "type": "TableOutput",
+                "config": {
+                    "table": "stg_clientes_clasificados",
+                    "connection": "conn_origen",
+                    "fields": [{"column_name": "categoria_cliente", "stream_name": "categoria_cliente"}],
+                },
+            },
+        ],
+        hops=[
+            {"from": "Leer Staging Clientes", "to": "Clasificar Cliente"},
+            {"from": "Clasificar Cliente", "to": "Cargar Staging"},
+        ],
+    )
+    xml, _, _ = build_ktr(ktr)
+    step = _find_step(xml, "Clasificar Cliente")
+    assert step.findtext("inputField") == "monto_total"
+    assert step.findtext("outputField") == "categoria_cliente"
+
+
+@pytest.mark.parametrize(
+    "step_type,config,expected_key",
+    [
+        ("DBLookup", {"connection": "conn_dwh", "table": "dim_cliente"}, "return_fields"),
+        ("Calculator", {}, "calculations"),
+        ("StreamLookup", {"step": "In", "keys": [{"stream": "id", "lookup": "id"}]}, "values"),
+    ],
+)
+def test_required_keys_blocks_with_step_name_in_message(step_type, config, expected_key):
+    # required_keys del contrato bloquea ACÁ, en el step que quedó a medio
+    # llenar — no dos capas después, como un campo faltante en un consumidor
+    # lejano cuyo mensaje culpa al step equivocado.
+    ktr = _minimal_ktr(
+        steps=[
+            {"name": "In", "type": "TableInput", "config": {"sql": "SELECT id FROM stg_x"}},
+            {"name": "Step Incompleto", "type": step_type, "config": config},
+        ],
+        hops=[{"from": "In", "to": "Step Incompleto"}],
+    )
+    with pytest.raises(KtrBuilderError, match=r"Config incompleto en 'Step Incompleto'"):
+        build_ktr(ktr)
+
+
+def test_no_duplicate_key_alias_tables_outside_contracts():
+    # Guard contra que vuelva el drift: los alias de clave viven SOLO en
+    # contracts.py. fields_validate.py no debe definir su propia tabla de
+    # alias/semántica por tipo — debe leerla de STEP_CONTRACTS.
+    import inspect
+
+    from app.services.ktr_builder import fields_validate
+
+    source = inspect.getsource(fields_validate)
+    assert "STEP_CONTRACTS" in source
+    assert 'canonical_type == "' not in source
