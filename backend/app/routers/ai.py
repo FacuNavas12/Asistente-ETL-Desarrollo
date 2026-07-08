@@ -138,10 +138,15 @@ async def generate_from_inference(
 
 
 @router.post("/api/v1/etl/build-from-raw", response_model=ETLGenerateResponse)
-async def build_from_raw(req: BuildFromRawRequest):
+async def build_from_raw(
+    req: BuildFromRawRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+):
     """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada previamente
-    por el frontend (descargada tras un fallo de build_ktr). No llama al LLM."""
-    return await _handle(build_etl_from_raw, req.raw_llm_data)
+    por el frontend (descargada tras un fallo de build_ktr). Antes de reconstruir, intenta
+    reparar steps con config incompleto (ver repair_ktr_steps) — es el caso más común de
+    por qué este endpoint se usa: el fallo original fue justamente config incompleto."""
+    return await _handle(build_etl_from_raw, req.raw_llm_data, llm)
 
 
 # ── Flujo async: modelo + conexiones destino en paralelo ─────────────────────

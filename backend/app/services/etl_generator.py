@@ -369,23 +369,41 @@ def _build_response(
     )
 
 
-async def build_etl_from_raw(raw_llm_data: dict) -> ETLGenerateResponse:
+async def build_etl_from_raw(raw_llm_data: dict, llm: BaseLLM | None = None) -> ETLGenerateResponse:
     """Reconstruye el ETL a partir de una respuesta cruda del modelo guardada previamente
-    (p. ej. tras un fallo de build_ktr). No llama al LLM.
+    (p. ej. tras un fallo de build_ktr).
 
     raw_llm_data trae uno de dos shapes según qué flujo falló:
     - flujo legacy monolítico: dict plano con "proceso_etl"/"ktr" en el nivel top.
     - flujo de 2 KTR: {"ktr_1": {...plano...}, "ktr_2": {...plano...}} (ver
-      KtrBuildError en _build_response_from_two_ktr_data)."""
+      KtrBuildError en _build_response_from_two_ktr_data).
+
+    llm=None (default): no llama al LLM — comportamiento histórico, reconstruye
+    tal cual el JSON guardado. llm=<instancia>: antes de construir, corre
+    repair_ktr_steps() sobre cada ktr para intentar salvar steps con config
+    incompleto — este es precisamente el caso de uso más común de este endpoint
+    ("Reutilizar respuesta" tras un fallo de build_ktr por config incompleto).
+    Sin req.stg_definition/dwh_model disponibles acá (no viajan en raw_llm_data),
+    el contexto de esquema para la reparación queda vacío — la corrección se
+    apoya solo en los few-shot de STEP_FEWSHOT, no en nombres reales de columna."""
     metadata = MetadataResponse(
         modelo_usado="(respuesta reutilizada)",
         tokens_input=0,
         tokens_output=0,
         region_inferencia="local",
     )
+    extra_warnings: list[str] = []
     if "ktr_1" in raw_llm_data and "ktr_2" in raw_llm_data:
-        return _build_response_from_two_ktr_data(raw_llm_data["ktr_1"], raw_llm_data["ktr_2"], metadata)
-    return _build_response_from_data(raw_llm_data, metadata)
+        if llm is not None:
+            raw_llm_data["ktr_1"]["ktr"], w1 = await repair_ktr_steps(raw_llm_data["ktr_1"]["ktr"], llm, "")
+            raw_llm_data["ktr_2"]["ktr"], w2 = await repair_ktr_steps(raw_llm_data["ktr_2"]["ktr"], llm, "")
+            extra_warnings = [*w1, *w2]
+        return _build_response_from_two_ktr_data(
+            raw_llm_data["ktr_1"], raw_llm_data["ktr_2"], metadata, extra_warnings=extra_warnings,
+        )
+    if llm is not None and raw_llm_data.get("ktr"):
+        raw_llm_data["ktr"], extra_warnings = await repair_ktr_steps(raw_llm_data["ktr"], llm, "")
+    return _build_response_from_data(raw_llm_data, metadata, extra_warnings=extra_warnings)
 
 
 async def generate_etl(
