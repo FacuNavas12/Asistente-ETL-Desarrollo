@@ -16,6 +16,7 @@
   background: var(--surface);
   color: var(--text-h);
   border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
   padding: 0.75rem 1.25rem;
   border-radius: 10px;
   box-shadow: var(--shadow);
@@ -25,6 +26,18 @@
   max-width: 340px;
   cursor: default;
   animation: toast-in 0.22s ease forwards;
+}
+
+.toast-item--system {
+  border-left-color: #e8501a;
+}
+
+.toast-item--validation {
+  border-left-color: #d9a406;
+}
+
+.toast-item--success {
+  border-left-color: #1a9e5c;
 }
 
 .toast-item--out {

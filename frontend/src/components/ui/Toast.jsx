@@ -2,12 +2,22 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import "./toast.css";
 
 const ToastContext = createContext(null);
+const SYSTEM_MESSAGES_KEY = "etl.systemMessages";
 
 export function useToast() {
   return useContext(ToastContext);
 }
 
-function ToastItem({ id, message, onDismiss }) {
+function loadSystemMessages() {
+  try {
+    const raw = sessionStorage.getItem(SYSTEM_MESSAGES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function ToastItem({ id, message, type, onDismiss }) {
   const [out, setOut] = useState(false);
   const timerRef = useRef(null);
   const outRef   = useRef(false);
@@ -35,7 +45,7 @@ function ToastItem({ id, message, onDismiss }) {
 
   return (
     <div
-      className={`toast-item${out ? " toast-item--out" : ""}`}
+      className={`toast-item toast-item--${type}${out ? " toast-item--out" : ""}`}
       onMouseEnter={stopTimer}
       onMouseLeave={startTimer}
     >
@@ -62,7 +72,7 @@ function ToastContainer({ toasts, onDismiss }) {
   return (
     <div className="toast-container" ref={containerRef}>
       {toasts.map(t => (
-        <ToastItem key={t.id} id={t.id} message={t.message} onDismiss={onDismiss} />
+        <ToastItem key={t.id} id={t.id} message={t.message} type={t.type} onDismiss={onDismiss} />
       ))}
     </div>
   );
@@ -70,17 +80,57 @@ function ToastContainer({ toasts, onDismiss }) {
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
+  const [systemMessages, setSystemMessages] = useState(loadSystemMessages);
 
-  const addToast = useCallback((message) => {
-    setToasts(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, message }]);
-  }, []);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SYSTEM_MESSAGES_KEY, JSON.stringify(systemMessages));
+    } catch {
+      // sessionStorage unavailable (e.g. private mode) — persistence best-effort only
+    }
+  }, [systemMessages]);
 
   const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  const notify = useCallback((message, type = "system") => {
+    setToasts(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, message, type }]);
+    if (type === "system") {
+      setSystemMessages(prev => [
+        { id: `${Date.now()}-${Math.random()}`, text: message, ts: Date.now() },
+        ...prev,
+      ]);
+    }
+  }, []);
+
+  const notifySystem     = useCallback((message) => notify(message, "system"), [notify]);
+  const notifyValidation = useCallback((message) => notify(message, "validation"), [notify]);
+  const notifySuccess    = useCallback((message) => notify(message, "success"), [notify]);
+
+  const addToast = useCallback((message) => {
+    setToasts(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, message, type: "neutral" }]);
+  }, []);
+
+  const removeSystemMessage = useCallback((id) => {
+    setSystemMessages(prev => prev.filter(m => m.id !== id));
+  }, []);
+
+  const clearSystemMessages = useCallback(() => {
+    setSystemMessages([]);
+  }, []);
+
   return (
-    <ToastContext.Provider value={{ addToast }}>
+    <ToastContext.Provider value={{
+      addToast,
+      notify,
+      notifySystem,
+      notifyValidation,
+      notifySuccess,
+      systemMessages,
+      removeSystemMessage,
+      clearSystemMessages,
+    }}>
       {children}
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </ToastContext.Provider>

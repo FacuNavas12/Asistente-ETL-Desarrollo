@@ -2,14 +2,21 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/components/ui/Toast";
 import "./navbar.css";
+
+function formatMsgTime(ts) {
+  return new Date(ts).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+}
 
 export default function Navbar({ guardNavigation }) {
   const { user, logout } = useAuth0();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
+  const { systemMessages, removeSystemMessage, clearSystemMessages } = useToast();
 
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [msgOpen, setMsgOpen] = useState(false);
   const avatarRef = useRef(null);
 
   const initials = user?.name
@@ -103,6 +110,62 @@ export default function Navbar({ guardNavigation }) {
             <line x1="10" y1="14" x2="14" y2="14" />
           </svg>
         </button>
+
+        {/* Separator */}
+        <div className="sidebar__sep" />
+
+        {/* Mensajes */}
+        <div
+          className="sidebar__msg-wrap"
+          onMouseEnter={() => setMsgOpen(true)}
+          onMouseLeave={() => setMsgOpen(false)}
+        >
+          <button
+            className="sidebar__btn"
+            data-tooltip="Mensajes"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 4h16v16H4z" />
+              <path d="M4 6l8 7 8-7" />
+            </svg>
+            {systemMessages.length > 0 && (
+              <span className="sidebar__msg-badge">{systemMessages.length}</span>
+            )}
+          </button>
+
+          {msgOpen && (
+            <div className="sidebar__msg-panel">
+              <div className="sidebar__msg-panel-header">
+                <span>Mensajes</span>
+                {systemMessages.length > 0 && (
+                  <button className="sidebar__msg-clear" onClick={clearSystemMessages}>
+                    Limpiar todo
+                  </button>
+                )}
+              </div>
+              {systemMessages.length === 0 ? (
+                <p className="sidebar__msg-empty">Sin mensajes de sistema</p>
+              ) : (
+                <ul className="sidebar__msg-list">
+                  {systemMessages.map((m) => (
+                    <li key={m.id} className="sidebar__msg-item">
+                      <span className="sidebar__msg-text">{m.text}</span>
+                      <div className="sidebar__msg-item-footer">
+                        <span className="sidebar__msg-time">{formatMsgTime(m.ts)}</span>
+                        <button
+                          className="sidebar__msg-remove"
+                          onClick={() => removeSystemMessage(m.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Spacer */}
         <div className="sidebar__spacer" />

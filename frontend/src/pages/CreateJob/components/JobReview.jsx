@@ -67,7 +67,6 @@ export default function JobReview({
   onConfirm,
   onRefine,
   isRefining,
-  errors,
 }) {
   const [correction, setCorrection] = useState("");
   const { job_plan: plan, iteration, warnings } = analyzeResult;
@@ -80,16 +79,6 @@ export default function JobReview({
 
   return (
     <div className="job-body">
-      {errors.length > 0 && (
-        <div className="job-errors-box">
-          <ul>
-            {errors.map((e, i) => (
-              <li key={i}>{e}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <div className="job-review">
         <div className="job-review__header">
           <h2 className="job-review__name">{plan.job_name}</h2>
