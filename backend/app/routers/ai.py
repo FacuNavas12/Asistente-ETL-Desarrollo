@@ -186,7 +186,10 @@ def _status_response(job: KtrBuildJob) -> KtrJobStatusResponse:
     # Devolvemos esa respuesta cruda para que el frontend no la pierda.
     raw_llm_data = None
     if job.build_status.value == "failed" and job.model_json:
-        raw_llm_data = job.model_json.get("raw_data")
+        data_1 = job.model_json.get("raw_data_1")
+        data_2 = job.model_json.get("raw_data_2")
+        if data_1 is not None and data_2 is not None:
+            raw_llm_data = {"ktr_1": data_1, "ktr_2": data_2}
 
     return KtrJobStatusResponse(
         model_status=job.model_status.value,

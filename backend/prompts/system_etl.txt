@@ -39,7 +39,13 @@ engine:
     vienen de ninguna tabla (factores de conversión, umbrales, `stg_origen`,
     `stg_estado`), el patrón correcto es `RowGenerator` (`limit: 1`) → `Constant`
     (o → `GetVariable` si los valores vienen de variables Kettle), NUNCA
-    `WriteToLog` → `Constant`.
+    `WriteToLog` → `Constant`. `Dummy` TAMPOCO está en esta lista: es un
+    step vacío que solo pasa filas que ya recibió, NUNCA una fuente de
+    filas. No lo uses para IMPLEMENTAR lógica de negocio (ej. "descartar
+    precios negativos") — para descartar/filtrar filas el step correcto es
+    `FilterRows`, con la rama de descarte (`false_target`) apuntando a un
+    `Dummy` que reciba el hop del `FilterRows` (nunca un `Dummy` standalone
+    sin hop entrante).
 (d) Todos los steps de UNA transformación corren en PARALELO (no en el orden
     visual del canvas). Por eso: (1) un `JoinRows` (cartesiano) contra una
     rama de parámetros con 0 filas garantizadas vacía TODO el resultado,
@@ -434,7 +440,7 @@ Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es N
 10. ¿Algún `Constant` tiene un campo Date/Timestamp cuyo `value` es el texto de una función SQL (NOW(), CURRENT_TIMESTAMP, gen_random_uuid(), nextval(...))? → Si SÍ: quitá ese campo del `Constant` y de cualquier mapeo de `TableOutput`/`InsertUpdate` que lo referencie, o reemplazalo por un step `GetSystemInfo` si el valor se necesita en el stream.
 11. ¿Toda columna anotada `NOT NULL sin default` en el esquema de staging/DWH tiene un mapeo de origen en el `TableOutput`/`InsertUpdate` correspondiente? → Si NO: completá el mapeo o reportá un `error` en `validaciones`.
 12. ¿Algún `TableInput` tiene un hop ENTRANTE (otro step apunta hacia él)? → Si SÍ: quitá ese hop — `TableInput` no hereda campos del stream, ese hop no hace nada útil y esconde que la rama real de ese step está mal armada (ver regla (a) de flujo de filas).
-13. ¿Algún `Constant`, `GetVariable` o `WriteToLog` NO tiene ningún hop entrante, y no es un `RowGenerator`/`TableInput`/`CsvInput`/`ExcelInput`/`JsonInput`/`TextFileInput`/`GetSystemInfo`? → Si SÍ: ese step nunca va a producir filas (ver regla (c)) — anteponé un `RowGenerator` (`limit: 1`) como raíz real de esa rama.
+13. ¿Algún `Constant`, `GetVariable`, `WriteToLog` o `Dummy` NO tiene ningún hop entrante, y no es un `RowGenerator`/`TableInput`/`CsvInput`/`ExcelInput`/`JsonInput`/`TextFileInput`/`GetSystemInfo`? → Si SÍ: ese step nunca va a producir filas (ver regla (c)) — si es `Dummy` usado como lógica de negocio (ej. "descartar X"), reemplazalo por `FilterRows`; si es un placeholder real, anteponé un `RowGenerator` (`limit: 1`) como raíz real de esa rama.
 14. ¿Algún `JoinRows` cruza contra una rama cuyo primer step no es un generador de filas real (regla (c))? → Si SÍ: el join va a vaciar TODO el resultado — corregí la fuente de esa rama antes de conectarla.
 15. ¿Coexisten, en esta misma transformación, un `DimensionLookup`/`CombinationLookup` y un `DBLookup` apuntando a la MISMA tabla? → Si SÍ: eliminá el `DBLookup` redundante y conectá el step de hechos directamente al `returnfield` del `DimensionLookup`/`CombinationLookup` (ver regla (d)).
 16. ¿Algún campo usado como `keys`/`stream_field` en un `DimensionLookup`/`DBLookup`/`CombinationLookup` tiene un tipo declarado distinto entre staging y DWH (ej. string vs INTEGER) sin un `SelectValues.cast` explícito antes? → Si SÍ: agregá el cast (ver regla (e)).
