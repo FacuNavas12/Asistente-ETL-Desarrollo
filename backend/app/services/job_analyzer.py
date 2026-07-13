@@ -38,6 +38,7 @@ from app.schemas.job_schemas import (
     KTRMetadata,
 )
 from app.schemas.llm_output_schemas import JOB_PLAN_OUTPUT_SCHEMA, JOB_EXPLAIN_OUTPUT_SCHEMA
+from app.services.kjb_xml_validator import validate_kjb_xml
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +265,7 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "      <dummy>N</dummy>",
         "      <repeat>N</repeat>",
         "      <schedulerType>0</schedulerType>",
-        "      <GUI><xloc>100</xloc><yloc>200</yloc><draw>Y</draw></GUI>",
+        *_entry_coords(100, 200),
         "    </entry>",
     ]
 
@@ -285,7 +286,7 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "      <name>Abort job</name>",
         "      <type>ABORT</type>",
         "      <always_log_rows>N</always_log_rows>",
-        f"      <GUI><xloc>{abort_x}</xloc><yloc>400</yloc><draw>Y</draw></GUI>",
+        *_entry_coords(abort_x, 400),
         "    </entry>",
     ]
 
@@ -298,7 +299,7 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "      <dummy>N</dummy>",
         "      <repeat>N</repeat>",
         "      <schedulerType>0</schedulerType>",
-        f"      <GUI><xloc>{success_x}</xloc><yloc>200</yloc><draw>Y</draw></GUI>",
+        *_entry_coords(success_x, 200),
         "    </entry>",
     ]
 
@@ -330,7 +331,29 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "</job>",
     ]
 
-    return "\n".join(lines)
+    kjb_xml = "\n".join(lines)
+    # Última barrera: mismo criterio que ktr_xml_validator para .ktr — rechazar
+    # acá con un mensaje claro en vez de entregar un .kjb que Spoon abre con el
+    # canvas vacío o un job que nunca llega a SUCCESS.
+    validate_kjb_xml(kjb_xml)
+    return kjb_xml
+
+
+def _entry_coords(x: int, y: int) -> List[str]:
+    """Posición de un <entry> de JOB. A diferencia de los steps de un .ktr
+    (StepMeta, que anidan xloc/yloc/draw dentro de <GUI>), JobEntryCopy.getXML()
+    escribe xloc/yloc/draw (+ nr/parallel) como HIJOS DIRECTOS de <entry>, sin
+    envoltorio <GUI>. Con <GUI> (formato de .ktr, no de .kjb) Spoon no encuentra
+    las coordenadas al leer el job, las pone todas en (0,0) apiladas en la
+    esquina, y el canvas parece vacío aunque la orquestación lógica (hops,
+    orden) sea correcta."""
+    return [
+        "      <parallel>N</parallel>",
+        "      <draw>Y</draw>",
+        "      <nr>0</nr>",
+        f"      <xloc>{x}</xloc>",
+        f"      <yloc>{y}</yloc>",
+    ]
 
 
 def _trans_entry(entry: JobEntry, x: int, y: int) -> List[str]:
@@ -341,7 +364,11 @@ def _trans_entry(entry: JobEntry, x: int, y: int) -> List[str]:
         f"      <description>{_esc(entry.rationale)}</description>",
         "      <specification_method>filename</specification_method>",
         "      <trans_object_id/>",
-        f"      <filename>./{_esc(entry.filename)}</filename>",
+        # ${Internal.Job.Filename.Directory} resuelve al directorio del propio
+        # .kjb en runtime, sin importar desde dónde se invoque Kitchen/Pan —
+        # "./nombre.ktr" depende del cwd del proceso que lanza el job y rompe
+        # apenas se ejecuta desde un directorio distinto al del .kjb.
+        f"      <filename>${{Internal.Job.Filename.Directory}}/{_esc(entry.filename)}</filename>",
         "      <transname/>",
         "      <set_logfile>N</set_logfile>",
         "      <logfile/>",
@@ -356,7 +383,7 @@ def _trans_entry(entry: JobEntry, x: int, y: int) -> List[str]:
         "      <follow_abort_remote>N</follow_abort_remote>",
         "      <create_parent_folder>N</create_parent_folder>",
         "      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>",
-        f"      <GUI><xloc>{x}</xloc><yloc>{y}</yloc><draw>Y</draw></GUI>",
+        *_entry_coords(x, y),
         "    </entry>",
     ]
 
@@ -368,7 +395,7 @@ def _log_entry(name: str, message: str, x: int, y: int) -> List[str]:
         "      <type>WRITE_TO_LOG</type>",
         f"      <logmessage>{_esc(message)}</logmessage>",
         "      <loglevel>Basic</loglevel>",
-        f"      <GUI><xloc>{x}</xloc><yloc>{y}</yloc><draw>Y</draw></GUI>",
+        *_entry_coords(x, y),
         "    </entry>",
     ]
 

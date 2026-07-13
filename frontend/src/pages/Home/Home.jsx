@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
 import { ETL_STATUS } from "@/constants/status";
 import Layout from "@/components/layout/Layout";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/Toast";
+import { parseEtlFile } from "@/utils/etlImport";
 import EtlCard from "./components/EtlCard";
 import "./Home.css";
 
@@ -63,14 +65,33 @@ function EmptyState({ filter }) {
 
 export default function Home() {
   const navigate = useNavigate();
-  const { visibleEtls: allVisibleEtls, jobs, hideEtlLocally, deleteEtlPermanently } = useEtl();
+  const { visibleEtls: allVisibleEtls, jobs, hideEtlLocally, deleteEtlPermanently, addEtl } = useEtl();
+  const { addToast } = useToast();
   const [filter, setFilter] = useState("all");
   const [hideTarget, setHideTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const importInputRef = useRef(null);
 
   const visibleEtls = filter !== "job" ? allVisibleEtls : [];
   const visibleJobs = filter !== "etl" ? jobs : [];
   const isEmpty     = visibleEtls.length === 0 && visibleJobs.length === 0;
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const parsed = await parseEtlFile(file);
+      if (parsed.type === "full") {
+        const id = await addEtl(parsed.etl.formData, parsed.etl.result, parsed.etl.name);
+        navigate(`/etl/${id}`);
+      } else {
+        navigate("/etl-create", { state: { initialFormData: parsed.formData } });
+      }
+    } catch (err) {
+      addToast(`Error al importar: ${err.message}`);
+    }
+  };
 
   return (
     <Layout>
@@ -108,16 +129,28 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="home-filter">
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                className={`home-filter__btn${filter === f.key ? " home-filter__btn--active" : ""}`}
-                onClick={() => setFilter(f.key)}
-              >
-                {f.label}
-              </button>
-            ))}
+          <div className="home-header__right">
+            <div className="home-filter">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  className={`home-filter__btn${filter === f.key ? " home-filter__btn--active" : ""}`}
+                  onClick={() => setFilter(f.key)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <button className="home-import-btn" onClick={() => importInputRef.current?.click()}>
+              Importar
+            </button>
+            <input
+              type="file"
+              accept=".json,application/json"
+              ref={importInputRef}
+              style={{ display: "none" }}
+              onChange={handleImport}
+            />
           </div>
         </div>
 

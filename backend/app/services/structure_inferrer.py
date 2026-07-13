@@ -67,7 +67,7 @@ def _safe_format_source(source_structure: str, db: Optional[Session] = None) -> 
 
 
 def _build_infer_prompt(req: InferRequest, db: Optional[Session] = None) -> str:
-    origen_safe = _safe_format_source(req.source_structure, db)
+    origen_safe = _safe_format_source(req.source_schema_json, db)
     return f"""A partir de la siguiente información, generá la definición de la tabla de Staging (STG) \
 y el modelo de Data Warehouse (DWH) destino.
 
@@ -75,7 +75,7 @@ ESTRUCTURA DE ORIGEN:
 {origen_safe}
 
 DESCRIPCIÓN DEL PROCESO / OBJETIVO:
-{req.process_description}
+{req.process_goal}
 
 REGLAS DE NEGOCIO:
 {req.business_rules}
@@ -84,18 +84,18 @@ Devuelve ÚNICAMENTE el JSON con la estructura de respuesta indicada. Sin texto 
 
 
 def _build_refine_prompt(req: RefineRequest, db: Optional[Session] = None) -> str:
-    origen_safe = _safe_format_source(req.source_structure, db)
+    origen_safe = _safe_format_source(req.source_schema_json, db)
 
-    if len(req.history) > _MAX_HISTORY_FULL:
+    if len(req.correction_history) > _MAX_HISTORY_FULL:
         history_txt = (
-            f"[{len(req.history)} iteraciones previas — resumen: "
-            + "; ".join(h["correction"] for h in req.history[-3:])
+            f"[{len(req.correction_history)} iteraciones previas — resumen: "
+            + "; ".join(h["correction"] for h in req.correction_history[-3:])
             + "]"
         )
     else:
         history_txt = (
-            json.dumps(req.history, ensure_ascii=False, indent=2)
-            if req.history else "Sin iteraciones previas."
+            json.dumps(req.correction_history, ensure_ascii=False, indent=2)
+            if req.correction_history else "Sin iteraciones previas."
         )
 
     return f"""El usuario solicitó la siguiente corrección sobre las estructuras generadas:
@@ -105,14 +105,14 @@ CORRECCIÓN SOLICITADA:
 
 ESTRUCTURAS ACTUALES:
 STG:
-{req.current_stg}
+{req.previous_stg}
 
 DWH:
-{req.current_dwh}
+{req.previous_dwh}
 
 CONTEXTO ORIGINAL:
 Estructura de origen: {origen_safe}
-Descripción del proceso: {req.process_description}
+Descripción del proceso: {req.process_goal}
 Reglas de negocio: {req.business_rules}
 
 HISTORIAL DE CORRECCIONES ANTERIORES:
@@ -120,7 +120,7 @@ HISTORIAL DE CORRECCIONES ANTERIORES:
 
 Aplicá la corrección solicitada y devolvé el JSON actualizado con las estructuras completas.
 Respetá todas las correcciones anteriores del historial.
-El campo iteration debe ser {len(req.history) + 2}.
+El campo iteration_count debe ser {len(req.correction_history) + 2}.
 Sin texto adicional."""
 
 
@@ -129,20 +129,20 @@ def _parse_response(resp: LLMResponse) -> InferResponse:
     if data is None:
         raise ValueError("LLM returned no structured data — json_data is None")
 
-    if "stg_definition" not in data or "dwh_model" not in data:
-        raise ValueError("La respuesta del modelo no contiene stg_definition o dwh_model.")
+    if "stg_ddl" not in data or "dwh_ddl" not in data:
+        raise ValueError("La respuesta del modelo no contiene stg_ddl o dwh_ddl.")
 
-    for field in ("stg_definition", "dwh_model"):
+    for field in ("stg_ddl", "dwh_ddl"):
         val = data[field]
         if not isinstance(val, str) or "CREATE TABLE" not in val.upper():
             raise ValueError(f"El campo '{field}' no contiene un DDL válido (falta CREATE TABLE).")
 
     return InferResponse(
-        stg_definition=data["stg_definition"],
-        dwh_model=data["dwh_model"],
+        stg_ddl=data["stg_ddl"],
+        dwh_ddl=data["dwh_ddl"],
         stg_rationale=data.get("stg_rationale", ""),
         dwh_rationale=data.get("dwh_rationale", ""),
-        iteration=data.get("iteration", 1),
+        iteration_count=data.get("iteration_count", 1),
         metadata={
             "modelo_usado": resp.model,
             "tokens_input": resp.input_tokens,

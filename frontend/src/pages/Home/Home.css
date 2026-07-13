@@ -55,6 +55,32 @@
   border: 1px solid var(--border);
 }
 
+.home-header__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── Importar button ── */
+.home-import-btn {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Outfit', sans-serif;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.home-import-btn:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--text-1);
+}
+
 /* ── Filter toggle ── */
 .home-filter {
   display: flex;

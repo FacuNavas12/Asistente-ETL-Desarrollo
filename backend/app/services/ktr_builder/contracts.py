@@ -101,6 +101,20 @@ def _select_columns(sql: str) -> set[str] | None:
     return cols
 
 
+# Steps que PDI ejecuta sin necesitar ninguna fila de entrada — generan sus
+# propias filas (lectura de BD/archivo, o filas sintéticas). Cualquier otro
+# tipo de step, si no tiene predecesores en el grafo de hops, nunca corre (o
+# corre y no produce nada): esa es exactamente la falla de "Constant/Add
+# constants alimentado por un WriteToLog sin entrada" — WriteToLog no está
+# acá porque solo loggea/pasa filas que ya recibió, no las genera. Usado por
+# fields_validate.validate_row_sources() para detectar en build-time ramas
+# que van a producir 0 filas de forma determinística.
+ROW_GENERATOR_TYPES = frozenset({
+    "TableInput", "CsvInput", "ExcelInput", "JsonInput", "TextFileInput",
+    "RowGenerator", "DataGrid", "GetSystemInfo",
+})
+
+
 @dataclass(frozen=True)
 class StepContract:
     key_aliases: dict[str, str] = field(default_factory=dict)
@@ -205,6 +219,16 @@ def _produces_stream_lookup(cfg, upstream):
     return upstream | added
 
 
+def _produces_get_variable(cfg, upstream):
+    # Get Variables NO genera filas por sí solo (a diferencia de RowGenerator/
+    # TableInput/GetSystemInfo) — necesita una fila de entrada a la que
+    # agregarle los campos de variable. Ver ROW_GENERATOR_TYPES.
+    if upstream is None:
+        return None
+    added = _names(cfg.get("variables", cfg.get("fields", [])), "name")
+    return upstream | added
+
+
 # ─── consumes: cfg -> set[str] ──────────────────────────────────────────────
 
 def _consumes_table_output(cfg):
@@ -255,9 +279,14 @@ STEP_CONTRACTS: dict[str, StepContract] = {
     "ExcelInput": StepContract(produces=_produces_file_input),
     "JsonInput": StepContract(produces=_produces_file_input),
     "TextFileInput": StepContract(produces=_produces_file_input),
+    "RowGenerator": StepContract(
+        required_keys=(("fields", "no declara fields (campos a generar) en su config"),),
+        produces=_produces_file_input,
+    ),
 
     "Constant": StepContract(produces=_produces_added_fields),
     "GetSystemInfo": StepContract(produces=_produces_added_fields),
+    "GetVariable": StepContract(produces=_produces_get_variable),
 
     "Calculator": StepContract(
         required_keys=(("calculations", "no declara calculations en su config"),),

@@ -156,8 +156,8 @@ def test_field_resolution_catches_missing_upstream_field():
         ],
         hops=[{"from": "Leer Staging Productos", "to": "Lookup SK Producto"}],
     )
-    with pytest.raises(KtrBuilderError, match="stg_fecha_carga"):
-        build_ktr(ktr)
+    _, _, warnings = build_ktr(ktr)
+    assert any("stg_fecha_carga" in w for w in warnings)
 
 
 def test_field_resolution_passes_when_field_present():
@@ -294,8 +294,8 @@ def test_groupby_narrows_stream_drops_ungrouped_field():
             {"from": "Totalizar por Cliente", "to": "Cargar Staging"},
         ],
     )
-    with pytest.raises(KtrBuilderError, match="importe"):
-        build_ktr(ktr)
+    _, _, warnings = build_ktr(ktr)
+    assert any("importe" in w for w in warnings)
 
 
 def test_calculator_field_not_false_positive():
@@ -350,8 +350,8 @@ def test_calculator_removed_from_result_excludes_field():
             {"from": "Convertir a USD", "to": "Cargar Staging"},
         ],
     )
-    with pytest.raises(KtrBuilderError, match="importe_usd"):
-        build_ktr(ktr)
+    _, _, warnings = build_ktr(ktr)
+    assert any("importe_usd" in w for w in warnings)
 
 
 def test_dblookup_return_field_not_false_positive():

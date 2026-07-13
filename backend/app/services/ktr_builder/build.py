@@ -17,9 +17,19 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 from app.core.config import settings
 from app.services.ktr_builder.common import _sub, KtrBuilderError
-from app.services.ktr_builder.connection import _build_connection, _resolve_connection, _STEPS_NEEDING_CONNECTION
+from app.services.ktr_builder.connection import (
+    _build_connection,
+    _resolve_connection,
+    _STEPS_NEEDING_CONNECTION,
+    build_kettle_properties_template,
+)
 from app.services.ktr_builder.contracts import missing_required_keys, normalize_config, parse_cfg
-from app.services.ktr_builder.fields_validate import validate_field_resolution
+from app.services.ktr_builder.fields_validate import (
+    FIELD_INTEGRITY_PREFIX,
+    validate_dimension_lookup_races,
+    validate_field_resolution,
+    validate_row_sources,
+)
 from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.registry import (
     _CRITICAL_FIELDS,
@@ -57,6 +67,7 @@ def build_ktr(
     required_columns_by_table: dict[str, list[str]] | None = None,
     pass_source_connection: str | None = None,
     pass_dest_connection: str | None = None,
+    strict_connections: bool = False,
 ) -> tuple[str, str, list[str]]:
     """
     Convert KTR JSON dict from Gemini response to .ktr XML string.
@@ -75,6 +86,14 @@ def build_ktr(
     el modelo omite 'connection' en el config. Pensado para el flujo de 2 KTR
     (origen→STG y STG→DWH) — ver _resolve_connection(). None/None preserva el
     fallback de inferencia por prefijo de tabla ya existente.
+
+    strict_connections: si True, una conexión GENERIC que siga con
+    host/database placeholder tras aplicar real_connections aborta el build
+    (KtrXmlValidationError vía validate_ktr_xml) en vez de entregar un .ktr
+    con credenciales sin resolver. Usar SOLO cuando el caller ya intentó
+    resolver conexiones reales (ver _try_build en etl_generator.py) — en los
+    demás flujos (preview sin conexiones aún elegidas) el placeholder es
+    esperado y se documenta como advertencia + plantilla kettle.properties.
 
     Returns (ktr_xml_string, filename, warnings). Returns ("", "", []) if ktr_data is empty.
     """
@@ -114,14 +133,31 @@ def build_ktr(
         check_missing_required_fields(ktr_data, STEP_TYPE_ALIASES, required_columns_by_table)
     )
 
-    # Validación de resolución de campos: un campo que un step consumidor
-    # referencia (TableOutput, DimensionLookup, DBLookup, ...) pero que ningún
-    # step aguas arriba produce es el mismo síntoma que Spoon reporta en
-    # runtime como "Could not find field X in stream" — se detecta acá en
-    # build-time y aborta, en vez de entregar un .ktr que rompe al ejecutar.
+    # Validación de integridad ("integridad_campos"): grafo de campos +
+    # fuente de filas + condición de carrera dimensión/lookup. Los tres son
+    # el mismo síntoma en distintas formas — un .ktr que Spoon abre pero falla
+    # (o vacía el pipeline) en runtime — así que los tres son bloqueantes: se
+    # aborta el build acá en vez de entregar un .ktr silenciosamente roto.
+    #   - validate_field_resolution: campo referenciado que ningún step aguas
+    #     arriba produce ("Could not find field X in stream").
+    #   - validate_row_sources: rama sin fuente de filas real (Constant/Add
+    #     constants colgado de un WriteToLog sin entrada) o JoinRows
+    #     cruzando contra una rama de 0 filas garantizadas (vacía TODO el
+    #     resultado del cartesiano).
+    #   - validate_dimension_lookup_races: DimensionLookup/CombinationLookup
+    #     y un DBLookup separado apuntando a la MISMA tabla en una misma
+    #     transformación — PDI corre los steps en paralelo, así que el
+    #     DBLookup puede leer antes de que el DimensionLookup commitee.
     field_errors = validate_field_resolution(ktr_data, STEP_TYPE_ALIASES)
-    if field_errors:
-        raise KtrBuilderError(" | ".join(field_errors))
+    row_source_errors = validate_row_sources(ktr_data, STEP_TYPE_ALIASES)
+    dimension_race_errors = validate_dimension_lookup_races(ktr_data, STEP_TYPE_ALIASES)
+    integrity_errors = [*field_errors, *row_source_errors, *dimension_race_errors]
+    if integrity_errors:
+        for e in integrity_errors:
+            logger.error("KTR field integrity: %s", e)
+        raise KtrBuilderError(
+            " | ".join(f"{FIELD_INTEGRITY_PREFIX}{e}" for e in integrity_errors)
+        )
 
     name        = ktr_data.get("name") or process_name or "Transformacion_ETL"
     description = ktr_data.get("description", "")
@@ -194,8 +230,35 @@ def build_ktr(
     dir_el.text = "/"
 
     # Connections
+    undeclared_params: list[tuple[str, str]] = []
     for conn in connections:
-        _build_connection(trans, conn, real=(real_connections or {}).get(conn.get("name", "")))
+        undeclared_params.extend(
+            _build_connection(trans, conn, real=(real_connections or {}).get(conn.get("name", ""))) or []
+        )
+
+    # Variables ${...} que alguna conexión dejó sin resolver: se declaran como
+    # <parameters> de la transformación (default = el mismo placeholder, así
+    # Spoon lo muestra explícitamente en vez de resolver en blanco) y se
+    # documentan en una plantilla kettle.properties — ver docstring de
+    # build_ktr (strict_connections) para el caso en que esto aborta el build.
+    if undeclared_params:
+        params_el = SubElement(info, "parameters")
+        seen_params: set[str] = set()
+        for var_name, default in undeclared_params:
+            if var_name in seen_params:
+                continue
+            seen_params.add(var_name)
+            p = SubElement(params_el, "parameter")
+            _sub(p, "name", var_name)
+            _sub(p, "default_value", default)
+            _sub(p, "description", "Completar antes de ejecutar en Spoon — ver plantilla kettle.properties.")
+        if not strict_connections:
+            warnings.append(
+                "Conexión(es) sin credenciales reales — quedaron como variables Kettle sin valor "
+                "(declaradas en <parameters> con el placeholder como default). Completar antes de "
+                "ejecutar en Spoon. Plantilla kettle.properties:\n"
+                + build_kettle_properties_template(undeclared_params)
+            )
 
     # Hops
     _build_order(trans, hops)
@@ -281,6 +344,6 @@ def build_ktr(
     # GENERIC sin driver, step con configuración obligatoria vacía, hop
     # huérfano), rechazar acá con un mensaje claro en vez de entregar un .ktr
     # que Spoon abre roto sin explicación.
-    validate_ktr_xml(ktr_xml)
+    validate_ktr_xml(ktr_xml, strict_connections=strict_connections)
 
     return ktr_xml, filename, warnings

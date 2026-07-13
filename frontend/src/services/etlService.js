@@ -1,33 +1,33 @@
 import { apiFetch, API } from "./api";
 
-export async function inferStructures({ source_structure, process_description, business_rules }) {
+export async function inferStructures({ source_schema_json, process_goal, business_rules }) {
   return apiFetch("/api/v1/etl/infer-structures", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source_structure, process_description, business_rules }),
+    body: JSON.stringify({ source_schema_json, process_goal, business_rules }),
   });
 }
 
 export async function refineInference({
-  source_structure,
-  process_description,
+  source_schema_json,
+  process_goal,
   business_rules,
-  current_stg,
-  current_dwh,
+  previous_stg,
+  previous_dwh,
   correction,
-  history,
+  correction_history,
 }) {
   return apiFetch("/api/v1/etl/infer-structures/refine", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      source_structure,
-      process_description,
+      source_schema_json,
+      process_goal,
       business_rules,
-      current_stg,
-      current_dwh,
+      previous_stg,
+      previous_dwh,
       correction,
-      history,
+      correction_history,
     }),
   });
 }

@@ -66,7 +66,7 @@ def _profile_from_db(table, db: Session) -> CanonicalSchema:
     Falls back to _schema_from_columnas_origen() on any connectivity or query error.
     """
     from app.models.connection import Connection
-    from app.services.db_connector import get_columns, get_foreign_keys, get_sample_rows
+    from app.services.db_connector import get_columns, get_foreign_keys, get_sample_rows, qualify
 
     try:
         conn_uuid = uuid.UUID(table.connection_id)
@@ -79,12 +79,13 @@ def _profile_from_db(table, db: Session) -> CanonicalSchema:
         logger.warning("Connection %s not found; using formulario fallback", table.connection_id)
         return _schema_from_columnas_origen(table, source_type="database")
 
-    schema = table.schema_name or ""
-    tname  = table.tableName
-    if "." in tname and not schema:
-        schema, _, tname = tname.partition(".")
-
-    qualified = f"{schema}.{tname}" if schema else tname
+    qualified = qualify(table.tableName, table.schema_name or "")
+    if "." in qualified:
+        # First dot only — the table segment may itself contain a literal dot
+        # (was quoted, e.g. "my.table"); schema never does. Mirrors get_columns().
+        schema, _, tname = qualified.partition(".")
+    else:
+        schema, tname = "", qualified
 
     try:
         col_infos = get_columns(conn, qualified)

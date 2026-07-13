@@ -35,7 +35,7 @@ function ToastItem({ id, message, type, onDismiss }) {
 
   function startTimer() {
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(dismiss, 2000);
+    timerRef.current = setTimeout(dismiss, 10000);
   }
 
   useEffect(() => {

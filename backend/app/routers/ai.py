@@ -138,15 +138,13 @@ async def generate_from_inference(
 
 
 @router.post("/api/v1/etl/build-from-raw", response_model=ETLGenerateResponse)
-async def build_from_raw(
-    req: BuildFromRawRequest,
-    llm: BaseLLM = Depends(get_main_llm),
-):
+async def build_from_raw(req: BuildFromRawRequest):
     """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada previamente
-    por el frontend (descargada tras un fallo de build_ktr). Antes de reconstruir, intenta
-    reparar steps con config incompleto (ver repair_ktr_steps) — es el caso más común de
-    por qué este endpoint se usa: el fallo original fue justamente config incompleto."""
-    return await _handle(build_etl_from_raw, req.raw_llm_data, llm)
+    por el frontend (descargada tras un fallo de build_ktr). No llama al LLM.
+
+    Repair loop (repair_ktr_steps) desconectado a propósito acá — ver discusión
+    pendiente sobre si "Reutilizar respuesta" debe poder llamar al modelo."""
+    return await _handle(build_etl_from_raw, req.raw_llm_data)
 
 
 # ── Flujo async: modelo + conexiones destino en paralelo ─────────────────────
@@ -227,9 +225,19 @@ async def submit_job_connections(
 ):
     """Ata connection_id ya creados (vía POST /api/connections, mismo formulario
     reusado del frontend) al job. No pide datos de conexión — eso ya ocurrió
-    en el navegador antes de esta llamada."""
+    en el navegador antes de esta llamada.
+
+    El frontend dispara una llamada fire-and-forget por cada conexión (origen,
+    staging, dwh) apenas queda lista, sin esperar a las anteriores — nada
+    garantiza que lleguen acá en el mismo orden en que se enviaron. Mergear
+    (en vez de reemplazar el dict entero) hace que el orden de llegada no
+    importe: una request más chica que llega tarde ya no puede pisar una
+    conexión que otra request más nueva escribió antes. Reemplazar el dict
+    entero perdía en silencio la conexión que no venía en el último payload
+    en llegar — build_ktr() terminaba con esa capa en placeholder sin que
+    nada lo señalara como error de este paso."""
     job = _job_or_404(job_id, db)
-    job.connections_map = body.model_dump(exclude_none=True)
+    job.connections_map = {**(job.connections_map or {}), **body.model_dump(exclude_none=True)}
     db.commit()
     _try_build(job.id, db)
     db.refresh(job)

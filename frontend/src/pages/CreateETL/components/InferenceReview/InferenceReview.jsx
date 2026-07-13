@@ -19,7 +19,7 @@ function CopyButton({ text }) {
 }
 
 export default function InferenceReview({
-  inferResult, onConfirm, onRefine, onBack, isRefining,
+  inferResult, etlName, onConfirm, onRefine, onBack, onGuardar, isRefining,
   rawLlmData, onReuseResponse, onDownloadRaw, onImportRaw,
 }) {
   const [correction, setCorrection] = useState("");
@@ -33,24 +33,55 @@ export default function InferenceReview({
   return (
     <div className="infer-review">
       <div className="infer-review__header">
-        <h2 className="infer-review__title">Estructuras generadas para tu proceso ETL</h2>
-        <p className="infer-review__subtitle">
-          Revisalas y confirmá cuando estés listo, o indicá qué querés ajustar.
-        </p>
-        {inferResult.iteration > 1 && (
-          <span className="infer-review__iter-badge">
-            Iteración {inferResult.iteration}
-          </span>
-        )}
+        <div className="infer-review__header-side infer-review__header-side--left">
+          <button
+            className="infer-btn infer-btn--back"
+            onClick={onBack}
+            disabled={isRefining}
+          >
+            ← Volver
+          </button>
+        </div>
+
+        <div className="infer-review__header-center">
+          <h2 className="infer-review__title">
+            Estructuras generadas para <span className="infer-review__title-name">{etlName}</span>
+          </h2>
+          <p className="infer-review__subtitle">
+            Revisalas y confirmá cuando estés listo, o indicá qué querés ajustar.
+          </p>
+          {inferResult.iteration_count > 1 && (
+            <span className="infer-review__iter-badge">
+              Iteración {inferResult.iteration_count}
+            </span>
+          )}
+        </div>
+
+        <div className="infer-review__header-side infer-review__header-side--right">
+          <button
+            className="infer-btn infer-btn--secondary"
+            onClick={onGuardar}
+            disabled={isRefining}
+          >
+            Guardar
+          </button>
+          <button
+            className="infer-btn infer-btn--primary"
+            onClick={onConfirm}
+            disabled={isRefining}
+          >
+            Confirmar y Generar
+          </button>
+        </div>
       </div>
 
       <div className="infer-review__panels">
         <div className="infer-panel">
           <div className="infer-panel__header">
             <h3 className="infer-panel__title">Tabla STG</h3>
-            <CopyButton text={inferResult.stg_definition} />
+            <CopyButton text={inferResult.stg_ddl} />
           </div>
-          <pre className="infer-panel__ddl">{inferResult.stg_definition}</pre>
+          <pre className="infer-panel__ddl">{inferResult.stg_ddl}</pre>
           {inferResult.stg_rationale && (
             <p className="infer-panel__rationale">
               <span className="infer-panel__rationale-icon">💡</span>
@@ -62,9 +93,9 @@ export default function InferenceReview({
         <div className="infer-panel">
           <div className="infer-panel__header">
             <h3 className="infer-panel__title">Modelo DWH</h3>
-            <CopyButton text={inferResult.dwh_model} />
+            <CopyButton text={inferResult.dwh_ddl} />
           </div>
-          <pre className="infer-panel__ddl">{inferResult.dwh_model}</pre>
+          <pre className="infer-panel__ddl">{inferResult.dwh_ddl}</pre>
           {inferResult.dwh_rationale && (
             <p className="infer-panel__rationale">
               <span className="infer-panel__rationale-icon">💡</span>
@@ -109,25 +140,11 @@ export default function InferenceReview({
         </div>
         <div className="infer-review__actions">
           <button
-            className="infer-btn infer-btn--back"
-            onClick={onBack}
-            disabled={isRefining}
-          >
-            ← Volver
-          </button>
-          <button
             className="infer-btn infer-btn--secondary"
             onClick={handleRefine}
             disabled={!correction.trim() || isRefining}
           >
             {isRefining ? "Aplicando corrección..." : "Aplicar corrección"}
-          </button>
-          <button
-            className="infer-btn infer-btn--primary"
-            onClick={onConfirm}
-            disabled={isRefining}
-          >
-            Confirmar y generar ETL
           </button>
           {rawLlmData && (
             <button

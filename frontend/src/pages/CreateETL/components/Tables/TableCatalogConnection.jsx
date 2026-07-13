@@ -83,8 +83,8 @@ export default function TableCatalogConnection({ tables, connId, value, onChange
         data:       [],
       }));
 
-      const { schema } = splitTable(qualified);
-      const newTable = { tableName: qualified, connection_id: connId, schema_name: schema, columns };
+      const { schema, table } = splitTable(qualified);
+      const newTable = { tableName: table, connection_id: connId, schema_name: schema, columns };
       onChange([...(Array.isArray(value) ? value : []), newTable]);
     } catch (err) {
       setConfirmError(`No se pudo confirmar "${qualified}": ${err.message}`);

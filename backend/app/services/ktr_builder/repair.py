@@ -71,6 +71,9 @@ STEP_FEWSHOT: dict[str, str] = {
         '"keys": [{"stream": "cliente_id", "lookup": "cliente_id"}],\n'
         ' "values": [{"name": "categoria_cliente", "rename": "categoria_cliente", "type": "String"}]}'
     ),
+    "RowGenerator": (
+        '{"limit": 1, "fields": [{"name": "FACTOR_UYU_USD", "type": "Number", "value": "40"}]}'
+    ),
 }
 
 _REPAIR_SYSTEM = (

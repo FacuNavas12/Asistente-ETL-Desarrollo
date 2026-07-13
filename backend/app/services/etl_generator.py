@@ -15,13 +15,33 @@ _log = logging.getLogger(__name__)
 from sqlalchemy.orm import Session
 
 from app.models.llm_base import BaseLLM, LLMResponse
-from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse, MetadataResponse
+from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse, MetadataResponse, Validacion
 from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
 from app.services.adapters.ddl_adapter import parse_ddl
 from app.services.ktr_builder import build_ktr, repair_ktr_steps
 from app.services.ktr_builder.build import _sanitize
+from app.services.ktr_builder.fields_validate import FIELD_INTEGRITY_PREFIX
 from app.services.lineage_builder import build_lineage, stitch_lineage
+
+
+def _split_integrity_warnings(warnings: list[str]) -> tuple[list[str], list[Validacion]]:
+    """Separa las advertencias de integridad de campos (ver FIELD_INTEGRITY_PREFIX
+    en fields_validate.py) del resto de warnings cosméticos. Las de integridad
+    se promueven a Validacion tipo="error" — la severidad más alta que
+    EtlDetail sabe renderizar — en vez de perderse entre las buenas prácticas."""
+    plain: list[str] = []
+    integridad: list[Validacion] = []
+    for w in warnings:
+        if w.startswith(FIELD_INTEGRITY_PREFIX):
+            integridad.append(Validacion(
+                tipo="error",
+                campo="integridad_campos",
+                mensaje=w[len(FIELD_INTEGRITY_PREFIX):],
+            ))
+        else:
+            plain.append(w)
+    return plain, integridad
 
 
 def _required_columns_from_ddl(*ddls: str) -> dict[str, list[str]]:
@@ -45,6 +65,78 @@ def _required_columns_from_ddl(*ddls: str) -> dict[str, list[str]]:
             if cols:
                 result[schema.source_name] = cols
     return result
+
+
+def _column_types_from_ddl(ddl: str) -> dict[str, str]:
+    """{columna_lower: CanonicalType.value} agregando todas las tablas del DDL
+    (best-effort: DDL no parseable -> {}, solo loggeado). Cuando el mismo
+    nombre de columna aparece en más de una tabla con tipos distintos, se
+    queda con el primero — heurística de nombre, no resuelve ambigüedad real.
+    Insumo de _type_mismatch_warnings()."""
+    result: dict[str, str] = {}
+    if not ddl or not ddl.strip():
+        return result
+    try:
+        schemas = parse_ddl(ddl, dialect=None)
+    except Exception as exc:
+        _log.warning("No se pudo parsear DDL para chequeo de tipos: %s", exc)
+        return result
+    for schema in schemas:
+        for f in schema.fields:
+            result.setdefault(f.name.lower(), f.type.value)
+    return result
+
+
+# Pares de familia de tipo considerados de riesgo real de incompatibilidad
+# (comparación/insert silenciosamente incorrecto) si una columna del mismo
+# nombre cruza de una familia a otra entre staging y DWH sin cast explícito.
+_RISKY_TYPE_PAIRS = {
+    frozenset({"string", "integer"}),
+    frozenset({"string", "number"}),
+    frozenset({"string", "boolean"}),
+}
+
+
+def _type_mismatch_warnings(stg_ddl: str, dwh_ddl: str, ktr_data: dict) -> list[str]:
+    """Heurística best-effort, NO bloqueante: columnas que aparecen en STAGING
+    y en DWH con el mismo NOMBRE pero familia de tipo incompatible (string vs
+    integer/number/boolean), y para las que ningún `SelectValues` del ktr
+    declara un `cast` explícito — señal de que falta castear antes de usar la
+    columna en un lookup/join/insert (caso del diagnóstico: cod_sucursal
+    string en origen/staging vs INTEGER en la dimensión). Solo compara nombre
+    + familia de tipo entre los DDL de staging/DWH ya parseados por el
+    caller — no tiene visibilidad de tipos de origen, así que no detecta
+    incoherencias que ya existan entre origen y staging."""
+    stg_types = _column_types_from_ddl(stg_ddl)
+    dwh_types = _column_types_from_ddl(dwh_ddl)
+    if not stg_types or not dwh_types:
+        return []
+
+    casted: set[str] = set()
+    for step in ktr_data.get("steps", []):
+        if step.get("type") not in ("SelectValues", "Select values"):
+            continue
+        cfg = step.get("config", {})
+        if not isinstance(cfg, dict):
+            continue
+        for c in cfg.get("cast", []) or []:
+            if isinstance(c, dict) and c.get("name"):
+                casted.add(str(c["name"]).lower())
+
+    warnings: list[str] = []
+    for col, stg_type in stg_types.items():
+        dwh_type = dwh_types.get(col)
+        if not dwh_type or dwh_type == stg_type or col in casted:
+            continue
+        if frozenset({stg_type, dwh_type}) not in _RISKY_TYPE_PAIRS:
+            continue
+        warnings.append(
+            f"Posible incoherencia de tipos: columna '{col}' es {stg_type} en staging pero "
+            f"{dwh_type} en DWH — verificar un cast explícito (SelectValues > cast) antes de "
+            "usarla en un lookup, join o insert. Sin el cast, PDI puede fallar o comparar "
+            "valores de tipos distintos de forma silenciosa."
+        )
+    return warnings
 
 
 def _staging_table_names_from_ddl(stg_ddl: str) -> list[str]:
@@ -221,16 +313,16 @@ def _build_response_from_data(
         _log.error("build_ktr failed: %s — conservando raw_data para reintento manual", str(e))
         raise KtrBuildError(data, e) from e
 
-    advertencias = [
+    advertencias, integridad_validaciones = _split_integrity_warnings([
         *data.get("advertencias_buenas_practicas", []),
         *(connection_warnings or []),
         *(extra_warnings or []),
         *ktr_warnings,
-    ]
+    ])
 
     return ETLGenerateResponse(
         proceso_etl=data["proceso_etl"],
-        validaciones=data.get("validaciones", []),
+        validaciones=[*data.get("validaciones", []), *integridad_validaciones],
         documentacion=data.get("documentacion", ""),
         advertencias_buenas_practicas=advertencias,
         dwh_sample={},
@@ -249,6 +341,7 @@ def _build_response_from_two_ktr_data(
     connection_warnings: list[str] | None = None,
     required_columns_by_table: dict[str, list[str]] | None = None,
     extra_warnings: list[str] | None = None,
+    strict_connections: bool = False,
 ) -> ETLGenerateResponse:
     """Construye la respuesta del flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH).
     No reusa _build_response_from_data() porque cada build_ktr() acá necesita
@@ -279,6 +372,7 @@ def _build_response_from_two_ktr_data(
             required_columns_by_table=required_columns_by_table,
             pass_source_connection="conn_origen",
             pass_dest_connection="conn_staging",
+            strict_connections=strict_connections,
         )
     except Exception as e:
         _log.error("build_ktr (KTR_1 origen→STG) failed: %s — conservando raw_data para reintento manual", str(e))
@@ -291,6 +385,7 @@ def _build_response_from_two_ktr_data(
             required_columns_by_table=required_columns_by_table,
             pass_source_connection="conn_staging",
             pass_dest_connection="conn_dwh",
+            strict_connections=strict_connections,
         )
     except Exception as e:
         _log.error("build_ktr (KTR_2 STG→DWH) failed: %s — conservando raw_data para reintento manual", str(e))
@@ -319,18 +414,18 @@ def _build_response_from_two_ktr_data(
 
     lineage = stitch_lineage(ktr_data_1, ktr_data_2)
 
-    advertencias = [
+    advertencias, integridad_validaciones = _split_integrity_warnings([
         *data_1.get("advertencias_buenas_practicas", []),
         *data_2.get("advertencias_buenas_practicas", []),
         *(connection_warnings or []),
         *(extra_warnings or []),
         *warnings_1,
         *warnings_2,
-    ]
+    ])
 
     return ETLGenerateResponse(
         proceso_etl=proceso_etl_merged,
-        validaciones=[*data_1.get("validaciones", []), *data_2.get("validaciones", [])],
+        validaciones=[*data_1.get("validaciones", []), *data_2.get("validaciones", []), *integridad_validaciones],
         documentacion=data_1.get("documentacion", "") or data_2.get("documentacion", ""),
         advertencias_buenas_practicas=advertencias,
         dwh_sample={},
@@ -587,10 +682,11 @@ async def generate_etl_from_inference(
         region_inferencia=resp_2.provider,
     )
     required_columns_by_table = _required_columns_from_ddl(req.stg_definition, req.dwh_model)
+    type_warnings = _type_mismatch_warnings(req.stg_definition, req.dwh_model, data_2["ktr"])
     return _build_response_from_two_ktr_data(
         data_1, data_2, metadata,
         required_columns_by_table=required_columns_by_table,
-        extra_warnings=[*repair_warnings_1, *repair_warnings_2],
+        extra_warnings=[*repair_warnings_1, *repair_warnings_2, *type_warnings],
     )
 
 
@@ -633,6 +729,10 @@ def _try_build(job_id, db: Session) -> None:
             connection_warnings=conn_warnings,
             required_columns_by_table=job.model_json.get("required_columns_by_table"),
             extra_warnings=job.model_json.get("repair_warnings"),
+            # Este es el único caller que ya intentó resolver conexiones reales
+            # (resolve_real_connections arriba) — si algo queda placeholder acá
+            # es un .ktr final roto, no un preview: abortar en vez de entregarlo.
+            strict_connections=True,
         )
     except KtrBuildError as exc:
         job.build_status = KtrBuildStatus.failed
@@ -658,7 +758,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
     """Llama al modelo y persiste el resultado en ktr_build_jobs. Abre su propia
     sesión de DB porque corre en un asyncio.create_task separado del request
     original — la sesión del request ya cerró para cuando esto se ejecuta."""
-    from app.models.ktr_build_job import KtrBuildJob, ModelStatus
+    from app.models.ktr_build_job import KtrBuildJob, KtrBuildStatus, ModelStatus
 
     db = session_factory()
     try:
@@ -685,6 +785,10 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             job = db.get(KtrBuildJob, job_id)
             if job is not None:
                 job.model_status = ModelStatus.failed
+                # build_status default es "awaiting_model" — sin esto el frontend
+                # nunca ve un build_status terminal y polea /status hasta el techo
+                # de 30 min (POLL_MAX_ATTEMPTS) en vez de cortar apenas el modelo falla.
+                job.build_status = KtrBuildStatus.failed
                 job.model_error = str(exc)
                 db.commit()
             return
@@ -696,6 +800,8 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             region_inferencia=resp_2.provider,
         )
 
+        type_warnings = _type_mismatch_warnings(req.stg_definition, req.dwh_model, data_2["ktr"])
+
         job = db.get(KtrBuildJob, job_id)
         if job is None:
             return  # el usuario abandonó y el TTL ya barrió la fila
@@ -705,10 +811,21 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             "raw_data_2": data_2,
             "metadata": metadata.model_dump(),
             "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, req.dwh_model),
-            "repair_warnings": [*repair_warnings_1, *repair_warnings_2],
+            "repair_warnings": [*repair_warnings_1, *repair_warnings_2, *type_warnings],
         }
         db.commit()
 
         _try_build(job_id, db)
+    except Exception as exc:
+        # Red de seguridad: cualquier falla no anticipada por fuera del try/except
+        # puntual de arriba (ej. build_model_context, _try_build) tampoco debe
+        # dejar el job colgado en "awaiting_model" para siempre.
+        _log.error("generate_etl_async: fallo no anticipado — %s", exc, exc_info=True)
+        job = db.get(KtrBuildJob, job_id)
+        if job is not None:
+            job.model_status = ModelStatus.failed
+            job.build_status = KtrBuildStatus.failed
+            job.model_error = str(exc)
+            db.commit()
     finally:
         db.close()

@@ -36,7 +36,7 @@ def _attribute_value(attributes_el: Element | None, code: str) -> str | None:
     return None
 
 
-def _check_generic_connections(root: Element) -> list[str]:
+def _check_generic_connections(root: Element, strict_connections: bool = False) -> list[str]:
     issues: list[str] = []
     for conn in root.findall("connection"):
         conn_name = conn.findtext("name", "")
@@ -50,6 +50,16 @@ def _check_generic_connections(root: Element) -> list[str]:
             issues.append(f"Conexión '{conn_name}': tipo GENERIC sin CUSTOM_DRIVER_CLASS.")
         if not url or not url.strip():
             issues.append(f"Conexión '{conn_name}': tipo GENERIC sin CUSTOM_URL.")
+        if strict_connections:
+            server = (conn.findtext("server") or "").strip().upper()
+            database = (conn.findtext("database") or "").strip().upper()
+            if server == "PLACEHOLDER_HOST" or "PLACEHOLDER_" in database:
+                issues.append(
+                    f"Conexión '{conn_name}': quedó sin resolver (host/base de datos placeholder) "
+                    "después de intentar resolver las conexiones reales del job — no se puede "
+                    "entregar un .ktr final con credenciales de conexión sin completar. Verificar "
+                    f"que '{conn_name}' esté correctamente asociada en el paso de conexiones del job."
+                )
     return issues
 
 
@@ -86,13 +96,19 @@ def _check_hops_reference_existing_steps(root: Element) -> list[str]:
     return issues
 
 
-def validate_ktr_xml(ktr_xml: str) -> None:
+def validate_ktr_xml(ktr_xml: str, strict_connections: bool = False) -> None:
     """Levanta KtrXmlValidationError si el XML ya serializado viola alguna
-    invariante fatal. No hace nada (silencioso) si todo está OK."""
+    invariante fatal. No hace nada (silencioso) si todo está OK.
+
+    strict_connections=True agrega el chequeo de conexiones sin resolver
+    (server/database placeholder) como error fatal — usar SOLO en el flujo
+    que ya intentó resolver conexiones reales (ver _try_build en
+    etl_generator.py); en los demás flujos (preview sin conexiones aún
+    elegidas) las conexiones placeholder son esperadas."""
     root = fromstring(ktr_xml)
 
     issues: list[str] = [
-        *_check_generic_connections(root),
+        *_check_generic_connections(root, strict_connections),
         *_check_step_required_children(root),
         *_check_hops_reference_existing_steps(root),
     ]

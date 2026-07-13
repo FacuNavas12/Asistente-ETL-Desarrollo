@@ -9,6 +9,30 @@ from app.services.ktr_builder.common import _sub
 logger = logging.getLogger(__name__)
 
 
+def _step_RowGenerator(el: Element, cfg: dict) -> None:
+    """Generate Rows — única forma de sembrar filas SIN depender de ningún step
+    aguas arriba (a diferencia de Constant/GetVariable, que necesitan una fila
+    de entrada para poder agregarle campos). Usar con limit=1 + un hop hacia
+    Add constants para materializar parámetros/literales de negocio (factores,
+    umbrales) que no vienen de ninguna tabla — nunca encadenar esos steps
+    detrás de un WriteToLog: WriteToLog no genera filas, solo loggea las que
+    ya recibió, y como primer step del flujo no recibe ninguna."""
+    _sub(el, "limit", str(cfg.get("limit", 1)))
+    fe = SubElement(el, "fields")
+    for f in cfg.get("fields", []):
+        field = SubElement(fe, "field")
+        _sub(field, "name",      f.get("name", ""))
+        _sub(field, "type",      f.get("type", "String"))
+        _sub(field, "format",    f.get("format", ""))
+        _sub(field, "currency")
+        _sub(field, "decimal")
+        _sub(field, "group")
+        _sub(field, "nullif",    str(f.get("value", "")))
+        _sub(field, "length",    str(f.get("length", -1)))
+        _sub(field, "precision", str(f.get("precision", -1)))
+        _sub(field, "set_empty_string", "N")
+
+
 def _step_TableInput(el: Element, cfg: dict) -> None:
     _sub(el, "connection",             cfg.get("connection", ""))
     _sub(el, "sql",                    cfg.get("sql", "SELECT 1"))
