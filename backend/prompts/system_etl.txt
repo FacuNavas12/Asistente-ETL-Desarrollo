@@ -365,6 +365,22 @@ K15. **Todo campo referenciado debe estar seleccionado aguas arriba [CRÍTICO]:*
 K16. **Nunca repitas una columna en el mismo SELECT [CRÍTICO]:** El `sql` de un `TableInput` nunca debe listar la misma columna (o el mismo alias) dos veces. Kettle expone ambas ocurrencias con el mismo nombre de campo y solo una llega aguas abajo de forma predecible — revisá el SQL generado antes de emitirlo.
 ---
 
+## Reglas de integridad del grafo — releer antes de emitir el JSON final
+
+1. **Select Values ("SelectValues"): dos usos distintos, no los mezcles.**
+   - Para ELEGIR qué campos sobreviven (y descartar el resto): usá `fields` (o `select`), con la lista COMPLETA de campos que deben seguir en el stream. Cualquier campo que necesités más adelante y no incluyas ACÁ se pierde para siempre.
+   - Para cambiar el TIPO/formato de un campo SIN tocar el resto del stream (ej. castear "activo" de String a Boolean): usá `cast`, NUNCA `fields`/`select`. Ejemplo correcto: `{"cast": [{"name": "activo", "type": "Boolean"}]}` — esto preserva todos los demás campos intactos.
+   - Regla práctica: si tu intención es "cambiar el tipo de UN campo y dejar todo lo demás como está", usá `cast`. Si usás `fields`/`select`, tenés que listar TODOS los campos que necesitás de ahí en adelante, no solo el que te interesa modificar.
+
+2. **Todo campo que un step calcula debe llegar, por una cadena continua de hops, hasta cada step que lo consume.** Si generás un `GetSystemInfo`/`Constant` (ej. fecha de carga, constantes de auditoría) en una rama separada del flujo principal (por ejemplo, justo después del step de inicio, antes de hacer fan-out a las lecturas de origen), ese valor NO llega automáticamente a otras ramas del grafo — cada rama es independiente salvo que la unas explícitamente. Tenés dos opciones:
+   - Generá el valor DENTRO de la misma rama que lo necesita (un `GetSystemInfo`/`Constant` adicional, conectado directamente en esa rama, justo antes del step que lo consume), o
+   - Uní ambas ramas con un step `Join Rows (cartesian)` antes de que la rama consumidora llegue al step que necesita el campo.
+   Antes de terminar el diseño del grafo (Etapa 1), verificá para cada campo "global" (fecha de carga, constantes de proceso) que existe un camino de hops sin cortes desde donde se genera hasta cada consumidor.
+
+3. **Los nombres de step en cada hop (`from`/`to`) deben copiarse EXACTOS del campo `name` del step correspondiente** — mismo texto, misma capitalización, sin abreviar. Un hop con un nombre que no coincide exactamente con ningún step es un hop roto.
+
+---
+
 ## VERIFICACIÓN OBLIGATORIA ANTES DE EMITIR EL JSON
 Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es NO, corregís el campo afectado. Si la corrección requiere información que no tenés, agregás una entrada en `validaciones` con tipo `error`.
 
@@ -382,5 +398,43 @@ Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es N
 9. ¿Algún step (que no sea Dummy o Abort) tiene `config: {}`? → Si SÍ: es un error crítico — poblar con los campos mínimos del tipo según las especificaciones. Ningún step puede tener config vacío.
 10. ¿Algún `Constant` tiene un campo Date/Timestamp cuyo `value` es el texto de una función SQL (NOW(), CURRENT_TIMESTAMP, gen_random_uuid(), nextval(...))? → Si SÍ: quitá ese campo del `Constant` y de cualquier mapeo de `TableOutput`/`InsertUpdate` que lo referencie, o reemplazalo por un step `GetSystemInfo` si el valor se necesita en el stream.
 11. ¿Toda columna anotada `NOT NULL sin default` en el esquema de staging/DWH tiene un mapeo de origen en el `TableOutput`/`InsertUpdate` correspondiente? → Si NO: completá el mapeo o reportá un `error` en `validaciones`.
+
+## CAMPO dwh_sample — OBLIGATORIO
+
+Incluir SIEMPRE una fila representativa por cada tabla del DWH (dim_* y fact_*).
+NO incluir tablas de staging (stg_*).
+
+Reglas de valores:
+- CRÍTICO: cada fila DEBE tener todas las columnas del modelo DWH con valores
+  concretos. Un objeto vacío {} es inválido. Si no sabés el valor exacto,
+  usá un ejemplo representativo del tipo.
+- Surrogate keys (sk_*) y foreign keys (fk_*) → 1
+- VARCHAR → string descriptivo real (ej: "Empresa Alpha SA", "Tecnología")
+- INTEGER → número entero representativo (ej: 42)
+- NUMERIC/DECIMAL → número decimal (ej: 1500.00)
+- BOOLEAN → true o false
+- DATE → string ISO "2024-01-15"
+
+Ejemplo para dim_cliente y fact_ventas:
+```json
+"dwh_sample": {
+  "dim_cliente": [{
+    "sk_cliente": 1, "cliente_id": 101,
+    "razon_social": "Empresa Alpha SA", "tipo_cliente": "B2B",
+    "departamento": "Montevideo", "ciudad": "Montevideo",
+    "segmento": "Premium", "es_activo": true,
+    "fecha_inicio": "2024-01-01", "fecha_fin": null
+  }],
+  "fact_ventas": [{
+    "sk_venta": 1, "fk_cliente": 1, "fk_producto": 1,
+    "fk_vendedor": 1, "fk_tiempo": 1,
+    "nro_factura": "F-001", "cantidad": 2,
+    "precio_unitario": 1500.00, "descuento_pct": 0.05,
+    "subtotal_linea": 2850.00, "monto_impuestos": 598.50,
+    "total_factura": 3448.50, "moneda": "UYU",
+    "tipo_cambio": 1.0, "fecha_carga_dwh": "2024-01-15"
+  }]
+}
+```
 
 Responde ÚNICAMENTE con el JSON. Sin texto adicional antes ni después.

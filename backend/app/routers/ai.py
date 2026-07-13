@@ -312,6 +312,35 @@ async def generate_from_inference_sse(
     )
 
 
+# ── Integración Superset ─────────────────────────────────────────────────────
+
+@router.post("/api/v1/superset/import")
+async def superset_import(
+    zip_file: UploadFile = File(...),
+    dwh_sample: str = Form(default="{}"),
+):
+    """Importa el ZIP del dashboard a Superset y devuelve la URL directa al dashboard."""
+    from app.services.superset_client import SupersetClient, SupersetError
+    from app.core.config import settings as _settings
+    import json as _json
+    client = SupersetClient(
+        _settings.superset_url,
+        _settings.superset_username,
+        _settings.superset_password,
+    )
+    try:
+        zip_bytes = await zip_file.read()
+        sample = _json.loads(dwh_sample) if dwh_sample else {}
+        url = await client.import_dashboard(zip_bytes, dwh_sample=sample)
+        return {"dashboard_url": url}
+    except SupersetError as e:
+        logger.error("Superset import error: %s", str(e))
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.error("Superset import unexpected error: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Linaje de datos ───────────────────────────────────────────────────────────
 
 class _KtrXmlBody(BaseModel):

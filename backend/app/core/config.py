@@ -112,6 +112,11 @@ class Settings(BaseSettings):
     gcp_project_id: str = ""
     gcp_location: str = "northamerica-northeast1"
 
+    # ── Integración Superset ──────────────────────────────────────────────────
+    superset_url: str = "http://localhost:8088"
+    superset_username: str = "admin"
+    superset_password: str = "admin"
+
     # ── Autenticación de la API (Marco AGESIC 5.0 — función Proteger) ─────────
     # Cuando auth_required=False (default dev) no se valida ningún token.
     # En producción: AUTH_REQUIRED=true + configurar las tres vars siguientes.

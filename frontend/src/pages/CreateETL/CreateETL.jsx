@@ -21,7 +21,6 @@ import { downloadEtlSkeleton, downloadLlmRaw } from "@/utils/etlExport";
 import { importEtlSkeleton, importLlmRaw } from "@/utils/etlImport";
 import CreateETLOptions from "./components/CreateETLOptions";
 import "./css/createETL.css";
-import "./css/etlError.css";
 
 // Estados de la máquina:
 // form → inferring → review → processing → (navigate)

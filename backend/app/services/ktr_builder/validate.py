@@ -2,6 +2,7 @@
 a construir el XML. Ver ktr_xml_validator.py para la validación post-XML."""
 from __future__ import annotations
 
+import difflib
 import json
 import re
 
@@ -68,10 +69,19 @@ def _validate_ktr(ktr: dict) -> list[str]:
         warnings.append("KTR no tiene ningún step de salida (TableOutput, InsertUpdate, etc.)")
 
     for hop in ktr.get("hops", []):
-        if hop.get("from") not in step_names:
-            warnings.append(f"Hop hace referencia a step inexistente: '{hop.get('from')}'")
-        if hop.get("to") not in step_names:
-            warnings.append(f"Hop hace referencia a step inexistente: '{hop.get('to')}'")
+        for endpoint in ("from", "to"):
+            val = hop.get(endpoint)
+            if val in step_names:
+                continue
+            matches = difflib.get_close_matches(val, step_names, n=1, cutoff=0.6)
+            if matches:
+                warnings.append(
+                    f"Hop hace referencia a step inexistente: '{val}' — "
+                    f"autocorregido a '{matches[0]}' (nombre más parecido en la lista de steps)."
+                )
+                hop[endpoint] = matches[0]
+            else:
+                warnings.append(f"Hop hace referencia a step inexistente: '{val}'")
 
     for step in ktr.get("steps", []):
         canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))

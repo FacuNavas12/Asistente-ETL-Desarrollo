@@ -78,6 +78,117 @@ def _nearest_incomplete_ancestor(
     return best
 
 
+def repair_select_values_narrowing(ktr_data: dict, step_type_aliases: dict[str, str]) -> list[str]:
+    """
+    Pre-pass mecánico (sin LLM): si un SelectValues con lista explícita de
+    select/fields deja afuera un campo que (a) existía en el stream justo
+    antes de ese SelectValues, y (b) lo necesita algún consumidor aguas
+    abajo, lo reinyecta en la lista de select de ese SelectValues.
+
+    Seguro porque solo AGREGA un campo que ya estaba disponible — nunca
+    quita ni reinterpreta nada que el modelo puso a propósito. No toca
+    GroupBy/MemoryGroupBy (ahí no hay reinyección segura sin decisión
+    semántica de group vs. aggregate).
+
+    Muta ktr_data in-place. Devuelve warnings, uno por campo reinyectado.
+    """
+    steps = ktr_data.get("steps", [])
+    hops = ktr_data.get("hops", [])
+    step_by_name = {s.get("name"): s for s in steps}
+
+    preds: dict[str, list[str]] = {s.get("name"): [] for s in steps}
+    succs: dict[str, list[str]] = {s.get("name"): [] for s in steps}
+    for hop in hops:
+        if not hop.get("enabled", True):
+            continue
+        src, dst = hop.get("from"), hop.get("to")
+        if src in succs and dst in preds:
+            succs[src].append(dst)
+            preds[dst].append(src)
+
+    in_degree = {name: len(p) for name, p in preds.items()}
+    queue = [n for n, d in in_degree.items() if d == 0]
+    order: list[str] = []
+    seen = set(queue)
+    while queue:
+        n = queue.pop(0)
+        order.append(n)
+        for m in succs.get(n, []):
+            in_degree[m] -= 1
+            if in_degree[m] == 0 and m not in seen:
+                seen.add(m)
+                queue.append(m)
+    for name in step_by_name:
+        if name not in order:
+            order.append(name)
+
+    upstream_by_step: dict[str, set[str] | None] = {}
+    produced: dict[str, set[str] | None] = {}
+    warnings: list[str] = []
+
+    def _recompute(name: str) -> None:
+        step = step_by_name[name]
+        canonical = step_type_aliases.get(step.get("type", ""), step.get("type", ""))
+        cfg = _parse_cfg(step.get("config", {}))
+        pred_names = preds.get(name, [])
+        if not pred_names:
+            upstream = None
+        else:
+            pred_outputs = [produced.get(p) for p in pred_names]
+            upstream = None if any(p is None for p in pred_outputs) else set().union(*pred_outputs)
+        upstream_by_step[name] = upstream
+        produced[name] = _step_output_fields(canonical, cfg, upstream)
+
+    for name in order:
+        _recompute(name)
+
+    changed = True
+    while changed:
+        changed = False
+        for name in order:
+            step = step_by_name[name]
+            canonical = step_type_aliases.get(step.get("type", ""), step.get("type", ""))
+            cfg = _parse_cfg(step.get("config", {}))
+            upstream = upstream_by_step.get(name)
+            if upstream is None:
+                continue
+            missing = _required_fields(canonical, cfg) - upstream
+            if not missing:
+                continue
+            for pred_name in preds.get(name, []):
+                pred_step = step_by_name.get(pred_name)
+                if pred_step is None:
+                    continue
+                pred_canonical = step_type_aliases.get(pred_step.get("type", ""), pred_step.get("type", ""))
+                if pred_canonical != "SelectValues":
+                    continue
+                pred_cfg = _parse_cfg(pred_step.get("config", {}))
+                select_fields = pred_cfg.get("select") or pred_cfg.get("fields") or pred_cfg.get("columns")
+                if not isinstance(select_fields, list) or not select_fields:
+                    continue
+                pre_select = upstream_by_step.get(pred_name)
+                if pre_select is None:
+                    continue
+                recoverable = missing & pre_select
+                if not recoverable:
+                    continue
+                for field in sorted(recoverable):
+                    select_fields.append({"name": field, "rename": field})
+                    warnings.append(
+                        f"SelectValues '{pred_name}' no incluía '{field}' (requerido por '{name}') — "
+                        "reinyectado automáticamente (ya existía en el stream de entrada)."
+                    )
+                pred_step["config"] = pred_cfg
+                for n2 in order:
+                    _recompute(n2)
+                changed = True
+                break
+            if changed:
+                break
+
+    return warnings
+
+
 def validate_field_resolution(ktr_data: dict, step_type_aliases: dict[str, str]) -> list[str]:
     """Recorre el grafo por hops en orden topológico. Devuelve errores (no
     warnings) — a diferencia del resto del módulo esto SIEMPRE bloquea el

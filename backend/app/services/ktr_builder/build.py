@@ -19,7 +19,10 @@ from app.core.config import settings
 from app.services.ktr_builder.common import _sub, KtrBuilderError
 from app.services.ktr_builder.connection import _build_connection, _resolve_connection, _STEPS_NEEDING_CONNECTION
 from app.services.ktr_builder.contracts import missing_required_keys, normalize_config, parse_cfg
-from app.services.ktr_builder.fields_validate import validate_field_resolution
+from app.services.ktr_builder.fields_validate import (
+    repair_select_values_narrowing,
+    validate_field_resolution,
+)
 from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.registry import (
     _CRITICAL_FIELDS,
@@ -119,6 +122,8 @@ def build_ktr(
     # step aguas arriba produce es el mismo síntoma que Spoon reporta en
     # runtime como "Could not find field X in stream" — se detecta acá en
     # build-time y aborta, en vez de entregar un .ktr que rompe al ejecutar.
+    warnings.extend(repair_select_values_narrowing(ktr_data, STEP_TYPE_ALIASES))
+
     field_errors = validate_field_resolution(ktr_data, STEP_TYPE_ALIASES)
     if field_errors:
         raise KtrBuilderError(" | ".join(field_errors))

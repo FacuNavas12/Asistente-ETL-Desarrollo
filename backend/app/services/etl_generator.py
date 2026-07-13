@@ -228,12 +228,13 @@ def _build_response_from_data(
         *ktr_warnings,
     ]
 
+    _log.info("dwh_sample keys: %s", list(data.get("dwh_sample", {}).keys()))
     return ETLGenerateResponse(
         proceso_etl=data["proceso_etl"],
         validaciones=data.get("validaciones", []),
         documentacion=data.get("documentacion", ""),
         advertencias_buenas_practicas=advertencias,
-        dwh_sample={},
+        dwh_sample=data.get("dwh_sample", {}),
         ktr_xml=ktr_xml,
         ktr_filename=ktr_filename,
         lineage=build_lineage(ktr_data),
