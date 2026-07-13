@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 _log = logging.getLogger(__name__)
 
@@ -19,8 +19,9 @@ from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGene
 from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
 from app.services.adapters.ddl_adapter import parse_ddl
-from app.services.ktr_builder import build_ktr
-from app.services.lineage_builder import build_lineage
+from app.services.ktr_builder import build_ktr, repair_ktr_steps
+from app.services.ktr_builder.build import _sanitize
+from app.services.lineage_builder import build_lineage, stitch_lineage
 
 
 def _required_columns_from_ddl(*ddls: str) -> dict[str, list[str]]:
@@ -44,6 +45,47 @@ def _required_columns_from_ddl(*ddls: str) -> dict[str, list[str]]:
             if cols:
                 result[schema.source_name] = cols
     return result
+
+
+def _staging_table_names_from_ddl(stg_ddl: str) -> list[str]:
+    """Parsea el DDL de staging y devuelve los nombres de tabla declarados (orden
+    de aparición, sin duplicados). Best-effort: DDL no parseable → lista vacía,
+    solo loggeado — nunca corta el flujo. Insumo para fijar los mismos nombres
+    de tabla STG en ambas llamadas al modelo del flujo de 2 KTR (origen→STG y
+    STG→DWH) y para costurar el linaje entre ambos archivos."""
+    if not stg_ddl or not stg_ddl.strip():
+        return []
+    try:
+        schemas = parse_ddl(stg_ddl, dialect=None)
+    except Exception as exc:
+        _log.warning("No se pudo parsear DDL de staging para extraer nombres de tabla: %s", exc)
+        return []
+    return [schema.source_name for schema in schemas]
+
+
+def _build_job_plan(ktr1_filename: str, ktr2_filename: str, process_name: str) -> "JobPlan":
+    """Arma el JobPlan del .kjb orquestador del flujo de 2 KTR en Python puro —
+    el orden STG-antes-que-DWH es siempre fijo, no hay ambigüedad que amerite
+    una llamada al modelo (a diferencia del flujo CreateJob, que sí la usa
+    porque orquesta .ktr arbitrarios subidos por el usuario). Reutiliza
+    build_kjb_xml() de job_analyzer.py sin modificarlo."""
+    from app.schemas.job_schemas import JobEntry, JobPlan
+
+    name = process_name or "Proceso_ETL"
+    return JobPlan(
+        job_name=f"{name}_job",
+        description=f"Orquesta {name}: origen→STAGING (KTR_1) y STAGING→DWH (KTR_2) en secuencia.",
+        overall_rationale=(
+            "Job generado por el flujo de 2 KTR: orden fijo STG-antes-que-DWH, "
+            "sin ambigüedad de secuencia — no requiere razonamiento del modelo."
+        ),
+        execution_order=[
+            JobEntry(order=1, transformation_name="KTR_1_origen_stg", filename=ktr1_filename,
+                      rationale="Carga origen → STAGING. Debe completar antes de KTR_2."),
+            JobEntry(order=2, transformation_name="KTR_2_stg_dwh", filename=ktr2_filename,
+                      rationale="Carga STAGING → DWH. Corre solo si KTR_1 finalizó."),
+        ],
+    )
 
 
 class KtrBuildError(Exception):
@@ -123,6 +165,7 @@ def _build_response_from_data(
     real_connections: dict[str, dict] | None = None,
     connection_warnings: list[str] | None = None,
     required_columns_by_table: dict[str, list[str]] | None = None,
+    extra_warnings: list[str] | None = None,
 ) -> ETLGenerateResponse:
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_data = data.get("ktr", {})
@@ -181,6 +224,7 @@ def _build_response_from_data(
     advertencias = [
         *data.get("advertencias_buenas_practicas", []),
         *(connection_warnings or []),
+        *(extra_warnings or []),
         *ktr_warnings,
     ]
 
@@ -197,9 +241,114 @@ def _build_response_from_data(
     )
 
 
+def _build_response_from_two_ktr_data(
+    data_1: dict,
+    data_2: dict,
+    metadata: MetadataResponse,
+    real_connections: dict[str, dict] | None = None,
+    connection_warnings: list[str] | None = None,
+    required_columns_by_table: dict[str, list[str]] | None = None,
+    extra_warnings: list[str] | None = None,
+) -> ETLGenerateResponse:
+    """Construye la respuesta del flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH).
+    No reusa _build_response_from_data() porque cada build_ktr() acá necesita
+    pass_source_connection/pass_dest_connection (rol de pase) y hay que costurar
+    el linaje y armar el .kjb después de tener ambos XML."""
+    process_name = (
+        data_1.get("proceso_etl", {}).get("nombre", "")
+        or data_2.get("proceso_etl", {}).get("nombre", "")
+    )
+
+    missing_1 = [k for k in ("proceso_etl", "ktr") if not data_1.get(k)]
+    missing_2 = [k for k in ("proceso_etl", "ktr") if not data_2.get(k)]
+    if missing_1 or missing_2:
+        raise ValueError(
+            f"El modelo devolvió una respuesta incompleta — KTR_1 faltan {missing_1 or 'ninguna'}, "
+            f"KTR_2 faltan {missing_2 or 'ninguna'}. Con modelos livianos (ej. Haiku) esto pasa cuando "
+            f"el schema de salida es grande para su capacidad — probá con un modelo más grande "
+            f"(ANTHROPIC_MODEL) o reintentá."
+        )
+
+    ktr_data_1 = data_1["ktr"]
+    ktr_data_2 = data_2["ktr"]
+
+    try:
+        ktr1_xml, ktr1_filename, warnings_1 = build_ktr(
+            ktr_data_1, f"{process_name}_origen_stg" if process_name else "KTR_1_origen_stg",
+            real_connections=real_connections,
+            required_columns_by_table=required_columns_by_table,
+            pass_source_connection="conn_origen",
+            pass_dest_connection="conn_staging",
+        )
+    except Exception as e:
+        _log.error("build_ktr (KTR_1 origen→STG) failed: %s — conservando raw_data para reintento manual", str(e))
+        raise KtrBuildError({"ktr_1": data_1, "ktr_2": data_2}, e) from e
+
+    try:
+        ktr2_xml, ktr2_filename, warnings_2 = build_ktr(
+            ktr_data_2, f"{process_name}_stg_dwh" if process_name else "KTR_2_stg_dwh",
+            real_connections=real_connections,
+            required_columns_by_table=required_columns_by_table,
+            pass_source_connection="conn_staging",
+            pass_dest_connection="conn_dwh",
+        )
+    except Exception as e:
+        _log.error("build_ktr (KTR_2 STG→DWH) failed: %s — conservando raw_data para reintento manual", str(e))
+        raise KtrBuildError({"ktr_1": data_1, "ktr_2": data_2}, e) from e
+
+    # proceso_etl.steps es el resumen legible que consume el frontend (conteo de
+    # steps por tipo/orden en ChartPanel) — combinar ambos tramos y renumerar
+    # secuencialmente, si no solo se ve la mitad (origen→STG) del proceso.
+    proceso_1 = data_1.get("proceso_etl", {})
+    proceso_2 = data_2.get("proceso_etl", {})
+    merged_steps = [
+        {**s, "orden": i + 1}
+        for i, s in enumerate([*proceso_1.get("steps", []), *proceso_2.get("steps", [])])
+    ]
+    proceso_etl_merged = {
+        "nombre": proceso_1.get("nombre") or proceso_2.get("nombre", ""),
+        "descripcion": proceso_1.get("descripcion", ""),
+        "steps": merged_steps,
+    }
+
+    from app.services.job_analyzer import build_kjb_xml
+
+    job_plan = _build_job_plan(ktr1_filename, ktr2_filename, process_name)
+    kjb_xml = build_kjb_xml(job_plan)
+    kjb_filename = f"{_sanitize(process_name or 'Proceso_ETL')}_job.kjb"
+
+    lineage = stitch_lineage(ktr_data_1, ktr_data_2)
+
+    advertencias = [
+        *data_1.get("advertencias_buenas_practicas", []),
+        *data_2.get("advertencias_buenas_practicas", []),
+        *(connection_warnings or []),
+        *(extra_warnings or []),
+        *warnings_1,
+        *warnings_2,
+    ]
+
+    return ETLGenerateResponse(
+        proceso_etl=proceso_etl_merged,
+        validaciones=[*data_1.get("validaciones", []), *data_2.get("validaciones", [])],
+        documentacion=data_1.get("documentacion", "") or data_2.get("documentacion", ""),
+        advertencias_buenas_practicas=advertencias,
+        dwh_sample={},
+        ktr_xml=ktr1_xml,
+        ktr_filename=ktr1_filename,
+        ktr2_xml=ktr2_xml,
+        ktr2_filename=ktr2_filename,
+        kjb_xml=kjb_xml,
+        kjb_filename=kjb_filename,
+        lineage=lineage,
+        metadata=metadata,
+    )
+
+
 def _build_response(
     resp: LLMResponse,
     required_columns_by_table: dict[str, list[str]] | None = None,
+    extra_warnings: list[str] | None = None,
 ) -> ETLGenerateResponse:
     # json_data is always populated when schema= was passed to llm.complete()
     data = resp.json_data
@@ -213,19 +362,48 @@ def _build_response(
         tokens_output=resp.output_tokens,
         region_inferencia=resp.provider,
     )
-    return _build_response_from_data(data, metadata, required_columns_by_table=required_columns_by_table)
+    return _build_response_from_data(
+        data, metadata,
+        required_columns_by_table=required_columns_by_table,
+        extra_warnings=extra_warnings,
+    )
 
 
-async def build_etl_from_raw(raw_llm_data: dict) -> ETLGenerateResponse:
+async def build_etl_from_raw(raw_llm_data: dict, llm: BaseLLM | None = None) -> ETLGenerateResponse:
     """Reconstruye el ETL a partir de una respuesta cruda del modelo guardada previamente
-    (p. ej. tras un fallo de build_ktr). No llama al LLM."""
+    (p. ej. tras un fallo de build_ktr).
+
+    raw_llm_data trae uno de dos shapes según qué flujo falló:
+    - flujo legacy monolítico: dict plano con "proceso_etl"/"ktr" en el nivel top.
+    - flujo de 2 KTR: {"ktr_1": {...plano...}, "ktr_2": {...plano...}} (ver
+      KtrBuildError en _build_response_from_two_ktr_data).
+
+    llm=None (default): no llama al LLM — comportamiento histórico, reconstruye
+    tal cual el JSON guardado. llm=<instancia>: antes de construir, corre
+    repair_ktr_steps() sobre cada ktr para intentar salvar steps con config
+    incompleto — este es precisamente el caso de uso más común de este endpoint
+    ("Reutilizar respuesta" tras un fallo de build_ktr por config incompleto).
+    Sin req.stg_definition/dwh_model disponibles acá (no viajan en raw_llm_data),
+    el contexto de esquema para la reparación queda vacío — la corrección se
+    apoya solo en los few-shot de STEP_FEWSHOT, no en nombres reales de columna."""
     metadata = MetadataResponse(
         modelo_usado="(respuesta reutilizada)",
         tokens_input=0,
         tokens_output=0,
         region_inferencia="local",
     )
-    return _build_response_from_data(raw_llm_data, metadata)
+    extra_warnings: list[str] = []
+    if "ktr_1" in raw_llm_data and "ktr_2" in raw_llm_data:
+        if llm is not None:
+            raw_llm_data["ktr_1"]["ktr"], w1 = await repair_ktr_steps(raw_llm_data["ktr_1"]["ktr"], llm, "")
+            raw_llm_data["ktr_2"]["ktr"], w2 = await repair_ktr_steps(raw_llm_data["ktr_2"]["ktr"], llm, "")
+            extra_warnings = [*w1, *w2]
+        return _build_response_from_two_ktr_data(
+            raw_llm_data["ktr_1"], raw_llm_data["ktr_2"], metadata, extra_warnings=extra_warnings,
+        )
+    if llm is not None and raw_llm_data.get("ktr"):
+        raw_llm_data["ktr"], extra_warnings = await repair_ktr_steps(raw_llm_data["ktr"], llm, "")
+    return _build_response_from_data(raw_llm_data, metadata, extra_warnings=extra_warnings)
 
 
 async def generate_etl(
@@ -237,14 +415,37 @@ async def generate_etl(
     origen_txt = context_builder.format_model_context_for_prompt(ctx)
     prompt     = _build_prompt(req, origen_txt)
     resp       = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
-    return _build_response(resp)
+
+    repair_warnings: list[str] = []
+    if resp.json_data and resp.json_data.get("ktr"):
+        context_text = f"{req.stagingDef!r}\n\n{req.dwhModel!r}"
+        resp.json_data["ktr"], repair_warnings = await repair_ktr_steps(resp.json_data["ktr"], llm, context_text)
+
+    return _build_response(resp, extra_warnings=repair_warnings)
 
 
-def _build_prompt_from_inference(req: ETLFromInferenceRequest, origen_txt: str) -> str:
+def _build_prompt_from_inference(
+    req: ETLFromInferenceRequest,
+    origen_txt: str,
+    mode: Literal["origen_stg", "stg_dwh"] | None = None,
+    staging_tables: list[str] | None = None,
+) -> str:
+    """
+    mode=None (default): comportamiento actual sin cambios — prompt monolítico
+    de 3 capas (origen→STG→DWH) en una sola llamada.
+
+    mode="origen_stg" / "stg_dwh": prompts recortados para el flujo de 2 KTR.
+    staging_tables fija los mismos nombres de tabla STG en ambas llamadas
+    (extraídos una sola vez de req.stg_definition vía _staging_table_names_from_ddl,
+    no dejados a criterio del modelo) — evita que KTR_2 lea de una tabla con
+    nombre distinto a la que KTR_1 escribió.
+    """
     objetivo = req.descripcionObjetivo.strip() or "No especificado."
     reglas   = req.reglasNegocio.strip() or "No se especificaron reglas de negocio adicionales."
+    tablas_stg_txt = ", ".join(staging_tables) if staging_tables else "(ver DDL de staging abajo)"
 
-    return f"""## OBJETIVO DEL PROCESO ETL
+    if mode is None:
+        return f"""## OBJETIVO DEL PROCESO ETL
 {objetivo}
 
 ## ESQUEMA DE ORIGEN (perfilado — sin datos crudos)
@@ -270,6 +471,77 @@ Antes de escribir el objeto `ktr`, determiná en orden:
 No mezcles las etapas — configura solo cuando el grafo esté cerrado.
 """
 
+    if mode == "origen_stg":
+        return f"""## OBJETIVO DEL PROCESO ETL
+{objetivo}
+
+## ALCANCE DE ESTA LLAMADA [CRÍTICO]
+Esta transformación cubre ÚNICAMENTE origen → STAGING. Es KTR_1 de 2 archivos
+separados que un .kjb orquesta en secuencia. NO generes steps ni hops que lean
+o escriban tablas de DWH (dim_*, fact_*) — eso lo cubre KTR_2 en otra llamada.
+Cada tabla de staging listada abajo DEBE recibirse en un step `TableOutput`
+(sink) al final de su rama — no hay ningún step posterior que la consuma en
+este archivo.
+
+## ESQUEMA DE ORIGEN (perfilado — sin datos crudos)
+{origen_txt}
+## STAGING — nombres de tabla FIJOS, usar EXACTAMENTE estos (destino de esta llamada)
+{tablas_stg_txt}
+
+Definición completa (inferida y confirmada por el usuario):
+{req.stg_definition}
+
+## REGLAS DE NEGOCIO
+{reglas}
+
+---
+
+Genera el tramo origen→STAGING respetando estrictamente el objetivo indicado.
+Usá exactamente los nombres de tabla STG listados arriba — no los alteres ni generes otros.
+Verifica la consistencia de tipos y nombres entre origen y staging.
+
+Antes de escribir el objeto `ktr`, determiná en orden:
+**Etapa 1 — Diseño del grafo:** listá mentalmente todos los steps necesarios (nombre, tipo) y sus conexiones (hops) para ESTE tramo, sin entrar en configs internas. Verificá grafo completo: ningún step aislado.
+**Etapa 2 — Configuración interna:** solo después del grafo completo, poblá el `config` de cada step en orden topológico (entrada → salida).
+No mezcles las etapas — configura solo cuando el grafo esté cerrado.
+"""
+
+    # mode == "stg_dwh"
+    return f"""## OBJETIVO DEL PROCESO ETL
+{objetivo}
+
+## ALCANCE DE ESTA LLAMADA [CRÍTICO]
+Esta transformación cubre ÚNICAMENTE STAGING → DWH. Es KTR_2 de 2 archivos
+separados que un .kjb orquesta en secuencia, corre después de KTR_1 (que ya
+pobló las tablas de staging). NO generes steps que lean de tablas de origen
+operacional — el único punto de entrada de este archivo es un `TableInput`
+que lee de las tablas de staging listadas abajo. NO leas ni referencies ninguna
+tabla que no esté en esa lista.
+
+## STAGING — nombres de tabla FIJOS, usar EXACTAMENTE estos (origen de esta llamada, ya poblados por KTR_1)
+{tablas_stg_txt}
+
+Definición completa (inferida y confirmada por el usuario):
+{req.stg_definition}
+
+## MODELO DWH (inferido y confirmado por el usuario)
+{req.dwh_model}
+
+## REGLAS DE NEGOCIO
+{reglas}
+
+---
+
+Genera el tramo STAGING→DWH respetando estrictamente el objetivo indicado.
+Usá exactamente los nombres de tabla STG listados arriba como fuente — no los alteres ni generes otros.
+Verifica la consistencia de tipos y nombres entre staging y DWH.
+
+Antes de escribir el objeto `ktr`, determiná en orden:
+**Etapa 1 — Diseño del grafo:** listá mentalmente todos los steps necesarios (nombre, tipo) y sus conexiones (hops) para ESTE tramo, sin entrar en configs internas. Verificá grafo completo: ningún step aislado.
+**Etapa 2 — Configuración interna:** solo después del grafo completo, poblá el `config` de cada step en orden topológico (entrada → salida).
+No mezcles las etapas — configura solo cuando el grafo esté cerrado.
+"""
+
 
 async def generate_etl_from_inference(
     req: ETLFromInferenceRequest,
@@ -277,14 +549,49 @@ async def generate_etl_from_inference(
     db: Optional[Session] = None,
     on_llm_done=None,
 ) -> ETLGenerateResponse:
-    ctx        = context_builder.build_model_context(req.origenTables, db)
-    origen_txt = context_builder.format_model_context_for_prompt(ctx)
-    prompt     = _build_prompt_from_inference(req, origen_txt)
-    resp       = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
+    """Genera el proceso ETL como 2 KTR + 1 .kjb: KTR_1 (origen→STG) y KTR_2
+    (STG→DWH), con los mismos nombres de tabla STG fijados en ambas llamadas
+    al modelo (_staging_table_names_from_ddl) para que KTR_2 lea exactamente
+    lo que KTR_1 escribió."""
+    ctx            = context_builder.build_model_context(req.origenTables, db)
+    origen_txt     = context_builder.format_model_context_for_prompt(ctx)
+    staging_tables = _staging_table_names_from_ddl(req.stg_definition)
+    system         = _load_system("system_etl.txt")
+
+    prompt_1 = _build_prompt_from_inference(req, origen_txt, mode="origen_stg", staging_tables=staging_tables)
+    resp_1   = await llm.complete(prompt_1, system, schema=ETL_OUTPUT_SCHEMA)
+
+    prompt_2 = _build_prompt_from_inference(req, "", mode="stg_dwh", staging_tables=staging_tables)
+    resp_2   = await llm.complete(prompt_2, system, schema=ETL_OUTPUT_SCHEMA)
+
     if on_llm_done is not None:
         await on_llm_done()
+
+    data_1 = resp_1.json_data
+    data_2 = resp_2.json_data
+    if data_1 is None or data_2 is None:
+        _log.error(
+            "LLM returned no json_data. raw_1=%r raw_2=%r",
+            (resp_1.content or "")[:200], (resp_2.content or "")[:200],
+        )
+        raise ValueError("LLM returned no structured data — cannot parse ETL response")
+
+    context_text = f"{req.stg_definition}\n\n{req.dwh_model}"
+    data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
+    data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
+
+    metadata = MetadataResponse(
+        modelo_usado=resp_2.model,
+        tokens_input=(resp_1.input_tokens or 0) + (resp_2.input_tokens or 0),
+        tokens_output=(resp_1.output_tokens or 0) + (resp_2.output_tokens or 0),
+        region_inferencia=resp_2.provider,
+    )
     required_columns_by_table = _required_columns_from_ddl(req.stg_definition, req.dwh_model)
-    return _build_response(resp, required_columns_by_table=required_columns_by_table)
+    return _build_response_from_two_ktr_data(
+        data_1, data_2, metadata,
+        required_columns_by_table=required_columns_by_table,
+        extra_warnings=[*repair_warnings_1, *repair_warnings_2],
+    )
 
 
 # ─── Flujo async con conexiones en paralelo ───────────────────────────────────
@@ -318,12 +625,14 @@ def _try_build(job_id, db: Session) -> None:
     metadata = MetadataResponse(**job.model_json["metadata"])
 
     try:
-        result = _build_response_from_data(
-            job.model_json["raw_data"],
+        result = _build_response_from_two_ktr_data(
+            job.model_json["raw_data_1"],
+            job.model_json["raw_data_2"],
             metadata,
             real_connections=real_connections,
             connection_warnings=conn_warnings,
             required_columns_by_table=job.model_json.get("required_columns_by_table"),
+            extra_warnings=job.model_json.get("repair_warnings"),
         )
     except KtrBuildError as exc:
         job.build_status = KtrBuildStatus.failed
@@ -353,15 +662,25 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
 
     db = session_factory()
     try:
-        ctx        = context_builder.build_model_context(req.origenTables, db)
-        origen_txt = context_builder.format_model_context_for_prompt(ctx)
-        prompt     = _build_prompt_from_inference(req, origen_txt)
+        ctx            = context_builder.build_model_context(req.origenTables, db)
+        origen_txt     = context_builder.format_model_context_for_prompt(ctx)
+        staging_tables = _staging_table_names_from_ddl(req.stg_definition)
+        system         = _load_system("system_etl.txt")
+
+        prompt_1 = _build_prompt_from_inference(req, origen_txt, mode="origen_stg", staging_tables=staging_tables)
+        prompt_2 = _build_prompt_from_inference(req, "", mode="stg_dwh", staging_tables=staging_tables)
 
         try:
-            resp = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
-            data = resp.json_data
-            if data is None:
+            resp_1 = await llm.complete(prompt_1, system, schema=ETL_OUTPUT_SCHEMA)
+            resp_2 = await llm.complete(prompt_2, system, schema=ETL_OUTPUT_SCHEMA)
+            data_1 = resp_1.json_data
+            data_2 = resp_2.json_data
+            if data_1 is None or data_2 is None:
                 raise ValueError("El modelo no devolvió datos estructurados.")
+
+            context_text = f"{req.stg_definition}\n\n{req.dwh_model}"
+            data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
+            data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
         except Exception as exc:
             job = db.get(KtrBuildJob, job_id)
             if job is not None:
@@ -371,10 +690,10 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             return
 
         metadata = MetadataResponse(
-            modelo_usado=resp.model,
-            tokens_input=resp.input_tokens,
-            tokens_output=resp.output_tokens,
-            region_inferencia=resp.provider,
+            modelo_usado=resp_2.model,
+            tokens_input=(resp_1.input_tokens or 0) + (resp_2.input_tokens or 0),
+            tokens_output=(resp_1.output_tokens or 0) + (resp_2.output_tokens or 0),
+            region_inferencia=resp_2.provider,
         )
 
         job = db.get(KtrBuildJob, job_id)
@@ -382,9 +701,11 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             return  # el usuario abandonó y el TTL ya barrió la fila
         job.model_status = ModelStatus.done
         job.model_json = {
-            "raw_data": data,
+            "raw_data_1": data_1,
+            "raw_data_2": data_2,
             "metadata": metadata.model_dump(),
             "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, req.dwh_model),
+            "repair_warnings": [*repair_warnings_1, *repair_warnings_2],
         }
         db.commit()
 

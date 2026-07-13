@@ -16,9 +16,6 @@ importarlo acá y sumarlo a STEP_BUILDERS (+ alias si aplica).
 """
 from __future__ import annotations
 
-from xml.etree.ElementTree import Element
-
-from app.services.ktr_builder.common import _sub
 from app.services.ktr_builder.steps.input import (
     _step_CsvInput,
     _step_ExcelInput,
@@ -145,15 +142,8 @@ STEP_TYPE_ALIASES = {
     "Mapping (sub-transformation)": "Mapping",
     "Transformation executor":    "TransExecutor",
     "Get System Info":            "GetSystemInfo",
+    "SystemInfo":                  "GetSystemInfo",
 }
-
-
-def _step_generic(el: Element, cfg: dict) -> None:
-    for key, val in cfg.items():
-        if isinstance(val, (str, int, float)):
-            _sub(el, key, str(val))
-        elif isinstance(val, bool):
-            _sub(el, key, "Y" if val else "N")
 
 
 STEP_BUILDERS = {
@@ -241,10 +231,67 @@ _CRITICAL_FIELDS: dict[str, list[str]] = {
     "InsertUpdate":      ["table"],
     "Update":            ["table"],
     "Delete":            ["table"],
-    "DimensionLookup":   ["table", "returnfield"],
-    "CombinationLookup": ["table", "returnfield"],
+    # "return_field" es la clave canónica post-normalize_config() (ver
+    # contracts.py) — returnfield/sk_field/surrogate_key son alias que ya
+    # se resolvieron a esta antes de llegar acá.
+    "DimensionLookup":   ["table", "return_field"],
+    "CombinationLookup": ["table", "return_field"],
     "DBLookup":          ["table"],
     "MergeRows":         ["step1", "step2"],
     "MergeJoin":         ["step1", "step2"],
     "ValueMapper":       ["field_to_use"],
 }
+
+
+# ─── Fidelidad de config: claves reconocidas por emisor ───────────────────────
+# Todas las claves de config (incluidos los alias que cada builder acepta del
+# LLM) que ese step SÍ mapea a XML. build.py resta este set de las claves
+# presentes en el config real y loguea WARN por cada sobrante — así una clave
+# que el modelo declaró pero que el builder ignora (el bug de ignore_errors en
+# TableOutput, p. ej.) deja rastro en vez de perderse en silencio. Un type
+# ausente de este dict no se audita (todavía no relevado) — no genera falsos
+# positivos.
+STEP_CONFIG_KEYS: dict[str, frozenset[str]] = {
+    "WriteToLog":      frozenset({"level", "message", "fields"}),
+    "Constant":        frozenset({"fields"}),
+    "GetSystemInfo":   frozenset({"fields"}),
+    "TableInput":      frozenset({"connection", "sql"}),
+    "SelectValues":    frozenset({"select", "fields", "columns", "remove", "cast"}),
+    "TableOutput":     frozenset({
+        "table", "target_table", "table_name", "connection", "schema",
+        "truncate", "ignore_errors", "specify_fields", "use_batch",
+        "fields", "commit",
+    }),
+    "SortRows":        frozenset({"fields", "sort_fields"}),
+    "Unique":          frozenset({"fields"}),
+    "DimensionLookup": frozenset({
+        "table", "target_table", "table_name", "return_field", "returnfield",
+        "sk_field", "surrogate_key", "schema", "connection", "keys", "fields",
+        "date_field", "date_from", "date_to",
+    }),
+    "DBLookup":        frozenset({
+        "table", "target_table", "table_name", "connection", "schema",
+        "keys", "return_fields", "returns",
+    }),
+    "Formula":         frozenset({"formulas", "fields"}),
+    "Calculator":      frozenset({"calculations"}),
+    "InsertUpdate":    frozenset({
+        "table", "target_table", "table_name", "schema", "connection",
+        "keys", "fields", "commit",
+    }),
+    "GroupBy":         frozenset({"group_fields", "aggregates"}),
+    "NumberRange":     frozenset({"input_field", "output_field", "fallback", "ranges"}),
+    "IfNull":          frozenset({"fields"}),
+    "StreamLookup":    frozenset({"step", "from", "keys", "values", "fields"}),
+}
+# MemoryGroupBy comparte builder y config con GroupBy (ver STEP_BUILDERS).
+STEP_CONFIG_KEYS["MemoryGroupBy"] = STEP_CONFIG_KEYS["GroupBy"]
+
+
+def unmapped_config_keys(canonical_type: str, cfg: dict) -> list[str]:
+    """Claves de cfg que ese step no reconoce, según STEP_CONFIG_KEYS. Lista
+    vacía si el type no está relevado (no auditado) o si no hay sobrantes."""
+    known = STEP_CONFIG_KEYS.get(canonical_type)
+    if known is None or not isinstance(cfg, dict):
+        return []
+    return [k for k in cfg.keys() if k not in known]

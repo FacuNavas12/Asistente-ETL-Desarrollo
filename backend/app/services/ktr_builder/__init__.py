@@ -24,6 +24,7 @@ from app.services.ktr_builder.registry import (
     STEP_BUILDERS,
     STEP_TYPE_ALIASES,
 )
+from app.services.ktr_builder.repair import repair_ktr_steps
 from app.services.ktr_builder.validate import _validate_ktr
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     "STEP_TYPE_ALIASES",
     "STEP_BUILDERS",
     "KNOWN_PDI_STEP_TYPES",
+    "repair_ktr_steps",
 ]

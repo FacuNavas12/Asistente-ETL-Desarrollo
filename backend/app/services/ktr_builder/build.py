@@ -16,15 +16,16 @@ from xml.dom import minidom
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from app.core.config import settings
-from app.services.ktr_builder.common import _sub
+from app.services.ktr_builder.common import _sub, KtrBuilderError
 from app.services.ktr_builder.connection import _build_connection, _resolve_connection, _STEPS_NEEDING_CONNECTION
+from app.services.ktr_builder.contracts import missing_required_keys, normalize_config, parse_cfg
+from app.services.ktr_builder.fields_validate import validate_field_resolution
 from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.registry import (
     _CRITICAL_FIELDS,
-    _step_generic,
-    KNOWN_PDI_STEP_TYPES,
     STEP_BUILDERS,
     STEP_TYPE_ALIASES,
+    unmapped_config_keys,
 )
 from app.services.ktr_builder.validate import _validate_ktr
 from app.services.ktr_default_validator import (
@@ -54,6 +55,8 @@ def build_ktr(
     process_name: str = "",
     real_connections: dict[str, dict] | None = None,
     required_columns_by_table: dict[str, list[str]] | None = None,
+    pass_source_connection: str | None = None,
+    pass_dest_connection: str | None = None,
 ) -> tuple[str, str, list[str]]:
     """
     Convert KTR JSON dict from Gemini response to .ktr XML string.
@@ -67,10 +70,33 @@ def build_ktr(
     por el caller a partir del DDL de staging/DWH (ver etl_generator). Opcional —
     None desactiva ese chequeo puntual sin afectar el resto del build.
 
+    pass_source_connection / pass_dest_connection: nombres de conexión lógicos a
+    usar como fallback por rol de step (TableInput → source, resto → dest) cuando
+    el modelo omite 'connection' en el config. Pensado para el flujo de 2 KTR
+    (origen→STG y STG→DWH) — ver _resolve_connection(). None/None preserva el
+    fallback de inferencia por prefijo de tabla ya existente.
+
     Returns (ktr_xml_string, filename, warnings). Returns ("", "", []) if ktr_data is empty.
     """
     if not ktr_data:
         return "", "", []
+
+    # Pass único de normalización: alias de clave -> canónica (StepContract,
+    # ver contracts.py) ANTES de cualquier validación o emisión, así el
+    # emisor XML y el validador de grafo de campos ven siempre las mismas
+    # claves (mata el drift tipo inputField/input_field en origen) y el
+    # config queda como dict (no string JSON) para el resto de esta función.
+    # required_keys ausentes abortan acá mismo, apuntando al step culpable,
+    # en vez de dejar que Spoon falle en runtime con un step "vacío".
+    incomplete: list[str] = []
+    for step in ktr_data.get("steps", []):
+        canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
+        cfg = normalize_config(canonical, parse_cfg(step.get("config", {})))
+        step["config"] = cfg
+        for key, reason in missing_required_keys(canonical, cfg):
+            incomplete.append(f"Config incompleto en '{step.get('name')}' ({canonical}): {reason}")
+    if incomplete:
+        raise KtrBuilderError(" | ".join(incomplete))
 
     warnings = _validate_ktr(ktr_data)
     for w in warnings:
@@ -87,6 +113,15 @@ def build_ktr(
     warnings.extend(
         check_missing_required_fields(ktr_data, STEP_TYPE_ALIASES, required_columns_by_table)
     )
+
+    # Validación de resolución de campos: un campo que un step consumidor
+    # referencia (TableOutput, DimensionLookup, DBLookup, ...) pero que ningún
+    # step aguas arriba produce es el mismo síntoma que Spoon reporta en
+    # runtime como "Could not find field X in stream" — se detecta acá en
+    # build-time y aborta, en vez de entregar un .ktr que rompe al ejecutar.
+    field_errors = validate_field_resolution(ktr_data, STEP_TYPE_ALIASES)
+    if field_errors:
+        raise KtrBuilderError(" | ".join(field_errors))
 
     name        = ktr_data.get("name") or process_name or "Transformacion_ETL"
     description = ktr_data.get("description", "")
@@ -129,7 +164,11 @@ def build_ktr(
             cfg = raw if isinstance(raw, dict) else {}
             step.setdefault("config", cfg)
             explicit = (cfg.get("connection") or cfg.get("connection_name") or "").strip()
-            resolved = _resolve_connection(cfg, canonical, connection_names)
+            resolved = _resolve_connection(
+                cfg, canonical, connection_names,
+                pass_source_connection=pass_source_connection,
+                pass_dest_connection=pass_dest_connection,
+            )
             if explicit and explicit not in connection_names:
                 warnings.append(
                     f"Step '{step.get('name')}' referencia conexión '{explicit}' no declarada en 'connections' — se usó '{resolved}' como fallback."
@@ -192,18 +231,16 @@ def build_ktr(
         # o internos ("TableInput"). El alias map traduce ambos al canónico.
         canonical_type = STEP_TYPE_ALIASES.get(step_type, step_type)
 
-        # Rechazo/corrección: un type fuera del whitelist de plugins PDI reales
-        # no es "un tipo no soportado por el backend" — es un id inexistente en
-        # Kettle, y Spoon rompe con "plugin missing" al abrir el .ktr. Se fuerza
-        # a Dummy (mantiene el grafo/hops intactos) en vez de emitirlo tal cual.
-        if canonical_type not in KNOWN_PDI_STEP_TYPES:
-            warnings.append(
-                f"Step '{step.get('name')}' usa type '{step_type}' — no es un plugin PDI 9.x "
-                f"reconocido, se reemplazó por 'Dummy'. Reconfigurar manualmente en Spoon."
+        # Un type sin emisor registrado (ni siquiera detrás de un alias) no es
+        # un plugin PDI real o no está soportado por este builder — Spoon
+        # rompería con "plugin missing"/step vacío. Se aborta el build con un
+        # mensaje claro en vez de degradar en silencio a Dummy: un .ktr que
+        # "abre" pero le falta un step entero es peor que uno que no se genera.
+        builder = STEP_BUILDERS.get(canonical_type)
+        if builder is None:
+            raise KtrBuilderError(
+                f"Tipo de step no soportado: '{step_type}' en paso '{step.get('name')}'"
             )
-            logger.warning("KTR: step type '%s' no está en KNOWN_PDI_STEP_TYPES, forzado a Dummy", step_type)
-            canonical_type = "Dummy"
-            cfg = {}
 
         if canonical_type != step_type:
             logger.info("KTR: step type '%s' normalizado a '%s'", step_type, canonical_type)
@@ -211,12 +248,13 @@ def build_ktr(
             type_el = step_el.find("type")
             if type_el is not None:
                 type_el.text = canonical_type
-        builder = STEP_BUILDERS.get(canonical_type)
-        if builder:
-            builder(step_el, cfg)
-        else:
-            logger.warning("KTR: step type '%s' (canonical: '%s') not supported, using generic builder", step_type, canonical_type)
-            _step_generic(step_el, cfg)
+
+        for key in unmapped_config_keys(canonical_type, cfg):
+            msg = f"clave de config no mapeada '{key}' en '{step.get('name')}'"
+            logger.warning("KTR fidelidad: %s", msg)
+            warnings.append(msg)
+
+        builder(step_el, cfg)
 
         gui = SubElement(step_el, "GUI")
         _sub(gui, "xloc", str(step.get("x", 100)))

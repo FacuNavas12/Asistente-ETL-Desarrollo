@@ -835,10 +835,15 @@ const slugify = (s) =>
 export async function generateSupersetZip(etl, sqlalchemyUri = "postgresql://user:password@host:5432/dwh") {
   let dwhSample = etl?.result?.dwh_sample ?? {};
 
-  // Fallback 1: si el LLM no generó dwh_sample, extraer el esquema desde el KTR
+  // Fallback 1: si el LLM no generó dwh_sample, extraer el esquema desde el/los KTR.
+  // Flujo de 2 KTR: las tablas DWH (dim_/fact_) viven en ktr2_xml (STG→DWH), no en
+  // ktr_xml (KTR_1, origen→STG) — hay que parsear ambos si ktr2_xml está presente.
   if (!Object.keys(dwhSample).length && etl?.result?.ktr_xml) {
-    const ktrBlob = new Blob([etl.result.ktr_xml], { type: "application/xml" });
-    dwhSample = await extractDwhSchemaFromKtrs([ktrBlob]);
+    const ktrBlobs = [new Blob([etl.result.ktr_xml], { type: "application/xml" })];
+    if (etl?.result?.ktr2_xml) {
+      ktrBlobs.push(new Blob([etl.result.ktr2_xml], { type: "application/xml" }));
+    }
+    dwhSample = await extractDwhSchemaFromKtrs(ktrBlobs);
   }
 
   // Fallback 2: si el KTR tampoco dio resultados, usar el dwhModel del formulario

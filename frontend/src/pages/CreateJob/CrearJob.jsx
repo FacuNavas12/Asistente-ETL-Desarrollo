@@ -10,6 +10,7 @@ import JobReview from "./components/JobReview";
 import JobResult from "./components/JobResult";
 import { analyzeJob, refineJob, generateJob } from "@/services/jobService";
 import { generateSupersetZip, extractDwhSchemaFromKtrs } from "@/utils/supersetExport";
+import { useToast } from "@/components/ui/Toast";
 import "./crearJob.css";
 
 const STEP = {
@@ -24,6 +25,7 @@ export default function CrearJob() {
   const navigate = useNavigate();
   const { etls, jobs, addJob, savePendingJob } = useEtl();
   const authFetch = useAuthFetch();
+  const { notifySystem, notifyValidation } = useToast();
 
   const [step, setStep]           = useState(STEP.FORM);
   const [showModal, setShowModal] = useState(false);
@@ -39,7 +41,6 @@ export default function CrearJob() {
   const [jobHistory,    setJobHistory]    = useState([]);
   const [isRefining,    setIsRefining]    = useState(false);
   const [jobResult,     setJobResult]     = useState(null);
-  const [errors,        setErrors]        = useState([]);
   const [supersetBusy,  setSupersetBusy]  = useState(false);
 
   const dirty = ktrFiles.length > 0 || jobDescription.trim().length > 0;
@@ -52,7 +53,6 @@ export default function CrearJob() {
     setSessionId(null);
     setJobHistory([]);
     setJobResult(null);
-    setErrors([]);
     setStep(STEP.FORM);
   };
 
@@ -71,15 +71,14 @@ export default function CrearJob() {
   // ── PASO 1 → PASO 2: analizar job ────────────────────────────────────────
   const handleAnalyze = async () => {
     if (!ktrFiles.length) {
-      setErrors(["Debe subir al menos un archivo .ktr."]);
+      notifyValidation("Debe subir al menos un archivo .ktr.");
       return;
     }
     if (!jobDescription.trim()) {
-      setErrors(["Debe describir el job."]);
+      notifyValidation("Debe describir el job.");
       return;
     }
 
-    setErrors([]);
     setStep(STEP.ANALYZING);
 
     try {
@@ -94,7 +93,7 @@ export default function CrearJob() {
       setStep(STEP.REVIEW);
     } catch (err) {
       setStep(STEP.FORM);
-      setErrors([`Error al analizar el job: ${err.message}`]);
+      notifySystem(`Error al analizar el job: ${err.message}`);
     }
   };
 
@@ -116,7 +115,7 @@ export default function CrearJob() {
       ]);
       setAnalyzeResult(data);
     } catch (err) {
-      setErrors([`Error al aplicar corrección: ${err.message}`]);
+      notifySystem(`Error al aplicar corrección: ${err.message}`);
     } finally {
       setIsRefining(false);
     }
@@ -124,7 +123,6 @@ export default function CrearJob() {
 
   // ── DESDE REVISIÓN: confirmar y generar .kjb ─────────────────────────────
   const handleConfirm = async () => {
-    setErrors([]);
     setStep(STEP.GENERATING);
 
     try {
@@ -137,14 +135,14 @@ export default function CrearJob() {
       setStep(STEP.RESULT);
     } catch (err) {
       setStep(STEP.REVIEW);
-      setErrors([`Error al generar el job: ${err.message}`]);
+      notifySystem(`Error al generar el job: ${err.message}`);
     }
   };
 
   const handleExportSuperset = async () => {
     setSupersetBusy(true);
     try {
-      // Matchear los KTRs del job con ETLs guardados por ktr_filename (con y sin extensión)
+      // Matchear los KTRs del job con ETLs guardados por ktr_filename/ktr2_filename (con y sin extensión)
       const jobFilenames = new Set(
         (jobResult.job_plan.execution_order ?? []).flatMap(e => [
           e.filename,
@@ -152,9 +150,10 @@ export default function CrearJob() {
         ]).filter(Boolean)
       );
       const matchingEtls = etls.filter(e => {
-        const ktr = e.result?.ktr_filename;
-        if (!ktr) return false;
-        return jobFilenames.has(ktr) || jobFilenames.has(ktr.replace(/\.ktr$/i, ""));
+        const candidates = [e.result?.ktr_filename, e.result?.ktr2_filename].filter(Boolean);
+        return candidates.some(
+          ktr => jobFilenames.has(ktr) || jobFilenames.has(ktr.replace(/\.ktr$/i, ""))
+        );
       });
 
       let dwh_sample = matchingEtls.reduce((acc, e) => ({ ...acc, ...(e.result?.dwh_sample ?? {}) }), {});
@@ -165,9 +164,9 @@ export default function CrearJob() {
       }
 
       if (!Object.keys(dwh_sample).length) {
-        alert(
-          "No se encontraron tablas DWH en los archivos KTR.\n\n" +
-          "Asegurate de que los archivos KTR incluyan pasos de tipo 'Table output' con las tablas de destino configuradas."
+        notifyValidation(
+          "No se encontraron tablas DWH en los archivos KTR. Asegurate de que los archivos " +
+          "KTR incluyan pasos de tipo 'Table output' con las tablas de destino configuradas."
         );
         return;
       }
@@ -183,7 +182,7 @@ export default function CrearJob() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert(err?.message ?? "No se pudo generar el archivo Superset.");
+      notifySystem(err?.message ?? "No se pudo generar el archivo Superset.");
     } finally {
       setSupersetBusy(false);
     }
@@ -246,7 +245,6 @@ export default function CrearJob() {
             onSubmit={handleAnalyze}
             onLimpiar={handleLimpiar}
             dirty={dirty}
-            errors={errors}
           />
         )}
 
@@ -256,7 +254,6 @@ export default function CrearJob() {
             onConfirm={handleConfirm}
             onRefine={handleRefine}
             isRefining={isRefining}
-            errors={errors}
           />
         )}
 

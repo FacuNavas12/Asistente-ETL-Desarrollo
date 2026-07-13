@@ -39,7 +39,7 @@ export default function EtlDetail() {
     setLineageLoading(true);
     setLineageError(null);
 
-    computeLineage(ktrXml)
+    computeLineage(ktrXml, etl.result?.ktr2_xml)
       .then(data => {
         setLineageData(data);
         setLineageLoading(false);
@@ -66,16 +66,31 @@ export default function EtlDetail() {
   const hasKtr    = Boolean(etl.result?.ktr_xml);
   const lineage   = lineageData ?? etl.result?.lineage ?? null;
 
-  const { ktr_xml = "", ktr_filename = "" } = etl.result ?? {};
+  const {
+    ktr_xml = "", ktr_filename = "",
+    ktr2_xml = "", ktr2_filename = "",
+    kjb_xml = "", kjb_filename = "",
+  } = etl.result ?? {};
+  const hasTwoKtrFlow = Boolean(ktr2_xml && kjb_xml);
 
-  const handleDownloadKtr = () => {
-    const blob = new Blob([ktr_xml], { type: "application/xml" });
+  const downloadBlob = (content, mime, filename) => {
+    const blob = new Blob([content], { type: mime });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-    a.download = ktr_filename || `${etl.name}.ktr`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadKtr = () => {
+    downloadBlob(ktr_xml, "application/xml", ktr_filename || `${etl.name}.ktr`);
+    // Flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH orquestados en secuencia).
+    // Vacíos en el flujo monolítico legacy (build-from-raw) — solo baja el único .ktr.
+    if (hasTwoKtrFlow) {
+      downloadBlob(ktr2_xml, "application/xml", ktr2_filename || `${etl.name}_2.ktr`);
+      downloadBlob(kjb_xml, "application/xml", kjb_filename || `${etl.name}_job.kjb`);
+    }
   };
 
   // Mostrar el botón siempre que haya KTR — si dwh_sample está vacío,
@@ -121,7 +136,9 @@ export default function EtlDetail() {
             )}
             {ktr_xml ? (
               <button className="ktr-download-btn" onClick={handleDownloadKtr}>
-                Descargar .ktr para Pentaho PDI
+                {hasTwoKtrFlow
+                  ? "Descargar KTR_1 + KTR_2 + .kjb para Pentaho PDI"
+                  : "Descargar .ktr para Pentaho PDI"}
               </button>
             ) : (
               <span className="ktr-unavailable">No se pudo generar el .ktr</span>

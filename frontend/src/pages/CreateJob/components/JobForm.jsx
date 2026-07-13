@@ -89,20 +89,9 @@ export default function JobForm({
   onSubmit,
   onLimpiar,
   dirty,
-  errors,
 }) {
   return (
     <div className="job-body">
-      {errors.length > 0 && (
-        <div className="job-errors-box">
-          <ul>
-            {errors.map((e, i) => (
-              <li key={i}>{e}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <div className="job-form-fields" style={{ display: "flex", flexDirection: "column", gap: "20px", maxWidth: "760px" }}>
         <div className="job-field">
           <label className="job-field-label">

@@ -10,6 +10,11 @@ Flujo:
 3. generate_job — toma el JobPlan confirmado, construye el XML .kjb y genera la
                   explicación en lenguaje natural. Limpia los archivos temporales.
 """
+"""
+Ante cambios de hueristica, validar si se mantiene manejo de capas por nostoros y como lo interpreta Pentaho
+"""
+#TODO: Validar si se mantiene el manejo de capas por nosotros y como lo interpreta Pentaho
+
 import json
 import logging
 import re

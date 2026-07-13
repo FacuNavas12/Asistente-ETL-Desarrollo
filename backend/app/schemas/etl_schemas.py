@@ -124,6 +124,13 @@ class ETLGenerateResponse(BaseModel):
     dwh_sample: Dict[str, List[Dict[str, Any]]] = {}
     ktr_xml: str = ""
     ktr_filename: str = ""
+    # Flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH orquestados en secuencia).
+    # Vacíos ("") en el flujo monolítico legacy (build-from-raw) — el frontend
+    # los trata como "no hay KTR_2/.kjb para este resultado".
+    ktr2_xml: str = ""
+    ktr2_filename: str = ""
+    kjb_xml: str = ""
+    kjb_filename: str = ""
     lineage: Optional["Lineage"] = None
     metadata: MetadataResponse
 
@@ -179,7 +186,11 @@ class ETLFromInferenceRequest(BaseModel):
 
 class BuildFromRawRequest(BaseModel):
     """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada
-    previamente por el frontend (descargada tras un fallo de build_ktr). Sin llamada al LLM."""
+    previamente por el frontend (descargada tras un fallo de build_ktr). Sin llamada al LLM.
+
+    raw_llm_data trae dict plano (flujo legacy monolítico, claves proceso_etl/ktr
+    en el nivel top) o {"ktr_1": {...}, "ktr_2": {...}} (flujo de 2 KTR) — ver
+    build_etl_from_raw() en etl_generator.py, que detecta el shape."""
     raw_llm_data: Dict[str, Any]
 
 
