@@ -100,15 +100,27 @@ export default function EtlDetail() {
   const handleExportSuperset = async () => {
     setSupersetBusy(true);
     try {
-      const blob = await generateSupersetZip(etl);
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href     = url;
-      a.download = `superset_${etl.name}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const blob     = await generateSupersetZip(etl);
+      const formData = new FormData();
+      formData.append("zip_file", blob, `superset_${etl.name}.zip`);
+      const dwhSample = etl?.result?.dwh_sample ?? {};
+      formData.append("dwh_sample", JSON.stringify(dwhSample));
+
+      const apiBase = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+      const resp = await fetch(`${apiBase}/api/v1/superset/import`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        const detail = await resp.json().catch(() => ({}));
+        throw new Error(detail?.detail ?? `Error ${resp.status} al importar en Superset.`);
+      }
+
+      const { dashboard_url } = await resp.json();
+      window.open(dashboard_url, "_blank", "noopener,noreferrer");
     } catch (err) {
-      alert(err?.message ?? "No se pudo generar el archivo Superset.");
+      alert(err?.message ?? "No se pudo importar el dashboard en Superset.");
     } finally {
       setSupersetBusy(false);
     }
@@ -149,7 +161,7 @@ export default function EtlDetail() {
                 onClick={handleExportSuperset}
                 disabled={supersetBusy}
               >
-                {supersetBusy ? "Generando..." : "Exportar dashboard Superset"}
+                {supersetBusy ? "Abriendo en Superset..." : "Ver dashboard en Superset"}
               </button>
             )}
           </div>

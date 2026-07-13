@@ -21,6 +21,7 @@ ETL_OUTPUT_SCHEMA: Dict[str, Any] = {
         "validaciones",
         "advertencias_buenas_practicas",
         "ktr",
+        "dwh_sample",
     ],
     "properties": {
         "proceso_etl": {
@@ -121,6 +122,22 @@ ETL_OUTPUT_SCHEMA: Dict[str, Any] = {
                         },
                     },
                 },
+            },
+        },
+        "dwh_sample": {
+            "type": "object",
+            "description": (
+                "Una fila de ejemplo por cada tabla del DWH (dim_* y fact_*). "
+                "Clave = nombre exacto de la tabla en minúsculas. "
+                "Valor = array con UN objeto: claves = nombres de columna en minúsculas, "
+                "valores = ejemplos del tipo correcto "
+                "(string para VARCHAR, número para INTEGER/NUMERIC, "
+                "true/false para BOOLEAN, '2024-01-15' para DATE). "
+                "NO incluir tablas staging (stg_*)."
+            ),
+            "additionalProperties": {
+                "type": "array",
+                "items": {"type": "object"},
             },
         },
     },

@@ -26,6 +26,7 @@ from app.services.ktr_builder.connection import (
 from app.services.ktr_builder.contracts import missing_required_keys, normalize_config, parse_cfg
 from app.services.ktr_builder.fields_validate import (
     FIELD_INTEGRITY_PREFIX,
+    repair_select_values_narrowing,
     validate_dimension_lookup_races,
     validate_field_resolution,
     validate_row_sources,
@@ -132,6 +133,13 @@ def build_ktr(
     warnings.extend(
         check_missing_required_fields(ktr_data, STEP_TYPE_ALIASES, required_columns_by_table)
     )
+
+    # Pre-pass mecánico: reinyecta en un SelectValues previo cualquier campo
+    # que un consumidor aguas abajo necesite y que el modelo haya dejado
+    # afuera de la lista explícita de select/fields (solo agrega, nunca quita
+    # ni reinterpreta). Corre ANTES de las validaciones de integridad para que
+    # el grafo que ellas ven ya tenga el field resuelto cuando es recuperable.
+    warnings.extend(repair_select_values_narrowing(ktr_data, STEP_TYPE_ALIASES))
 
     # Validación de integridad ("integridad_campos"): grafo de campos +
     # fuente de filas + condición de carrera dimensión/lookup. Los tres son
