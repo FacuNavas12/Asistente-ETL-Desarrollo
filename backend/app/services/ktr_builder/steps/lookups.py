@@ -11,13 +11,16 @@ logger = logging.getLogger(__name__)
 
 
 def _step_MergeJoin(el: Element, cfg: dict) -> None:
+    # Kettle acepta INNER / LEFT OUTER / RIGHT OUTER / FULL OUTER — sin " JOIN" al final.
+    # El LLM suele generar "INNER JOIN" / "LEFT OUTER JOIN"; los normalizamos acá.
     jt_map = {
-        "INNER": "INNER JOIN", "LEFT": "LEFT OUTER JOIN",
-        "RIGHT": "RIGHT OUTER JOIN", "FULL": "FULL OUTER JOIN",
-        "INNER JOIN": "INNER JOIN", "LEFT OUTER JOIN": "LEFT OUTER JOIN",
-        "RIGHT OUTER JOIN": "RIGHT OUTER JOIN", "FULL OUTER JOIN": "FULL OUTER JOIN",
+        "INNER": "INNER", "LEFT": "LEFT OUTER",
+        "RIGHT": "RIGHT OUTER", "FULL": "FULL OUTER",
+        "INNER JOIN": "INNER", "LEFT OUTER JOIN": "LEFT OUTER",
+        "RIGHT OUTER JOIN": "RIGHT OUTER", "FULL OUTER JOIN": "FULL OUTER",
+        "LEFT OUTER": "LEFT OUTER", "RIGHT OUTER": "RIGHT OUTER", "FULL OUTER": "FULL OUTER",
     }
-    _sub(el, "join_type", jt_map.get(str(cfg.get("join_type", "INNER JOIN")).upper(), "INNER JOIN"))
+    _sub(el, "join_type", jt_map.get(str(cfg.get("join_type", "INNER")).upper(), "INNER"))
     _sub(el, "step1",     cfg.get("step1", ""))
     _sub(el, "step2",     cfg.get("step2", ""))
     k1 = SubElement(el, "keys_1")

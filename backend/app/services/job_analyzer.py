@@ -264,7 +264,10 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "      <dummy>N</dummy>",
         "      <repeat>N</repeat>",
         "      <schedulerType>0</schedulerType>",
-        "      <GUI><xloc>100</xloc><yloc>200</yloc><draw>Y</draw></GUI>",
+        "      <xloc>100</xloc>",
+        "      <yloc>200</yloc>",
+        "      <draw>Y</draw>",
+        "      <parallel>N</parallel>",
         "    </entry>",
     ]
 
@@ -285,7 +288,10 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "      <name>Abort job</name>",
         "      <type>ABORT</type>",
         "      <always_log_rows>N</always_log_rows>",
-        f"      <GUI><xloc>{abort_x}</xloc><yloc>400</yloc><draw>Y</draw></GUI>",
+        f"      <xloc>{abort_x}</xloc>",
+        "      <yloc>400</yloc>",
+        "      <draw>Y</draw>",
+        "      <parallel>N</parallel>",
         "    </entry>",
     ]
 
@@ -298,7 +304,10 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "      <dummy>N</dummy>",
         "      <repeat>N</repeat>",
         "      <schedulerType>0</schedulerType>",
-        f"      <GUI><xloc>{success_x}</xloc><yloc>200</yloc><draw>Y</draw></GUI>",
+        f"      <xloc>{success_x}</xloc>",
+        "      <yloc>200</yloc>",
+        "      <draw>Y</draw>",
+        "      <parallel>N</parallel>",
         "    </entry>",
     ]
 
@@ -341,7 +350,10 @@ def _trans_entry(entry: JobEntry, x: int, y: int) -> List[str]:
         f"      <description>{_esc(entry.rationale)}</description>",
         "      <specification_method>filename</specification_method>",
         "      <trans_object_id/>",
-        f"      <filename>./{_esc(entry.filename)}</filename>",
+        # ${Internal.Job.Filename.Directory} se resuelve en runtime a la carpeta del .kjb.
+        # La ruta relativa "./" no funciona cuando Kettle carga la transformación desde un job
+        # (JobEntryTrans.getTransMeta) en PDI 9.4 — sí funciona al abrir el .ktr directo.
+        f"      <filename>${{Internal.Job.Filename.Directory}}/{_esc(entry.filename)}</filename>",
         "      <transname/>",
         "      <set_logfile>N</set_logfile>",
         "      <logfile/>",
@@ -356,7 +368,10 @@ def _trans_entry(entry: JobEntry, x: int, y: int) -> List[str]:
         "      <follow_abort_remote>N</follow_abort_remote>",
         "      <create_parent_folder>N</create_parent_folder>",
         "      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>",
-        f"      <GUI><xloc>{x}</xloc><yloc>{y}</yloc><draw>Y</draw></GUI>",
+        f"      <xloc>{x}</xloc>",
+        f"      <yloc>{y}</yloc>",
+        "      <draw>Y</draw>",
+        "      <parallel>N</parallel>",
         "    </entry>",
     ]
 
@@ -368,7 +383,10 @@ def _log_entry(name: str, message: str, x: int, y: int) -> List[str]:
         "      <type>WRITE_TO_LOG</type>",
         f"      <logmessage>{_esc(message)}</logmessage>",
         "      <loglevel>Basic</loglevel>",
-        f"      <GUI><xloc>{x}</xloc><yloc>{y}</yloc><draw>Y</draw></GUI>",
+        f"      <xloc>{x}</xloc>",
+        f"      <yloc>{y}</yloc>",
+        "      <draw>Y</draw>",
+        "      <parallel>N</parallel>",
         "    </entry>",
     ]
 

@@ -14,7 +14,8 @@ from xml.etree.ElementTree import Element, fromstring
 # con contenido — sin esto el step queda "vacío" y Spoon lo marca inválido.
 # (tag_contenedor, tag_hijo_requerido)
 _STEP_REQUIRED_CHILDREN: dict[str, tuple[str, str]] = {
-    "GetSystemInfo": ("fields", "field"),
+    # El XML emite "SystemInfo" (ID real del plugin), no "GetSystemInfo"
+    "SystemInfo": ("fields", "field"),
 }
 
 
