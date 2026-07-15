@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # GEMINI_MODEL acepta también GOOGLE_MODEL_MAIN (alias de compatibilidad).
     # Usado para ambos roles (main y secondary); la diferencia es temperatura y tokens.
     gemini_model: str = Field(
-        default="gemini-2.5-flash",
+        default="gemini-3.5-flash",
         validation_alias=AliasChoices("gemini_model", "google_model_main"),
     )
     anthropic_model: str = "claude-sonnet-4-6"

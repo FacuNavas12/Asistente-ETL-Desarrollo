@@ -236,7 +236,9 @@ def build_ktr(
         _sub(step_el, "name",                step.get("name", "Step"))
         _sub(step_el, "type",                xml_type)
         _sub(step_el, "description")
-        _sub(step_el, "distribute",          "Y")
+        outgoing_hops = sum(1 for h in hops if h.get("from") == step.get("name"))
+        distribute_value = "N" if outgoing_hops > 1 else "Y"
+        _sub(step_el, "distribute",          distribute_value)
         _sub(step_el, "custom_distribution")
         _sub(step_el, "copies",              "1")
 
