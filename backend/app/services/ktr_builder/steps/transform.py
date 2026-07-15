@@ -162,10 +162,25 @@ def _step_Formula(el: Element, cfg: dict) -> None:
     hijo directo del step (a diferencia de Calculator). value_length/value_precision
     usan Const.toInt (con default), sin riesgo de NPE."""
     for f in cfg.get("formulas", cfg.get("fields", [])):
+        value_type = f.get("type", "String")
+        formula_str = f.get("formula", "")
+        # B12: Kettle 9.4 no puede bindear Boolean como tipo nativo contra Postgres —
+        # llega como string "Y"/"N" y rompe con "expression is of type character varying".
+        # Conversión automática: Boolean → Integer, fórmula envuelta en IF(...;1;0) si no lo está.
+        if value_type == "Boolean":
+            value_type = "Integer"
+            field_name = f.get("field_name") or f.get("name", "")
+            if not formula_str.strip().upper().startswith("IF("):
+                formula_str = f"IF({formula_str};1;0)"
+            logger.warning(
+                "Formula step: campo '%s' tenía value_type=Boolean — corregido a Integer "
+                "y fórmula envuelta en IF(...;1;0). Kettle 9.4 no bindea Boolean a Postgres.",
+                field_name,
+            )
         formula = SubElement(el, "formula")
         _sub(formula, "field_name",      f.get("field_name") or f.get("name", ""))
-        _sub(formula, "formula_string",  f.get("formula", ""))
-        _sub(formula, "value_type",      f.get("type", "String"))
+        _sub(formula, "formula_string",  formula_str)
+        _sub(formula, "value_type",      value_type)
         _sub(formula, "value_length",    str(f.get("length", -1)))
         _sub(formula, "value_precision", str(f.get("precision", -1)))
         _sub(formula, "replace_field",   f.get("replace_field", ""))

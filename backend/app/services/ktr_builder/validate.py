@@ -100,4 +100,28 @@ def _validate_ktr(ktr: dict) -> list[str]:
                 "Kettle expone ambas con el mismo nombre y solo una llega aguas abajo."
             )
 
+    # Detectar Calculator con cálculos que referencian field_name de otro cálculo
+    # del mismo step — Kettle no encadena dentro del mismo step y falla en runtime.
+    for step in ktr.get("steps", []):
+        canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
+        if canonical not in ("Calculator", "Formula"):
+            continue
+        cfg = _parse_cfg(step.get("config", {}))
+        calcs = cfg.get("calculations", cfg.get("formulas", []))
+        produced: set[str] = set()
+        for i, calc in enumerate(calcs):
+            field_name = calc.get("field_name", "")
+            for arg in ("field_a", "field_b", "field_c"):
+                ref = calc.get(arg, "")
+                if ref and ref in produced:
+                    warnings.append(
+                        f"{canonical} '{step.get('name')}': cálculo #{i + 1} "
+                        f"('{field_name}') usa '{ref}' en '{arg}', pero '{ref}' es el "
+                        f"resultado de un cálculo anterior del mismo step — "
+                        "Calculator no encadena sus propios cálculos. "
+                        "Separar en dos steps Calculator conectados por un hop."
+                    )
+            if field_name:
+                produced.add(field_name)
+
     return warnings

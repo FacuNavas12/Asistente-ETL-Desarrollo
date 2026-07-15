@@ -32,6 +32,7 @@ def _step_MergeJoin(el: Element, cfg: dict) -> None:
 
 
 def _step_DimensionLookup(el: Element, cfg: dict) -> None:
+    logger.warning("### DIMLOOKUP_MARKER — cfg recibido: %s ###", cfg)
     table        = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or ""
     return_field = (cfg.get("return_field") or cfg.get("returnfield") or
                     cfg.get("sk_field") or cfg.get("surrogate_key") or "id_sk")
@@ -77,7 +78,7 @@ def _step_DimensionLookup(el: Element, cfg: dict) -> None:
     _sub(ret_el, "rename",          return_field)
     _sub(ret_el, "creation_method", "autoinc")
     _sub(ret_el, "use_autoinc",     "Y")
-    _sub(ret_el, "version",         "1")
+    _sub(ret_el, "version",         cfg.get("version_field", "version"))
 
 
 def _step_DBLookup(el: Element, cfg: dict) -> None:
