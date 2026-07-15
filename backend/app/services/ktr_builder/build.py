@@ -47,6 +47,12 @@ from app.services.ktr_xml_validator import validate_ktr_xml
 
 logger = logging.getLogger(__name__)
 
+# Canónico interno → nombre de plugin real que espera Kettle en el XML.
+# Necesario cuando el ID de plugin difiere del nombre "humano" usado como canónico.
+_XML_TYPE_OVERRIDES: dict[str, str] = {
+    "GetSystemInfo": "SystemInfo",  # UI: "Get System Info", plugin ID real: SystemInfo
+}
+
 
 def _sanitize(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_\-]", "_", name).strip("_") or "Transformacion_ETL"
@@ -174,7 +180,9 @@ def build_ktr(
     steps       = _auto_layout(ktr_data.get("steps", []), ktr_data.get("hops", []))
     hops        = ktr_data.get("hops", [])
 
-    # Diagnóstico: loggear config completo de steps con campos críticos vacíos
+    # Campos críticos vacíos abortan el build — un step con config genérico
+    # (ver fix_gemini_config_generico.md) es peor que uno que no se genera.
+    critical_incomplete: list[str] = []
     for step in ktr_data.get("steps", []):
         canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
         required = _CRITICAL_FIELDS.get(canonical, [])
@@ -187,11 +195,21 @@ def build_ktr(
         else:
             cfg = raw or {}
         missing = [f for f in required if not (cfg.get(f) or cfg.get(f + "_name") or cfg.get("target_" + f))]
+        # TableInput.sql tiene un fallback literal "SELECT 1" en el builder
+        # (ver steps/input.py _step_TableInput) — presencia de la clave no
+        # alcanza, un placeholder ahí es equivalente a ausente.
+        if canonical == "TableInput" and str(cfg.get("sql", "")).strip().upper() == "SELECT 1":
+            missing.append("sql (placeholder 'SELECT 1', no es una query real)")
         if missing:
             logger.warning(
                 "BUILD_KTR step='%s' type='%s' campos_faltantes=%s config_completo=%s",
                 step.get("name"), canonical, missing, cfg,
             )
+            critical_incomplete.append(
+                f"Config crítico incompleto en '{step.get('name')}' ({canonical}): faltan {missing}"
+            )
+    if critical_incomplete:
+        raise KtrBuilderError(" | ".join(critical_incomplete))
 
     # Pre-pass: garantizar que cada step con conexión la tenga resuelta en su config
     connection_names = [c.get("name", "") for c in connections if c.get("name")]
@@ -277,8 +295,13 @@ def build_ktr(
         step_el   = SubElement(trans, "step")
         step_type = step.get("type", "Dummy")
 
+        # Normalizar tipo: el modelo puede devolver nombres con espacios ("Table Input")
+        # o internos ("TableInput"). El alias map traduce ambos al canónico.
+        canonical_type = STEP_TYPE_ALIASES.get(step_type, step_type)
+        xml_type = _XML_TYPE_OVERRIDES.get(canonical_type, canonical_type)
+
         _sub(step_el, "name",                step.get("name", "Step"))
-        _sub(step_el, "type",                step_type)
+        _sub(step_el, "type",                xml_type)
         _sub(step_el, "description")
         _sub(step_el, "distribute",          "Y")
         _sub(step_el, "custom_distribution")
@@ -288,7 +311,10 @@ def build_ktr(
         _sub(part, "method",      "none")
         _sub(part, "schema_name")
 
-        # config puede llegar como dict (schema object) o string JSON (schema string)
+        # config puede llegar como dict (ya normalizado por el Loop A arriba)
+        # o como string JSON (ruta legacy). El else es CRÍTICO — sin él, cfg
+        # no se reasigna cuando raw_cfg ya es dict y queda "pegado" al valor
+        # de la iteración anterior (bug de scoping — ver fix_definitivo_scoping_config.md).
         raw_cfg = step.get("config", {})
         if isinstance(raw_cfg, str):
             try:
@@ -297,11 +323,7 @@ def build_ktr(
                 logger.warning("KTR: config JSON inválido en step '%s': %r", step.get("name"), raw_cfg[:200])
                 cfg = {}
         else:
-            cfg = raw_cfg or {}
-
-        # Normalizar tipo: el modelo puede devolver nombres con espacios ("Table Input")
-        # o internos ("TableInput"). El alias map traduce ambos al canónico.
-        canonical_type = STEP_TYPE_ALIASES.get(step_type, step_type)
+            cfg = raw_cfg if isinstance(raw_cfg, dict) else {}
 
         # Un type sin emisor registrado (ni siquiera detrás de un alias) no es
         # un plugin PDI real o no está soportado por este builder — Spoon
@@ -314,12 +336,11 @@ def build_ktr(
                 f"Tipo de step no soportado: '{step_type}' en paso '{step.get('name')}'"
             )
 
-        if canonical_type != step_type:
-            logger.info("KTR: step type '%s' normalizado a '%s'", step_type, canonical_type)
-            # Reescribir el <type> en el XML para que Spoon lo reconozca
+        if canonical_type != step_type or xml_type != step_type:
+            logger.info("KTR: step type '%s' normalizado a '%s' (XML: '%s')", step_type, canonical_type, xml_type)
             type_el = step_el.find("type")
             if type_el is not None:
-                type_el.text = canonical_type
+                type_el.text = xml_type
 
         for key in unmapped_config_keys(canonical_type, cfg):
             msg = f"clave de config no mapeada '{key}' en '{step.get('name')}'"

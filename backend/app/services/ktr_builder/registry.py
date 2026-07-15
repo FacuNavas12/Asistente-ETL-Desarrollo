@@ -229,9 +229,15 @@ KNOWN_PDI_STEP_TYPES = set(STEP_BUILDERS.keys()) | set(STEP_TYPE_ALIASES.values(
 
 
 # Campos críticos por tipo de step: sin ellos el step no cumple su función
-# aunque el XML sea válido. Usado solo para diagnóstico (logging) en build.py,
-# no bloquea la generación del .ktr.
+# aunque el XML sea válido. build.py aborta el build si alguno falta.
 _CRITICAL_FIELDS: dict[str, list[str]] = {
+    "TableInput":        ["sql"],
+    "WriteToLog":        ["message"],
+    "GroupBy":           ["group_fields"],
+    "MemoryGroupBy":     ["group_fields"],
+    "SortRows":          ["fields"],
+    "Constant":          ["fields"],
+    "GetSystemInfo":     ["fields"],
     "TableOutput":       ["table"],
     "InsertUpdate":      ["table"],
     "Update":            ["table"],

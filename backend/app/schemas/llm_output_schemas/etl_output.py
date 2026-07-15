@@ -101,9 +101,15 @@ ETL_OUTPUT_SCHEMA: Dict[str, Any] = {
                             "config": {
                                 "type": "string",
                                 "description": (
-                                    "JSON string with ALL required fields for this step type. "
-                                    "NEVER return '{}' — always populate with connection, table, "
-                                    "fields, keys, etc. as documented in the system prompt."
+                                    "JSON string with the fields specific to THIS step's type — "
+                                    "never reuse the same shape across different step types. "
+                                    "See the 'Configuraciones válidas por tipo de step' section in the "
+                                    "system prompt for the exact required keys per type (e.g. TableInput "
+                                    "needs 'sql'+'connection'; WriteToLog needs 'message'; GroupBy needs "
+                                    "'group_fields'+'aggregates'; MergeJoin needs "
+                                    "'step1'+'step2'+'keys1'+'keys2'; Constant needs 'fields' with "
+                                    "'value'). NEVER return '{}', and NEVER default to "
+                                    "{'connection','table','fields'} regardless of type."
                                 ),
                             },
                         },
