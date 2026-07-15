@@ -19,7 +19,7 @@ from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGene
 from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
 from app.services.adapters.ddl_adapter import parse_ddl
-from app.services.ktr_builder import build_ktr, repair_ktr_steps
+from app.services.ktr_builder import build_ktr, repair_integrity_gaps, repair_ktr_steps
 from app.services.ktr_builder.build import _sanitize
 from app.services.ktr_builder.fields_validate import FIELD_INTEGRITY_PREFIX
 from app.services.lineage_builder import build_lineage, stitch_lineage
@@ -474,14 +474,19 @@ async def build_etl_from_raw(raw_llm_data: dict, llm: BaseLLM | None = None) -> 
     - flujo de 2 KTR: {"ktr_1": {...plano...}, "ktr_2": {...plano...}} (ver
       KtrBuildError en _build_response_from_two_ktr_data).
 
-    llm=None (default): no llama al LLM — comportamiento histórico, reconstruye
-    tal cual el JSON guardado. llm=<instancia>: antes de construir, corre
-    repair_ktr_steps() sobre cada ktr para intentar salvar steps con config
-    incompleto — este es precisamente el caso de uso más común de este endpoint
-    ("Reutilizar respuesta" tras un fallo de build_ktr por config incompleto).
-    Sin req.stg_definition/dwh_model disponibles acá (no viajan en raw_llm_data),
+    llm=None (default): no llama al LLM para repair_ktr_steps() (comportamiento
+    histórico). llm=<instancia>: antes de construir, corre repair_ktr_steps()
+    sobre cada ktr para intentar salvar steps con config incompleto — este es
+    precisamente el caso de uso más común de este endpoint ("Reutilizar
+    respuesta" tras un fallo de build_ktr por config incompleto). Sin
+    req.stg_definition/dwh_model disponibles acá (no viajan en raw_llm_data),
     el contexto de esquema para la reparación queda vacío — la corrección se
-    apoya solo en los few-shot de STEP_FEWSHOT, no en nombres reales de columna."""
+    apoya solo en los few-shot de STEP_FEWSHOT, no en nombres reales de columna.
+
+    repair_integrity_gaps() corre SIEMPRE (con o sin llm) — su fallback
+    determinístico no llama al modelo, así que aplica igual en el llm=None
+    histórico: cierra huecos de campo atribuibles a un Constant con config
+    vacío en vez de dejar que build_ktr aborte con el mismo error otra vez."""
     metadata = MetadataResponse(
         modelo_usado="(respuesta reutilizada)",
         tokens_input=0,
@@ -494,11 +499,17 @@ async def build_etl_from_raw(raw_llm_data: dict, llm: BaseLLM | None = None) -> 
             raw_llm_data["ktr_1"]["ktr"], w1 = await repair_ktr_steps(raw_llm_data["ktr_1"]["ktr"], llm, "")
             raw_llm_data["ktr_2"]["ktr"], w2 = await repair_ktr_steps(raw_llm_data["ktr_2"]["ktr"], llm, "")
             extra_warnings = [*w1, *w2]
+        raw_llm_data["ktr_1"]["ktr"], w3 = await repair_integrity_gaps(raw_llm_data["ktr_1"]["ktr"], llm, "")
+        raw_llm_data["ktr_2"]["ktr"], w4 = await repair_integrity_gaps(raw_llm_data["ktr_2"]["ktr"], llm, "")
+        extra_warnings = [*extra_warnings, *w3, *w4]
         return _build_response_from_two_ktr_data(
             raw_llm_data["ktr_1"], raw_llm_data["ktr_2"], metadata, extra_warnings=extra_warnings,
         )
     if llm is not None and raw_llm_data.get("ktr"):
         raw_llm_data["ktr"], extra_warnings = await repair_ktr_steps(raw_llm_data["ktr"], llm, "")
+    if raw_llm_data.get("ktr"):
+        raw_llm_data["ktr"], integrity_warnings = await repair_integrity_gaps(raw_llm_data["ktr"], llm, "")
+        extra_warnings = [*extra_warnings, *integrity_warnings]
     return _build_response_from_data(raw_llm_data, metadata, extra_warnings=extra_warnings)
 
 
@@ -516,6 +527,8 @@ async def generate_etl(
     if resp.json_data and resp.json_data.get("ktr"):
         context_text = f"{req.stagingDef!r}\n\n{req.dwhModel!r}"
         resp.json_data["ktr"], repair_warnings = await repair_ktr_steps(resp.json_data["ktr"], llm, context_text)
+        resp.json_data["ktr"], integrity_warnings = await repair_integrity_gaps(resp.json_data["ktr"], llm, context_text)
+        repair_warnings = [*repair_warnings, *integrity_warnings]
 
     return _build_response(resp, extra_warnings=repair_warnings)
 
@@ -675,6 +688,8 @@ async def generate_etl_from_inference(
     context_text = f"{req.stg_definition}\n\n{req.dwh_model}"
     data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
     data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
+    data_1["ktr"], integrity_warnings_1 = await repair_integrity_gaps(data_1["ktr"], llm, context_text)
+    data_2["ktr"], integrity_warnings_2 = await repair_integrity_gaps(data_2["ktr"], llm, context_text)
 
     metadata = MetadataResponse(
         modelo_usado=resp_2.model,
@@ -687,7 +702,7 @@ async def generate_etl_from_inference(
     return _build_response_from_two_ktr_data(
         data_1, data_2, metadata,
         required_columns_by_table=required_columns_by_table,
-        extra_warnings=[*repair_warnings_1, *repair_warnings_2, *type_warnings],
+        extra_warnings=[*repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2, *type_warnings],
     )
 
 
@@ -782,6 +797,8 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             context_text = f"{req.stg_definition}\n\n{req.dwh_model}"
             data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
             data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
+            data_1["ktr"], integrity_warnings_1 = await repair_integrity_gaps(data_1["ktr"], llm, context_text)
+            data_2["ktr"], integrity_warnings_2 = await repair_integrity_gaps(data_2["ktr"], llm, context_text)
         except Exception as exc:
             job = db.get(KtrBuildJob, job_id)
             if job is not None:
@@ -812,7 +829,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             "raw_data_2": data_2,
             "metadata": metadata.model_dump(),
             "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, req.dwh_model),
-            "repair_warnings": [*repair_warnings_1, *repair_warnings_2, *type_warnings],
+            "repair_warnings": [*repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2, *type_warnings],
         }
         db.commit()
 

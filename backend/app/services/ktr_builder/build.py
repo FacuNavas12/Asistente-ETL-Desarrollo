@@ -144,8 +144,12 @@ def build_ktr(
     # Validación de integridad ("integridad_campos"): grafo de campos +
     # fuente de filas + condición de carrera dimensión/lookup. Los tres son
     # el mismo síntoma en distintas formas — un .ktr que Spoon abre pero falla
-    # (o vacía el pipeline) en runtime — así que los tres son bloqueantes: se
-    # aborta el build acá en vez de entregar un .ktr silenciosamente roto.
+    # (o vacía el pipeline) en runtime. NO abortan el build: el .ktr se genera
+    # igual y cada error se agrega a `warnings` con FIELD_INTEGRITY_PREFIX —
+    # etl_generator.py los promueve a Validacion tipo="error" (máxima
+    # severidad que el frontend renderiza) para que el usuario decida si
+    # corregirlos en Spoon o regenerar. Preferible entregar el archivo con
+    # el problema documentado que no entregar nada.
     #   - validate_field_resolution: campo referenciado que ningún step aguas
     #     arriba produce ("Could not find field X in stream").
     #   - validate_row_sources: rama sin fuente de filas real (Constant/Add
@@ -160,12 +164,9 @@ def build_ktr(
     row_source_errors = validate_row_sources(ktr_data, STEP_TYPE_ALIASES)
     dimension_race_errors = validate_dimension_lookup_races(ktr_data, STEP_TYPE_ALIASES)
     integrity_errors = [*field_errors, *row_source_errors, *dimension_race_errors]
-    if integrity_errors:
-        for e in integrity_errors:
-            logger.error("KTR field integrity: %s", e)
-        raise KtrBuilderError(
-            " | ".join(f"{FIELD_INTEGRITY_PREFIX}{e}" for e in integrity_errors)
-        )
+    for e in integrity_errors:
+        logger.error("KTR field integrity: %s", e)
+    warnings.extend(f"{FIELD_INTEGRITY_PREFIX}{e}" for e in integrity_errors)
 
     name        = ktr_data.get("name") or process_name or "Transformacion_ETL"
     description = ktr_data.get("description", "")

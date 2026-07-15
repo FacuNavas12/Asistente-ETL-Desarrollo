@@ -16,6 +16,8 @@ detectar un hueco real antes que bloquear un .ktr válido por falso positivo.
 """
 from __future__ import annotations
 
+import re
+
 from app.services.ktr_builder.contracts import ROW_GENERATOR_TYPES, STEP_CONTRACTS, missing_required_keys
 from app.services.ktr_builder.contracts import parse_cfg as _parse_cfg
 
@@ -206,15 +208,17 @@ def repair_select_values_narrowing(ktr_data: dict, step_type_aliases: dict[str, 
     return warnings
 
 
-def validate_field_resolution(ktr_data: dict, step_type_aliases: dict[str, str]) -> list[str]:
-    """Recorre el grafo por hops en orden topológico. Devuelve mensajes (sin
-    el prefijo FIELD_INTEGRITY_PREFIX) para cada campo que un step consumidor
-    referencia pero que ningún step aguas arriba produce — mismo síntoma que
-    Spoon reporta en runtime como 'Could not find field X in stream'.
+def find_missing_field_producers(ktr_data: dict, step_type_aliases: dict[str, str]) -> list[dict]:
+    """Igual recorrido que validate_field_resolution, pero devuelve registros
+    estructurados en vez de mensajes formateados — para que un caller (ver
+    repair.py repair_integrity_gaps) pueda actuar programáticamente sobre el
+    step culpable en vez de parsear texto de error.
 
-    build.py trata estos mensajes como error bloqueante (no advertencia): un
-    .ktr con un hueco de este tipo falla en Spoon en runtime con 'Could not
-    find field X in stream', así que mejor no entregarlo."""
+    Cada registro: {field, consumer, consumer_type, producers, culprit_step,
+    culprit_type, reason}. culprit_step es None si no se pudo atribuir el
+    hueco a un ancestro con config incompleto (ver _nearest_incomplete_ancestor)
+    — típicamente porque el step que debería producir el campo ni siquiera
+    está conectado por hops, no porque su config esté vacía."""
     steps = ktr_data.get("steps", [])
     hops = ktr_data.get("hops", [])
     step_by_name = {s.get("name"): s for s in steps}
@@ -222,7 +226,7 @@ def validate_field_resolution(ktr_data: dict, step_type_aliases: dict[str, str])
     order, preds = _topo_order(steps, hops)
     order_index = {name: i for i, name in enumerate(order)}
     produced: dict[str, set[str] | None] = {}
-    errors: list[str] = []
+    records: list[dict] = []
 
     for name in order:
         step = step_by_name[name]
@@ -239,26 +243,89 @@ def validate_field_resolution(ktr_data: dict, step_type_aliases: dict[str, str])
         if upstream is not None:
             missing = _required_fields(canonical, cfg) - upstream
             if missing:
-                producers = pred_names or ["(sin step de entrada)"]
                 incomplete = _nearest_incomplete_ancestor(
                     name, preds, step_by_name, step_type_aliases, order_index
                 )
                 for field in sorted(missing):
-                    if incomplete:
-                        bad_name, bad_type, reason = incomplete
-                        errors.append(
-                            f"Campo '{field}' no se produce: '{bad_name}' ({bad_type}) {reason} "
-                            f"(consumidor aguas abajo: '{name}')."
-                        )
-                    else:
-                        errors.append(
-                            f"Campo '{field}' requerido por '{name}' no está en el stream "
-                            f"(productores aguas arriba: {producers})."
-                        )
+                    records.append({
+                        "field": field,
+                        "consumer": name,
+                        "consumer_type": canonical,
+                        "producers": list(pred_names),
+                        "culprit_step": incomplete[0] if incomplete else None,
+                        "culprit_type": incomplete[1] if incomplete else None,
+                        "reason": incomplete[2] if incomplete else None,
+                    })
 
         produced[name] = _step_output_fields(canonical, cfg, upstream)
 
+    return records
+
+
+def validate_field_resolution(ktr_data: dict, step_type_aliases: dict[str, str]) -> list[str]:
+    """Recorre el grafo por hops en orden topológico. Devuelve mensajes (sin
+    el prefijo FIELD_INTEGRITY_PREFIX) para cada campo que un step consumidor
+    referencia pero que ningún step aguas arriba produce — mismo síntoma que
+    Spoon reporta en runtime como 'Could not find field X in stream'.
+
+    build.py NO aborta el build por estos mensajes: el .ktr se genera igual y
+    el mensaje se promueve a Validacion tipo="error" en la respuesta (severidad
+    máxima) — Spoon fallaría en runtime con 'Could not find field X in stream',
+    pero el usuario decide si corregirlo o regenerar, no se le niega el archivo.
+
+    Formatea find_missing_field_producers() — ver ese para la versión
+    estructurada que consume repair.py."""
+    errors: list[str] = []
+    for rec in find_missing_field_producers(ktr_data, step_type_aliases):
+        if rec["culprit_step"]:
+            errors.append(
+                f"Campo '{rec['field']}' no se produce: '{rec['culprit_step']}' ({rec['culprit_type']}) "
+                f"{rec['reason']} (consumidor aguas abajo: '{rec['consumer']}')."
+            )
+        else:
+            producers = rec["producers"] or ["(sin step de entrada)"]
+            errors.append(
+                f"Campo '{rec['field']}' requerido por '{rec['consumer']}' no está en el stream "
+                f"(productores aguas arriba: {producers})."
+            )
     return errors
+
+
+def find_nearest_source_table_name(
+    ktr_data: dict, step_type_aliases: dict[str, str], start_step_name: str
+) -> str | None:
+    """Camina hacia atrás desde start_step_name buscando el TableInput/CsvInput/
+    ExcelInput/JsonInput/TextFileInput más cercano y devuelve un nombre de
+    tabla/archivo legible. Usado por repair.py (repair_integrity_gaps) para
+    sintetizar el `value` de campos de auditoría tipo `stg_origen` cuando no
+    hay otra forma de saber de qué tabla vino la fila. None si no encuentra
+    ninguno en todo el árbol de ancestros."""
+    steps = ktr_data.get("steps", [])
+    hops = ktr_data.get("hops", [])
+    step_by_name = {s.get("name"): s for s in steps}
+    _, preds = _topo_order(steps, hops)
+
+    seen: set[str] = set()
+    stack = list(preds.get(start_step_name, []))
+    while stack:
+        name = stack.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        step = step_by_name.get(name)
+        if step is not None:
+            canonical = step_type_aliases.get(step.get("type", ""), step.get("type", ""))
+            cfg = _parse_cfg(step.get("config", {}))
+            if canonical == "TableInput":
+                match = re.search(r"FROM\s+([A-Za-z0-9_.\"\[\]]+)", cfg.get("sql", "") or "", re.IGNORECASE)
+                if match:
+                    return match.group(1).split(".")[-1].strip('"[]')
+            elif canonical in ("CsvInput", "ExcelInput", "JsonInput", "TextFileInput"):
+                fname = cfg.get("filename") or cfg.get("file") or cfg.get("path")
+                if fname:
+                    return str(fname)
+        stack.extend(preds.get(name, []))
+    return None
 
 
 def validate_row_sources(ktr_data: dict, step_type_aliases: dict[str, str]) -> list[str]:

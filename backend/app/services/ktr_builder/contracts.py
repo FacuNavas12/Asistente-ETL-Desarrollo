@@ -284,7 +284,10 @@ STEP_CONTRACTS: dict[str, StepContract] = {
         produces=_produces_file_input,
     ),
 
-    "Constant": StepContract(produces=_produces_added_fields),
+    "Constant": StepContract(
+        required_keys=(("fields", "no declara fields (campos de auditoría/derivados) en su config"),),
+        produces=_produces_added_fields,
+    ),
     "GetSystemInfo": StepContract(produces=_produces_added_fields),
     "GetVariable": StepContract(produces=_produces_get_variable),
 

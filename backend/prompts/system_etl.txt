@@ -436,6 +436,23 @@ K16. **Nunca repitas una columna en el mismo SELECT [CRÍTICO]:** El `sql` de un
 
 3. **Los nombres de step en cada hop (`from`/`to`) deben copiarse EXACTOS del campo `name` del step correspondiente** — mismo texto, misma capitalización, sin abreviar. Un hop con un nombre que no coincide exactamente con ningún step es un hop roto.
 
+4. **[INVARIANTE — CRÍTICO] Todo campo listado en los `fields`/mapeo de un `TableOutput`, `InsertUpdate` o `DimensionLookup` DEBE tener un step productor real aguas arriba que lo genere.** Los campos de auditoría o derivados (`stg_origen`, `stg_estado`, etc.) se declaran EXPLÍCITAMENTE con `name`, `type` y `value` en el `config.fields` del `Constant` correspondiente — no alcanza con mencionarlos en la `description` del step ni con nombrarlos en el `TableOutput` de destino. Ningún `Constant` puede tener `config: {}` o `config.fields: []` si su `description` (o el diseño del grafo) dice que agrega campos: eso es el mismo error que la regla 9 de la checklist, pero aplicado específicamente a este step, y el validador de build-time lo aborta con "Campo 'X' requerido por 'Y' no está en el stream".
+
+   **Incorrecto** — el `Constant` existe en el grafo pero no declara nada, así que `stg_origen`/`stg_estado` nunca llegan al `TableOutput` que los necesita:
+   ```json
+   {"name": "Agregar Constantes Productos", "type": "Constant", "description": "Agrega stg_origen y stg_estado", "config": {}}
+   ```
+   con `Cargar stg_productos` (`TableOutput`) esperando esos dos campos en su `fields` de destino — build falla con "Campo 'stg_estado' no se produce: 'Agregar Constantes Productos' (Constant) no declara fields (campos de auditoría/derivados) en su config (consumidor aguas abajo: 'Cargar stg_productos')".
+
+   **Correcto** — mismo patrón, para la tabla de categorías, con `fields` poblado:
+   ```json
+   {"name": "Agregar Constantes Categorías", "type": "Constant", "description": "Agrega stg_origen y stg_estado",
+    "config": {"fields": [
+      {"name": "stg_origen", "type": "String", "value": "categorias"},
+      {"name": "stg_estado", "type": "String", "value": "ACTIVO"}
+    ]}}
+   ```
+
 ---
 
 ## VERIFICACIÓN OBLIGATORIA ANTES DE EMITIR EL JSON
@@ -460,6 +477,7 @@ Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es N
 14. ¿Algún `JoinRows` cruza contra una rama cuyo primer step no es un generador de filas real (regla (c))? → Si SÍ: el join va a vaciar TODO el resultado — corregí la fuente de esa rama antes de conectarla.
 15. ¿Coexisten, en esta misma transformación, un `DimensionLookup`/`CombinationLookup` y un `DBLookup` apuntando a la MISMA tabla? → Si SÍ: eliminá el `DBLookup` redundante y conectá el step de hechos directamente al `returnfield` del `DimensionLookup`/`CombinationLookup` (ver regla (d)).
 16. ¿Algún campo usado como `keys`/`stream_field` en un `DimensionLookup`/`DBLookup`/`CombinationLookup` tiene un tipo declarado distinto entre staging y DWH (ej. string vs INTEGER) sin un `SelectValues.cast` explícito antes? → Si SÍ: agregá el cast (ver regla (e)).
+17. ¿Algún `Constant` tiene `config: {}` o `config.fields: []` mientras su `description` (o el diseño del grafo) indica que agrega campos de auditoría/derivados, y algún `TableOutput`/`InsertUpdate`/`DimensionLookup` aguas abajo espera esos campos? → Si SÍ: completá `config.fields` de ese `Constant` con `name`/`type`/`value` explícitos para cada campo (ver regla 4 de integridad del grafo) — un `Constant` con config vacío que "debería" producir algo es un error crítico, no una omisión menor.
 
 ## CAMPO dwh_sample — OBLIGATORIO
 
