@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import logo from "@/assets/Logo_blanco_esp.png";
 import { useNavigate, useLocation, useBlocker } from "react-router-dom";
 import { useForm, useWatch } from "react-hook-form";
 import { useEtl } from "@/context/EtlContext";
@@ -37,13 +38,13 @@ export default function CreateETL() {
   const { draft, saveDraft, clearDraft, addEtl, saveInProgressEtl } = useEtl();
   const { addToast } = useToast();
 
-  // fresh: true → always open blank (navbar "Nueva Transformación" button)
+  // fresh: true → always open blank (navbar "Generación Nuevo ETL" button)
   // initialFormData → load from prior ETL (Continuar / Reutilizar)
   const initSource  = location.state?.fresh
     ? null
     : (location.state?.initialFormData ?? draft);
 
-  const defaultName = initSource?.etlName ?? "Nueva Transformación";
+  const defaultName = initSource?.etlName ?? "";
 
   const { control, setValue, reset, getValues, formState: { isDirty } } = useForm({
     defaultValues: {
@@ -162,8 +163,7 @@ export default function CreateETL() {
 
   const handleNameConfirm = () => {
     const trimmed = nameInputVal.trim();
-    if (trimmed) setValue("etlName", trimmed, { shouldDirty: true });
-    else setNameInputVal(etlName);
+    setValue("etlName", trimmed || "Nuevo ETL", { shouldDirty: true });
     setIsEditingName(false);
   };
 
@@ -197,13 +197,13 @@ export default function CreateETL() {
 
   const handleLimpiar = () => {
     const empty = {
-      etlName:             "Nueva Transformación",
+      etlName:             "",
       descripcionObjetivo: "",
       origenTables:        [],
       reglasNegocio:       "",
     };
     reset(empty);
-    setNameInputVal("Nueva Transformación");
+    setNameInputVal("");
     setInferResult(null);
     setInferHistory([]);
     setRawLlmData(null);
@@ -478,28 +478,20 @@ export default function CreateETL() {
 
       <div className="etl-page">
         <div className="etl-page__header">
-          {isEditingName ? (
+          <div className="etl-header__title-block">
+            <div className="etl-header__logo-row">
+              <img src={logo} alt="Logo" className="etl-header__logo" />
+              <h1 className="etl-title">Generación Nuevo ETL</h1>
+            </div>
             <input
-              className="etl-title-input"
+              className="etl-name-input"
               value={nameInputVal}
               onChange={e => setNameInputVal(e.target.value)}
               onBlur={handleNameConfirm}
-              onFocus={e => e.target.select()}
-              onKeyDown={e => {
-                if (e.key === "Enter") handleNameConfirm();
-                if (e.key === "Escape") { setNameInputVal(etlName); setIsEditingName(false); }
-              }}
-              autoFocus
+              onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
+              placeholder="Agregue un nombre descriptivo a este proceso"
             />
-          ) : (
-            <h1
-              className="etl-title etl-title--editable"
-              onClick={() => { setNameInputVal(etlName); setIsEditingName(true); }}
-            >
-              {etlName}
-              <span className="etl-title-edit-hint">Editar</span>
-            </h1>
-          )}
+          </div>
           {syncStatus && (
             <span className={`etl-sync-badge etl-sync-badge--${syncStatus}`}>
               {syncStatus === "pending" && "Guardando…"}

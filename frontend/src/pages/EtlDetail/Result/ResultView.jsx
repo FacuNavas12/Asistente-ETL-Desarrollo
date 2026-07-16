@@ -1,6 +1,4 @@
-import { useState } from "react";
 import ChartPanel from "@/components/ui/ChartPanel";
-import DataChartPanel from "@/components/ui/DataChartPanel";
 import "../etlDetail-global.css";
 import "./ResultView.css";
 
@@ -16,9 +14,7 @@ function ValidationItem({ v }) {
   );
 }
 
-export default function ResultView({ result, formData }) {
-  const [chartView, setChartView] = useState("data");
-
+export default function ResultView({ result }) {
   const {
     proceso_etl,
     validaciones = [],
@@ -38,26 +34,8 @@ export default function ResultView({ result, formData }) {
 
       {proceso_etl?.steps?.length > 0 && (
         <div className="etl-section">
-          <div className="etl-chart-tabs">
-            <button
-              className={`etl-chart-tab${chartView === "data" ? " is-active" : ""}`}
-              onClick={() => setChartView("data")}
-            >
-              Datos limpios
-            </button>
-            <button
-              className={`etl-chart-tab${chartView === "process" ? " is-active" : ""}`}
-              onClick={() => setChartView("process")}
-            >
-              Estadísticas del proceso
-            </button>
-          </div>
-          {chartView === "data"
-            ? <DataChartPanel
-                dwhSample={result?.dwh_sample ?? {}}
-                origenTables={formData?.origenTables ?? []}
-              />
-            : <ChartPanel data={result} />}
+          <h2 className="etl-section__title">Estadísticas del proceso</h2>
+          <ChartPanel data={result} />
         </div>
       )}
 

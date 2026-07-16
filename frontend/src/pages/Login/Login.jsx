@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
 import "@/styles/login.css";
 import AuthButtons from "@/auth0/AuthButtons";
+import logo from "@/assets/Logo_blanco_esp.png";
 
 export default function Login() {
   const { isAuthenticated } = useAuth0();
@@ -29,7 +30,11 @@ export default function Login() {
           )}
         </button>
 
-        <div className="login-icon">icono</div>
+        <div className="login-icon">
+          <div className="login-logo-wrap">
+            <img src={logo} alt="Logo" className="login-logo" />
+          </div>
+        </div>
         <h1>Bienvenido</h1>
         <p>Acceda a su cuenta para continuar</p>
         <AuthButtons />

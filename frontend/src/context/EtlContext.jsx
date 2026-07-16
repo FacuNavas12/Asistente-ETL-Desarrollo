@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { listEtls, createEtl, updateEtl, deleteEtlById } from "../api/etls";
-import { listJobs, createJob, updateJob } from "../api/jobs";
 
 const EtlContext = createContext();
 
@@ -57,13 +56,11 @@ export function clearAllStoredData() {
 
 export function EtlProvider({ children }) {
   const [etls, setEtls] = useState([]);
-  const [jobs, setJobs] = useState([]);
   const [draft, setDraftState] = useState(loadDraft);
   const [hiddenIds, setHiddenIds] = useState(loadHiddenIds);
 
   useEffect(() => {
     listEtls().then(setEtls).catch(console.error);
-    listJobs().then(setJobs).catch(console.error);
   }, []);
 
   // ── Draft (session-only) ────────────────────────────────────────────────
@@ -153,42 +150,10 @@ export function EtlProvider({ children }) {
 
   const visibleEtls = etls.filter(e => !hiddenIds.includes(e.id));
 
-  // ── Jobs ────────────────────────────────────────────────────────────────
-  const addJob = async (formData, apiResult) => {
-    const record = await createJob({
-      name: apiResult?.job_plan?.job_name ?? `Job #${jobs.length + 1}`,
-      status: "done",
-      formData,
-      result: apiResult,
-    });
-    setJobs(prev => [record, ...prev.filter(j => j.status !== "pending")]);
-    return record.id;
-  };
-
-  const savePendingJob = async (name, formData) => {
-    const existing = jobs.find(j => j.status === "pending");
-    if (existing) {
-      const record = await updateJob(existing.id, {
-        name: name || existing.name,
-        status: "pending",
-        formData,
-      });
-      setJobs(prev => prev.map(j => j.id === existing.id ? record : j));
-    } else {
-      const record = await createJob({
-        name: name || `Job #${jobs.length + 1}`,
-        status: "pending",
-        formData,
-      });
-      setJobs(prev => [record, ...prev]);
-    }
-  };
-
   const clearAll = () => {
     clearAllStoredData();
     localStorage.removeItem(HIDDEN_IDS_KEY);
     setEtls([]);
-    setJobs([]);
     setDraftState(null);
     setHiddenIds([]);
   };
@@ -197,7 +162,6 @@ export function EtlProvider({ children }) {
     <EtlContext.Provider value={{
       etls, visibleEtls, draft, saveDraft, clearDraft, addEtl, savePendingEtl, saveInProgressEtl,
       hideEtlLocally, deleteEtlPermanently,
-      jobs, addJob, savePendingJob,
       clearAll,
     }}>
       {children}

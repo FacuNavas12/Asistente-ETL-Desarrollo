@@ -58,6 +58,51 @@
   min-width: 0;
 }
 
+.etl-header__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.etl-header__logo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.etl-header__logo {
+  height: 96px;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
+.app-light .etl-header__logo {
+  filter: brightness(0);
+}
+
+.etl-name-input {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  outline: none;
+  width: 340px;
+  max-width: 100%;
+  transition: border-color 0.15s;
+}
+
+.etl-name-input:focus {
+  border-color: var(--accent, #e8501a);
+}
+
+.etl-name-input::placeholder {
+  color: var(--text-3);
+}
+
 /* Limpiar button inside the form header */
 .etl-page__header .etl-clear-btn {
   width: auto;

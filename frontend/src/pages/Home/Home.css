@@ -17,9 +17,20 @@
 
 .home-header__left {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.home-header__logo {
+  height: 96px;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
+.app-light .home-header__logo {
+  filter: brightness(0);
 }
 
 .home-title {

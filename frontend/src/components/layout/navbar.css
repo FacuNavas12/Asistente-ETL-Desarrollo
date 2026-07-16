@@ -58,6 +58,12 @@
   opacity: 0.84;
 }
 
+.sidebar__logo-img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
 .sidebar__logo::after {
   content: attr(data-tooltip);
   position: absolute;

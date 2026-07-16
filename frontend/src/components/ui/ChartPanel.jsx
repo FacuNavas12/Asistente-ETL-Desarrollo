@@ -83,15 +83,24 @@ export default function ChartPanel({ data }) {
 
         <div className="chart-block chart-block--full">
           <h3 className="chart-block__title">Pasos por orden de ejecución</h3>
-          <ResponsiveContainer width="100%" height={Math.max(220, stepsByOrder.length * 36)}>
-            <BarChart data={stepsByOrder} layout="vertical" margin={{ left: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" hide />
-              <YAxis type="category" dataKey="name" width={220} />
-              <Tooltip formatter={(_, __, p) => p.payload.tipo} />
-              <Bar dataKey="value" fill={STEP_COLOR} radius={[0, 6, 6, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <table className="steps-table">
+            <thead>
+              <tr>
+                <th className="steps-table__th steps-table__th--num">#</th>
+                <th className="steps-table__th">Operación</th>
+                <th className="steps-table__th">Step PDI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stepsByOrder.map((s, i) => (
+                <tr key={i} className="steps-table__row">
+                  <td className="steps-table__td steps-table__td--num">{s.name.split(".")[0]}</td>
+                  <td className="steps-table__td">{s.name.replace(/^\d+\.\s*/, "")}</td>
+                  <td className="steps-table__td steps-table__td--tipo">{s.tipo}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
