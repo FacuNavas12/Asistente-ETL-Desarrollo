@@ -5,7 +5,7 @@ import Layout from "@/components/layout/Layout";
 import LineageView from "@/pages/EtlDetail/Lineage/LineageView";
 import ResultView from "@/pages/EtlDetail/Result/ResultView";
 import { computeLineage } from "@/api/lineage";
-import { generateSupersetZip } from "@/utils/supersetExport";
+import { exportEtlToSuperset } from "@/utils/supersetExport";
 import "./etlDetail-global.css";
 
 export default function EtlDetail() {
@@ -100,25 +100,7 @@ export default function EtlDetail() {
   const handleExportSuperset = async () => {
     setSupersetBusy(true);
     try {
-      const blob     = await generateSupersetZip(etl);
-      const formData = new FormData();
-      formData.append("zip_file", blob, `superset_${etl.name}.zip`);
-      const dwhSample = etl?.result?.dwh_sample ?? {};
-      formData.append("dwh_sample", JSON.stringify(dwhSample));
-
-      const apiBase = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
-      const resp = await fetch(`${apiBase}/api/v1/superset/import`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!resp.ok) {
-        const detail = await resp.json().catch(() => ({}));
-        throw new Error(detail?.detail ?? `Error ${resp.status} al importar en Superset.`);
-      }
-
-      const { dashboard_url } = await resp.json();
-      window.open(dashboard_url, "_blank", "noopener,noreferrer");
+      await exportEtlToSuperset(etl);
     } catch (err) {
       alert(err?.message ?? "No se pudo importar el dashboard en Superset.");
     } finally {

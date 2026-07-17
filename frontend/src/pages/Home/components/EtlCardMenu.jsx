@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { downloadKtrFromEtl, downloadAll } from "@/utils/etlCardActions";
+import { exportEtlToSuperset } from "@/utils/supersetExport";
 
 export default function EtlCardMenu({ etl, onDeletePermanent }) {
-  const [open, setOpen] = useState(false);
-  const ref             = useRef(null);
-  const navigate        = useNavigate();
+  const [open, setOpen]               = useState(false);
+  const [supersetBusy, setSupersetBusy] = useState(false);
+  const ref                           = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -22,6 +22,19 @@ export default function EtlCardMenu({ etl, onDeletePermanent }) {
     e.stopPropagation();
     fn();
     setOpen(false);
+  };
+
+  const handleExportSuperset = async (e) => {
+    e.stopPropagation();
+    setSupersetBusy(true);
+    try {
+      await exportEtlToSuperset(etl);
+      setOpen(false);
+    } catch (err) {
+      alert(err?.message ?? "No se pudo importar el dashboard en Superset.");
+    } finally {
+      setSupersetBusy(false);
+    }
   };
 
   return (
@@ -50,9 +63,10 @@ export default function EtlCardMenu({ etl, onDeletePermanent }) {
           </button>
           <button
             className="etl-card-menu__item"
-            onClick={(e) => handle(e, () => navigate("/superset"))}
+            disabled={!hasKtr || supersetBusy}
+            onClick={handleExportSuperset}
           >
-            Abrir en Superset
+            {supersetBusy ? "Abriendo en Superset..." : "Abrir en Superset"}
           </button>
           <button
             className="etl-card-menu__item etl-card-menu__item--danger"
