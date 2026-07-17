@@ -32,6 +32,130 @@ logger = logging.getLogger(__name__)
 DB_UUID_FRONTEND = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 DB_NAME = "ETL_DWH"
 
+# Prefijos de tablas intermedias/staging — excluidas de datasets/charts y del
+# gate de estado del DWH. Espejo del STAGING_PREFIXES corto de db_connector
+# (7 items) — la lista larga (11 items) vive en frontend/src/utils/supersetExport.js.
+STAGING_PREFIXES = ["stg_", "staging_", "tmp_", "temp_", "ods_", "raw_", "wrk_"]
+
+
+def provision_database_sync(base_url: str, username: str, password: str, real_uri: str) -> None:
+    """
+    Variante SÍNCRONA de _auth + _get_or_create_database (con real_uri), para
+    alinear la conexión ETL_DWH en Superset apenas se conoce conn_dwh.
+    etl_generator._try_build es sync y puede correr en threadpool (handler
+    sync) o dentro de un loop ya corriendo (generate_etl_async) — programar
+    un asyncio.create_task cross-thread ahí es frágil; duplicar el mismo
+    login→get-or-create-or-update en httpx.Client (sync) es más simple y
+    confiable. Best-effort: nunca lanza, todo error queda en logger.warning.
+    """
+    base = base_url.rstrip("/")
+    try:
+        with httpx.Client(timeout=15) as client:
+            resp = client.post(
+                f"{base}/api/v1/security/login",
+                json={"username": username, "password": password, "provider": "db", "refresh": True},
+            )
+            if resp.status_code != 200:
+                logger.warning("provision_database_sync: login falló (%d)", resp.status_code)
+                return
+            access_token = resp.json()["access_token"]
+
+            resp = client.get(
+                f"{base}/api/v1/security/csrf_token/",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            if resp.status_code != 200:
+                logger.warning("provision_database_sync: csrf token falló (%d)", resp.status_code)
+                return
+            csrf_token = resp.json()["result"]
+
+            auth_headers = {"Authorization": f"Bearer {access_token}"}
+            write_headers = {
+                **auth_headers, "X-CSRFToken": csrf_token,
+                "Referer": base, "Content-Type": "application/json",
+            }
+
+            resp = client.get(
+                f"{base}/api/v1/database/", headers=auth_headers, params={"q": "(page_size:100)"},
+            )
+            db_id = None
+            if resp.status_code == 200:
+                for db in resp.json().get("result", []):
+                    if db.get("database_name") == DB_NAME:
+                        db_id = db.get("id")
+                        break
+
+            if db_id:
+                update = client.put(
+                    f"{base}/api/v1/database/{db_id}", headers=write_headers,
+                    json={"sqlalchemy_uri": real_uri},
+                )
+                if update.status_code in (200, 201):
+                    logger.info("provision_database_sync: ETL_DWH (id=%s) alineada con conn_dwh", db_id)
+                else:
+                    logger.warning(
+                        "provision_database_sync: no se pudo actualizar la URI (%d): %s",
+                        update.status_code, update.text[:200],
+                    )
+            else:
+                create = client.post(
+                    f"{base}/api/v1/database/",
+                    headers=write_headers,
+                    json={
+                        "database_name": DB_NAME,
+                        "sqlalchemy_uri": real_uri,
+                        "expose_in_sqllab": True,
+                        "allow_run_async": False,
+                        "allow_ctas": False,
+                        "allow_cvas": False,
+                        "allow_dml": False,
+                        "allow_file_upload": False,
+                        "extra": json.dumps({
+                            "allows_virtual_table_explore": True,
+                            "schemas_allowed_for_csv_upload": [],
+                            "engine_params": {},
+                            "metadata_params": {},
+                        }),
+                        "uuid": DB_UUID_FRONTEND,
+                    },
+                )
+                if create.status_code in (200, 201):
+                    logger.info("provision_database_sync: ETL_DWH creada con la URI real de conn_dwh")
+                else:
+                    logger.warning(
+                        "provision_database_sync: no se pudo crear ETL_DWH (%d): %s",
+                        create.status_code, create.text[:200],
+                    )
+    except Exception as exc:
+        logger.warning("provision_database_sync: fallo inesperado — %s", exc)
+
+
+def build_superset_uri(conn) -> str:
+    """
+    sqlalchemy_uri real para el connection registrado en Superset, a partir
+    de un Connection ya resuelto (conn_dwh). Deliberadamente NO reusa los
+    driver strings de db_connector.py (postgresql+psycopg / mssql+pyodbc):
+    esos apuntan a lo instalado en EL ENTORNO DE ESTE BACKEND, no en el de
+    Superset (proceso/entorno Python separado). Postgres usa el driver
+    default de Superset (sin sufijo); SQL Server usa pymssql (convención más
+    común en imágenes de Superset — no requiere ODBC de sistema).
+    """
+    from urllib.parse import quote
+
+    from app.core.config import settings
+    from app.core.crypto import decrypt_password
+    from app.models.connection import DbType
+
+    password = decrypt_password(conn.encrypted_password)
+    safe_user = quote(conn.username, safe="")
+    safe_pass = quote(password, safe="")
+    host_db = f"{conn.host}:{conn.port}/{conn.database}"
+
+    db_type = conn.db_type.value if hasattr(conn.db_type, "value") else str(conn.db_type)
+    if db_type == DbType.postgresql.value:
+        return f"postgresql://{safe_user}:{safe_pass}@{host_db}"
+    return f"mssql+{settings.superset_mssql_driver}://{safe_user}:{safe_pass}@{host_db}"
+
 
 class SupersetError(Exception):
     pass
@@ -82,11 +206,16 @@ class SupersetClient:
         client: httpx.AsyncClient,
         access_token: str,
         csrf_token: str,
+        real_uri: str | None = None,
     ) -> str:
         """
         Devuelve el UUID de ETL_DWH en Superset.
-        Si la BD no existe, la crea con una URI placeholder.
-        El usuario debe configurar la URI real en Settings → Database Connections.
+
+        Si la BD no existe, la crea — con real_uri si está resuelto (conn_dwh
+        ya configurado por el usuario), o con una URI placeholder si no (el
+        usuario debe configurarla a mano en Settings → Database Connections).
+        Si ya existe y real_uri está disponible, actualiza la URI para que
+        quede alineada — idempotente, PUT del mismo valor no hace daño.
         """
         auth_headers = {"Authorization": f"Bearer {access_token}"}
         write_headers = {
@@ -107,6 +236,22 @@ class SupersetClient:
             for db in resp.json().get("result", []):
                 if db.get("database_name") == DB_NAME:
                     db_id = db.get("id")
+
+                    if real_uri:
+                        update = await client.put(
+                            f"{self._base}/api/v1/database/{db_id}",
+                            headers=write_headers,
+                            json={"sqlalchemy_uri": real_uri},
+                            timeout=15,
+                        )
+                        if update.status_code in (200, 201):
+                            logger.info("ETL_DWH (id=%s): URI actualizada a la conexión real", db_id)
+                        else:
+                            logger.warning(
+                                "ETL_DWH (id=%s): no se pudo actualizar la URI (%d): %s",
+                                db_id, update.status_code, update.text[:200],
+                            )
+
                     # Intentar obtener el UUID del endpoint de detalle
                     detail = await client.get(
                         f"{self._base}/api/v1/database/{db_id}",
@@ -135,14 +280,17 @@ class SupersetClient:
                     )
                     return DB_UUID_FRONTEND
 
-        # No existe → crear con URI placeholder
-        logger.info("Creando ETL_DWH en Superset con URI placeholder")
+        # No existe → crear con la URI real si está disponible, si no, placeholder
+        logger.info(
+            "Creando ETL_DWH en Superset con %s",
+            "la URI real de conn_dwh" if real_uri else "URI placeholder",
+        )
         create = await client.post(
             f"{self._base}/api/v1/database/",
             headers=write_headers,
             json={
                 "database_name": DB_NAME,
-                "sqlalchemy_uri": "postgresql://user:password@localhost:5432/dwh",
+                "sqlalchemy_uri": real_uri or "postgresql://user:password@localhost:5432/dwh",
                 "expose_in_sqllab": True,
                 "allow_run_async": False,
                 "allow_ctas": False,
@@ -182,7 +330,6 @@ class SupersetClient:
         db_id: int,
     ) -> None:
         """Crea datasets en Superset directamente desde los YAMLs del ZIP usando el UUID exacto."""
-        STAGING_PREFIXES = ["stg_", "staging_", "tmp_", "temp_", "ods_", "raw_", "wrk_"]
 
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             for name in zf.namelist():
@@ -454,6 +601,7 @@ class SupersetClient:
         client: httpx.AsyncClient,
         headers: dict,
         zip_bytes: bytes,
+        real_table_status: dict[str, dict] | None = None,
     ) -> None:
         """
         Importa datasets → charts → dashboard, luego hace PUT para vincular
@@ -483,7 +631,7 @@ class SupersetClient:
         # 0b. Crear tablas físicas del DWH antes de dataset/import/
         access_token = headers["Authorization"].removeprefix("Bearer ")
         csrf_token = headers.get("X-CSRFToken", "")
-        await self._create_dwh_tables(client, access_token, csrf_token, {}, zip_bytes)
+        await self._create_dwh_tables(client, access_token, csrf_token, {}, zip_bytes, real_table_status)
 
         # 0c. Crear datasets directamente con el UUID exacto del ZIP
         if db_id:
@@ -739,11 +887,18 @@ class SupersetClient:
         csrf_token: str,
         dwh_sample: dict,
         zip_bytes: bytes,
+        real_table_status: dict[str, dict] | None = None,
     ) -> None:
         """
         Crea las tablas del DWH en la BD ETL_DWH de Superset usando SQL Lab API.
         Lee columnas desde los datasets YAML del ZIP (fuente primaria) y usa
         dwh_sample como fallback cuando el ZIP no tiene datos útiles.
+
+        real_table_status (opcional): {tabla_lower: {"exists": bool, "rowCount": int}}
+        del chequeo directo contra la conexión real (db_connector.check_dwh_tables).
+        Toda tabla con filas reales se salta por completo — nunca se le hace
+        DROP/CREATE/INSERT. Sin este parámetro (conn_dwh no resoluble) el
+        comportamiento es el de siempre: siembra sin preguntar (caso demo).
         """
         auth_headers = {
             "Authorization": f"Bearer {access_token}",
@@ -769,7 +924,6 @@ class SupersetClient:
             logger.warning("No se encontró ETL_DWH para crear tablas del DWH")
             return
 
-        STAGING_PREFIXES = ["stg_", "staging_", "tmp_", "temp_", "ods_", "raw_", "wrk_"]
 
         # Enriquecer dwh_sample con columnas reales desde los datasets YAML del ZIP
         enriched_sample: dict = {}
@@ -831,6 +985,14 @@ class SupersetClient:
             if not sample_row:
                 continue
 
+            status = (real_table_status or {}).get(table_name.lower())
+            if status and status.get("exists") and status.get("rowCount", 0) > 0:
+                logger.info(
+                    "Tabla '%s' ya tiene %d fila(s) reales — se salta el seed sintético",
+                    table_name, status["rowCount"],
+                )
+                continue
+
             col_defs = [
                 f'    "{col_name.lower()}" {infer_sql_type(col_value)}'
                 for col_name, col_value in sample_row.items()
@@ -881,17 +1043,29 @@ class SupersetClient:
                     table_name, resp.status_code, resp.text[:300],
                 )
 
-    async def import_dashboard(self, zip_bytes: bytes, dwh_sample: dict | None = None) -> str:
+    async def import_dashboard(
+        self,
+        zip_bytes: bytes,
+        dwh_sample: dict | None = None,
+        real_table_status: dict[str, dict] | None = None,
+        real_uri: str | None = None,
+    ) -> str:
         """
         Importa el ZIP a Superset y devuelve la URL directa al dashboard.
         Alinea el database_uuid de los datasets con el UUID real de ETL_DWH.
+
+        real_table_status (opcional): estado real (existe + rowCount) de las
+        tablas DWH, resuelto por el caller contra conn_dwh — ver
+        _create_dwh_tables para el write-gate que evita pisar datos reales.
+        real_uri (opcional): sqlalchemy_uri real de conn_dwh — si se provee,
+        alinea/crea ETL_DWH en Superset con esa URI en vez del placeholder.
         """
         async with httpx.AsyncClient() as client:
             access_token, csrf_token = await self._auth(client)
 
-            # Obtener UUID real de ETL_DWH en Superset
+            # Obtener/alinear UUID real de ETL_DWH en Superset
             actual_db_uuid = await self._get_or_create_database(
-                client, access_token, csrf_token
+                client, access_token, csrf_token, real_uri
             )
 
             headers = {
@@ -905,7 +1079,9 @@ class SupersetClient:
             _log_zip_contents(clean_zip)
 
             # Crear tablas del DWH en Superset antes de importar el ZIP
-            await self._create_dwh_tables(client, access_token, csrf_token, dwh_sample or {}, clean_zip)
+            await self._create_dwh_tables(
+                client, access_token, csrf_token, dwh_sample or {}, clean_zip, real_table_status
+            )
 
             # Intentar primero con el endpoint unificado
             resp = await client.post(
@@ -920,7 +1096,7 @@ class SupersetClient:
                     "assets/import/ falló (%d): %s", resp.status_code, resp.text[:500]
                 )
                 # Fallback: importar tipo a tipo para aislar el error
-                await self._import_step_by_step(client, headers, clean_zip)
+                await self._import_step_by_step(client, headers, clean_zip, real_table_status)
             logger.info("Superset import OK")
 
             # Extraer UUID del dashboard para construir la URL

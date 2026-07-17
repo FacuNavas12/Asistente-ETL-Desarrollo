@@ -116,6 +116,11 @@ class Settings(BaseSettings):
     superset_url: str = "http://localhost:8088"
     superset_username: str = "admin"
     superset_password: str = "admin"
+    # Driver SQL Server para el sqlalchemy_uri que se registra EN Superset (no
+    # el de este backend — Superset corre en su propio entorno/contenedor).
+    # pymssql es la convención más común en imágenes de Superset porque no
+    # requiere el driver ODBC de sistema que sí necesita pyodbc.
+    superset_mssql_driver: str = "pymssql"
 
     # ── Autenticación de la API (Marco AGESIC 5.0 — función Proteger) ─────────
     # Cuando auth_required=False (default dev) no se valida ningún token.

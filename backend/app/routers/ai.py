@@ -325,13 +325,78 @@ async def generate_from_inference_sse(
 
 # ── Integración Superset ─────────────────────────────────────────────────────
 
+def _resolve_conn_dwh(etl_id: str, db: Session):
+    """
+    Connection real de conn_dwh para un Etl ya persistido, o None si el ETL
+    no existe, nunca se configuró una conexión destino, o el id no resuelve.
+    Nunca lanza — llamado desde paths best-effort (status check, provisioning).
+    """
+    from app.models.etl import Etl
+    from app.models.connection import Connection
+
+    etl = db.get(Etl, etl_id)
+    if etl is None:
+        return None
+    conn_id = ((etl.form_data or {}).get("connectionsMap") or {}).get("conn_dwh")
+    if not conn_id:
+        return None
+    try:
+        conn_uuid = uuid.UUID(str(conn_id))
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return db.get(Connection, conn_uuid)
+
+
+def _expected_dwh_tables(etl) -> list[str]:
+    """Nombres de tabla DWH (no-staging) esperados según dwh_sample del resultado."""
+    from app.services.superset_client import STAGING_PREFIXES
+
+    dwh_sample = ((etl.result or {}).get("dwh_sample")) or {}
+    return [
+        name for name in dwh_sample.keys()
+        if not any(str(name).lower().startswith(p) for p in STAGING_PREFIXES)
+    ]
+
+
+@router.get("/api/v1/etl/{etl_id}/superset/dwh-status")
+def superset_dwh_status(etl_id: str, db: Session = Depends(get_db)):
+    """
+    Estado real (existencia + row count, sin filas) de las tablas DWH
+    esperadas para este ETL, consultando conn_dwh directamente. Gate on-click
+    antes de exportar a Superset: available=False si no hay conn_dwh
+    configurada (ETLs viejos, o el usuario nunca la completó) — en ese caso
+    el frontend no bloquea, simplemente no puede confirmar nada.
+    """
+    from app.models.etl import Etl
+    from app.services.db_connector import check_dwh_tables
+
+    etl = db.get(Etl, etl_id)
+    if etl is None:
+        raise HTTPException(status_code=404, detail="ETL no encontrado.")
+
+    conn = _resolve_conn_dwh(etl_id, db)
+    if conn is None:
+        return {"available": False, "hasData": False, "tables": []}
+
+    table_names = _expected_dwh_tables(etl)
+    if not table_names:
+        return {"available": False, "hasData": False, "tables": []}
+
+    tables = check_dwh_tables(conn, table_names)
+    has_data = any(t["rowCount"] > 0 for t in tables)
+    return {"available": True, "hasData": has_data, "tables": tables}
+
+
 @router.post("/api/v1/superset/import")
 async def superset_import(
     zip_file: UploadFile = File(...),
     dwh_sample: str = Form(default="{}"),
+    etl_id: str | None = Form(default=None),
+    db: Session = Depends(get_db),
 ):
     """Importa el ZIP del dashboard a Superset y devuelve la URL directa al dashboard."""
-    from app.services.superset_client import SupersetClient, SupersetError
+    from app.services.superset_client import SupersetClient, SupersetError, build_superset_uri
+    from app.services.db_connector import check_dwh_tables
     from app.core.config import settings as _settings
     import json as _json
     client = SupersetClient(
@@ -342,7 +407,30 @@ async def superset_import(
     try:
         zip_bytes = await zip_file.read()
         sample = _json.loads(dwh_sample) if dwh_sample else {}
-        url = await client.import_dashboard(zip_bytes, dwh_sample=sample)
+
+        # etl_id opcional (compatibilidad con ETLs viejos, o si no llegó del
+        # frontend) — sin él, se preserva el comportamiento de siempre:
+        # siembra sin preguntar, URI placeholder si ETL_DWH no existe todavía.
+        real_table_status: dict[str, dict] | None = None
+        real_uri: str | None = None
+        if etl_id:
+            from app.models.etl import Etl
+            etl = db.get(Etl, etl_id)
+            conn = _resolve_conn_dwh(etl_id, db)
+            if conn is not None:
+                try:
+                    real_uri = build_superset_uri(conn)
+                except Exception as exc:
+                    logger.warning("No se pudo armar la URI real de conn_dwh: %s", exc)
+                if etl is not None:
+                    table_names = _expected_dwh_tables(etl)
+                    if table_names:
+                        status_list = check_dwh_tables(conn, table_names)
+                        real_table_status = {s["name"].lower(): s for s in status_list}
+
+        url = await client.import_dashboard(
+            zip_bytes, dwh_sample=sample, real_table_status=real_table_status, real_uri=real_uri,
+        )
         return {"dashboard_url": url}
     except SupersetError as e:
         logger.error("Superset import error: %s", str(e))
