@@ -764,119 +764,67 @@ class SupersetClient:
             dash_id,
         )
 
-    async def _resolve_chart_ids(
+    async def _fix_dashboard_chart_ids(
         self,
         client: httpx.AsyncClient,
-        auth_headers: dict,
+        headers: dict,
         zip_bytes: bytes,
-    ) -> dict[str, int]:
+    ) -> None:
         """
-        Devuelve {chart_uuid: chart_id_numerico}.
-        Busca cada chart del ZIP por slice_name exacto en el listing de Superset,
-        paginando hasta encontrar todos o agotar los resultados.
+        assets/import/ crea datasets+charts+dashboard en un solo POST, pero NO
+        reescribe el chartId numérico dentro del position_json del dashboard —
+        el ZIP trae chartId:0 (ver supersetExport.js) y Superset no lo re-resuelve
+        desde el uuid al importar. Resultado: cada celda del dashboard muestra
+        "There is no chart definition associated with this component".
+
+        Se resuelve uuid→id de los charts recién creados (ya existen en Superset,
+        assets/import/ preserva los uuids del ZIP) y se reimporta SOLO la sección
+        dashboards con overwrite=true y los chartId corregidos — mismo mecanismo
+        que ya usa _import_step_by_step (paso 4), aplicado también al camino feliz.
         """
-        # Leer slice_name → uuid desde el ZIP
-        name_to_uuid: dict[str, str] = {}
+        auth_headers = {"Authorization": headers["Authorization"]}
+        uuid_to_id, _ = await self._list_all_charts(client, auth_headers)
+
+        zip_chart_uuids: set[str] = set()
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             for name in zf.namelist():
                 parts = name.split("/")
                 if len(parts) >= 3 and parts[1] == "charts" and name.endswith(".yaml"):
                     try:
                         data = yaml.safe_load(zf.read(name).decode("utf-8"))
-                        slice_name = data.get("slice_name", "")
-                        uid = data.get("uuid", "")
-                        if slice_name and uid:
-                            name_to_uuid[slice_name] = uid
-                    except Exception:
-                        pass
+                        cu = data.get("uuid", "")
+                        if cu:
+                            zip_chart_uuids.add(cu)
+                    except Exception as exc:
+                        logger.warning("_fix_dashboard_chart_ids: no se pudo leer '%s': %s", name, exc)
 
-        if not name_to_uuid:
-            return {}
+        chart_uuid_to_id = {u: uuid_to_id[u] for u in zip_chart_uuids if u in uuid_to_id}
+        if not chart_uuid_to_id:
+            logger.warning(
+                "_fix_dashboard_chart_ids: no se resolvió ningún chart id (%d en el ZIP, %d en Superset) "
+                "— el dashboard queda con chartId:0",
+                len(zip_chart_uuids), len(uuid_to_id),
+            )
+            return
 
-        logger.info(
-            "Charts en ZIP (%d): %s", len(name_to_uuid), list(name_to_uuid.keys())
+        section_zip = _make_section_zip(zip_bytes, "dashboards", "Dashboard", chart_uuid_to_id=chart_uuid_to_id)
+        resp = await client.post(
+            f"{self._base}/api/v1/dashboard/import/",
+            headers=headers,
+            files={"formData": ("export.zip", section_zip, "application/zip")},
+            data={"overwrite": "true"},
+            timeout=30,
         )
-
-        # Buscar por slice_name exacto en el listing — paginar hasta encontrar todos
-        # o agotar resultados. Tomamos el ID más alto (= importación más reciente).
-        name_to_best: dict[
-            str, tuple[int, str]
-        ] = {}  # slice_name → (chart_id, uuid_en_superset)
-        page = 0
-        page_size = 100
-        total_fetched = 0
-        pending = set(name_to_uuid.keys())  # nombres que aún no encontramos
-
-        while pending:
-            resp = await client.get(
-                f"{self._base}/api/v1/chart/",
-                headers=auth_headers,
-                params={"q": f"(page_size:{page_size},page:{page})"},
-                timeout=15,
-            )
-            if resp.status_code != 200:
-                logger.warning(
-                    "No se pudo listar charts (página %d): %d", page, resp.status_code
-                )
-                break
-
-            data = resp.json()
-            results = data.get("result", [])
-            if not results:
-                break
-
-            total_fetched += len(results)
+        if resp.status_code in (200, 201):
             logger.info(
-                "Página %d: %d charts (total fetched: %d)",
-                page,
-                len(results),
-                total_fetched,
+                "_fix_dashboard_chart_ids: dashboard reimportado con %d/%d chartId reales",
+                len(chart_uuid_to_id), len(zip_chart_uuids),
             )
-
-            for chart in results:
-                chart_id = chart.get("id")
-                slice_name = chart.get("slice_name", "")
-                uuid_in_superset = str(chart.get("uuid") or "")
-
-                if slice_name in pending:
-                    prev_id = name_to_best.get(slice_name, (0, ""))[0]
-                    if chart_id > prev_id:
-                        name_to_best[slice_name] = (chart_id, uuid_in_superset)
-                        logger.info(
-                            "Chart encontrado: '%s' → id=%s uuid_superset=%s",
-                            slice_name,
-                            chart_id,
-                            uuid_in_superset,
-                        )
-
-            # Si encontramos todos los charts, podemos parar
-            found = set(name_to_best.keys())
-            pending = set(name_to_uuid.keys()) - found
-
-            count = data.get("count", 0)
-            if total_fetched >= count:
-                break  # No hay más páginas
-
-            page += 1
-
-        # Construir resultado: usar el UUID del ZIP (no el de Superset) como clave
-        # porque el dashboard position_json usa los UUIDs del ZIP
-        uuid_to_id: dict[str, int] = {}
-        for slice_name, (chart_id, _) in name_to_best.items():
-            zip_uuid = name_to_uuid[slice_name]
-            uuid_to_id[zip_uuid] = chart_id
-            logger.info(
-                "Chart resuelto: '%s' → zip_uuid=%s id=%s",
-                slice_name,
-                zip_uuid,
-                chart_id,
+        else:
+            logger.warning(
+                "_fix_dashboard_chart_ids: no se pudo reimportar el dashboard (%d): %s",
+                resp.status_code, resp.text[:300],
             )
-
-        if pending:
-            logger.warning("Charts no encontrados en Superset: %s", list(pending))
-
-        logger.info("Charts resueltos: %d/%d", len(uuid_to_id), len(name_to_uuid))
-        return uuid_to_id
 
     # ── Import ────────────────────────────────────────────────────────────────
 
@@ -1097,6 +1045,10 @@ class SupersetClient:
                 )
                 # Fallback: importar tipo a tipo para aislar el error
                 await self._import_step_by_step(client, headers, clean_zip, real_table_status)
+            else:
+                # assets/import/ no reescribe el chartId numérico del dashboard —
+                # ver _fix_dashboard_chart_ids para el porqué.
+                await self._fix_dashboard_chart_ids(client, headers, clean_zip)
             logger.info("Superset import OK")
 
             # Extraer UUID del dashboard para construir la URL
