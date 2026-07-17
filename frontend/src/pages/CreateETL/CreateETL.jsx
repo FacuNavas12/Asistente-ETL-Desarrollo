@@ -37,13 +37,13 @@ export default function CreateETL() {
   const { draft, saveDraft, clearDraft, addEtl, saveInProgressEtl } = useEtl();
   const { addToast, notifySystem, notifyValidation } = useToast();
 
-  // fresh: true → always open blank (navbar "Nueva Transformación" button)
+  // fresh: true → always open blank (navbar "Generar ETL" button)
   // initialFormData → load from prior ETL (Continuar / Reutilizar)
   const initSource  = location.state?.fresh
     ? null
     : (location.state?.initialFormData ?? draft);
 
-  const defaultName = initSource?.etlName ?? "Nueva Transformación";
+  const defaultName = initSource?.etlName ?? "Generar ETL";
 
   const { control, setValue, reset, getValues, formState: { isDirty } } = useForm({
     defaultValues: {
@@ -196,13 +196,13 @@ export default function CreateETL() {
 
   const handleLimpiar = () => {
     const empty = {
-      etlName:             "Nueva Transformación",
+      etlName:             "Generar ETL",
       descripcionObjetivo: "",
       origenTables:        [],
       reglasNegocio:       "",
     };
     reset(empty);
-    setNameInputVal("Nueva Transformación");
+    setNameInputVal("Generar ETL");
     setInferResult(null);
     setInferHistory([]);
     setRawLlmData(null);
@@ -321,6 +321,10 @@ export default function CreateETL() {
       reglasNegocio,
       stg_definition: inferResult?.stg_ddl ?? "",
       dwh_model:      inferResult?.dwh_ddl ?? "",
+      // connections_map se pierde junto con el KtrBuildJob (TTL) — lo persistimos
+      // acá para que el ETL guardado pueda resolver conn_dwh más adelante
+      // (ej. validación de estado del DWH antes de exportar a Superset).
+      connectionsMap: connectionsMapRef.current,
     }, apiResult, etlName);
     setRawLlmData(null);
     const dest = `/etl/${id}`;
