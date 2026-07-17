@@ -769,6 +769,27 @@ def _try_build(job_id, db: Session) -> None:
     job.build_status = KtrBuildStatus.built
     db.commit()
 
+    # Provisioning de Superset: si conn_dwh se resolvió, alinear (o crear) la
+    # conexión ETL_DWH en Superset con la URI real — evita que el usuario la
+    # reconfigure a mano. Best-effort, nunca debe romper el build ya commiteado.
+    if real_connections.get("conn_dwh"):
+        try:
+            import uuid as _uuid
+            from app.core.config import settings as _settings
+            from app.models.connection import Connection as _Connection
+            from app.services.superset_client import build_superset_uri, provision_database_sync
+
+            conn_dwh_id = (job.connections_map or {}).get("conn_dwh")
+            conn_dwh_row = db.get(_Connection, _uuid.UUID(str(conn_dwh_id))) if conn_dwh_id else None
+            if conn_dwh_row is not None:
+                real_uri = build_superset_uri(conn_dwh_row)
+                provision_database_sync(
+                    _settings.superset_url, _settings.superset_username,
+                    _settings.superset_password, real_uri,
+                )
+        except Exception as exc:
+            _log.warning("_try_build: no se pudo provisionar Superset — %s", exc)
+
 
 async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM, session_factory) -> None:
     """Llama al modelo y persiste el resultado en ktr_build_jobs. Abre su propia
