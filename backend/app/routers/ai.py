@@ -387,49 +387,47 @@ def superset_dwh_status(etl_id: str, db: Session = Depends(get_db)):
     return {"available": True, "hasData": has_data, "tables": tables}
 
 
-@router.post("/api/v1/superset/import")
-async def superset_import(
-    zip_file: UploadFile = File(...),
-    dwh_sample: str = Form(default="{}"),
-    etl_id: str | None = Form(default=None),
-    db: Session = Depends(get_db),
-):
-    """Importa el ZIP del dashboard a Superset y devuelve la URL directa al dashboard."""
-    from app.services.superset_client import SupersetClient, SupersetError, build_superset_uri
+@router.post("/api/v1/etl/{etl_id}/superset/export")
+async def superset_export(etl_id: str, db: Session = Depends(get_db)):
+    """Arma el ZIP de dashboard de Superset para este ETL (backend, sin upload) y lo
+    importa. Reemplaza al viejo POST /api/v1/superset/import — el frontend ya no
+    construye el ZIP, solo pide con el etl_id."""
+    from app.models.etl import Etl
     from app.services.db_connector import check_dwh_tables
+    from app.services.superset_client import SupersetClient, SupersetError, build_superset_uri
+    from app.services.superset_export import build as build_export_zip
     from app.core.config import settings as _settings
-    import json as _json
+
+    etl = db.get(Etl, etl_id)
+    if etl is None:
+        raise HTTPException(status_code=404, detail="ETL no encontrado.")
+
+    try:
+        zip_bytes, dwh_sample = build_export_zip(etl)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    real_table_status: dict[str, dict] | None = None
+    real_uri: str | None = None
+    conn = _resolve_conn_dwh(etl_id, db)
+    if conn is not None:
+        try:
+            real_uri = build_superset_uri(conn)
+        except Exception as exc:
+            logger.warning("No se pudo armar la URI real de conn_dwh: %s", exc)
+        table_names = _expected_dwh_tables(etl)
+        if table_names:
+            status_list = check_dwh_tables(conn, table_names)
+            real_table_status = {s["name"].lower(): s for s in status_list}
+
     client = SupersetClient(
         _settings.superset_url,
         _settings.superset_username,
         _settings.superset_password,
     )
     try:
-        zip_bytes = await zip_file.read()
-        sample = _json.loads(dwh_sample) if dwh_sample else {}
-
-        # etl_id opcional (compatibilidad con ETLs viejos, o si no llegó del
-        # frontend) — sin él, se preserva el comportamiento de siempre:
-        # siembra sin preguntar, URI placeholder si ETL_DWH no existe todavía.
-        real_table_status: dict[str, dict] | None = None
-        real_uri: str | None = None
-        if etl_id:
-            from app.models.etl import Etl
-            etl = db.get(Etl, etl_id)
-            conn = _resolve_conn_dwh(etl_id, db)
-            if conn is not None:
-                try:
-                    real_uri = build_superset_uri(conn)
-                except Exception as exc:
-                    logger.warning("No se pudo armar la URI real de conn_dwh: %s", exc)
-                if etl is not None:
-                    table_names = _expected_dwh_tables(etl)
-                    if table_names:
-                        status_list = check_dwh_tables(conn, table_names)
-                        real_table_status = {s["name"].lower(): s for s in status_list}
-
         url = await client.import_dashboard(
-            zip_bytes, dwh_sample=sample, real_table_status=real_table_status, real_uri=real_uri,
+            zip_bytes, dwh_sample=dwh_sample, real_table_status=real_table_status, real_uri=real_uri,
         )
         return {"dashboard_url": url}
     except SupersetError as e:

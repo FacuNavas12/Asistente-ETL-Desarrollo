@@ -93,8 +93,8 @@ export default function EtlDetail() {
     }
   };
 
-  // Mostrar el botón siempre que haya KTR — si dwh_sample está vacío,
-  // generateSupersetZip usa el KTR como fallback para extraer el esquema.
+  // Mostrar el botón siempre que haya KTR — si dwh_sample está vacío, el backend
+  // reconstruye el esquema DWH desde form_data.dwh_model (ver superset_export/zip_builder.py).
   const canExportSuperset = Boolean(etl.result?.ktr_xml);
 
   const handleExportSuperset = async () => {
