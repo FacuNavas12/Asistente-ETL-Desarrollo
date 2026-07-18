@@ -265,18 +265,18 @@ def test_inferir_estructuras():
     r = requests.post(
         f"{BASE}/api/v1/etl/infer-structures",
         json={
-            "source_structure": json.dumps(ORIGEN_VALIDO),
-            "process_description": "Cargar ventas diarias al DWH para análisis de revenue por cliente",
+            "source_schema_json": json.dumps(ORIGEN_VALIDO),
+            "process_goal": "Cargar ventas diarias al DWH para análisis de revenue por cliente",
             "business_rules": "Excluir montos negativos. Solo año 2024.",
         },
         timeout=120,
     )
     assert r.status_code == 200, r.text
     data = r.json()
-    assert "stg_definition" in data
-    assert "dwh_model" in data
-    assert "CREATE TABLE" in data["stg_definition"].upper()
-    assert "CREATE TABLE" in data["dwh_model"].upper()
+    assert "stg_ddl" in data
+    assert "dwh_ddl" in data
+    assert "CREATE TABLE" in data["stg_ddl"].upper()
+    assert "CREATE TABLE" in data["dwh_ddl"].upper()
 
 
 # ---------------------------------------------------------------------------
@@ -301,20 +301,20 @@ def test_refinar_estructuras():
     r = requests.post(
         f"{BASE}/api/v1/etl/infer-structures/refine",
         json={
-            "source_structure": json.dumps(ORIGEN_VALIDO),
-            "process_description": "Cargar ventas al DWH",
+            "source_schema_json": json.dumps(ORIGEN_VALIDO),
+            "process_goal": "Cargar ventas al DWH",
             "business_rules": "Excluir montos negativos",
-            "current_stg": stg_ddl,
-            "current_dwh": dwh_ddl,
+            "previous_stg": stg_ddl,
+            "previous_dwh": dwh_ddl,
             "correction": "Agregar columna descripcion en STG_VENTAS de tipo VARCHAR(255)",
-            "history": [],
+            "correction_history": [],
         },
         timeout=120,
     )
     assert r.status_code == 200, r.text
     data = r.json()
-    assert data["iteration"] >= 2
-    assert "stg_definition" in data
+    assert data["iteration_count"] >= 2
+    assert "stg_ddl" in data
 
 
 # ---------------------------------------------------------------------------
@@ -589,13 +589,13 @@ def test_fallo_documentar_sin_campo():
 
 
 # ---------------------------------------------------------------------------
-# FALLO 18: Inferir sin source_structure
+# FALLO 18: Inferir sin source_schema_json
 # ---------------------------------------------------------------------------
 def test_fallo_inferir_sin_source():
     r = requests.post(
         f"{BASE}/api/v1/etl/infer-structures",
         json={
-            "process_description": "Cargar ventas",
+            "process_goal": "Cargar ventas",
             "business_rules": "Sin reglas",
         },
         timeout=30,
@@ -604,14 +604,14 @@ def test_fallo_inferir_sin_source():
 
 
 # ---------------------------------------------------------------------------
-# FALLO 19: Inferir sin process_description
+# FALLO 19: Inferir sin process_goal
 # ---------------------------------------------------------------------------
 def test_fallo_inferir_sin_descripcion():
     import json
     r = requests.post(
         f"{BASE}/api/v1/etl/infer-structures",
         json={
-            "source_structure": json.dumps(ORIGEN_VALIDO),
+            "source_schema_json": json.dumps(ORIGEN_VALIDO),
             "business_rules": "Sin reglas",
         },
         timeout=30,
@@ -627,11 +627,11 @@ def test_fallo_refinar_sin_correction():
     r = requests.post(
         f"{BASE}/api/v1/etl/infer-structures/refine",
         json={
-            "source_structure": json.dumps(ORIGEN_VALIDO),
-            "process_description": "Cargar ventas",
+            "source_schema_json": json.dumps(ORIGEN_VALIDO),
+            "process_goal": "Cargar ventas",
             "business_rules": "Sin reglas",
-            "current_stg": "CREATE TABLE STG_X (id INTEGER);",
-            "current_dwh": "CREATE TABLE DIM_X (SK INTEGER PRIMARY KEY);",
+            "previous_stg": "CREATE TABLE STG_X (id INTEGER);",
+            "previous_dwh": "CREATE TABLE DIM_X (SK INTEGER PRIMARY KEY);",
             # falta 'correction'
         },
         timeout=30,

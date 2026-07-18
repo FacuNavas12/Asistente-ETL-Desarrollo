@@ -4,17 +4,17 @@ INFERENCE_OUTPUT_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "required": [
-        "stg_definition",
-        "dwh_model",
+        "stg_ddl",
+        "dwh_ddl",
         "stg_rationale",
         "dwh_rationale",
-        "iteration",
+        "iteration_count",
     ],
     "properties": {
-        "stg_definition": {"type": "string"},
-        "dwh_model": {"type": "string"},
+        "stg_ddl": {"type": "string"},
+        "dwh_ddl": {"type": "string"},
         "stg_rationale": {"type": "string"},
         "dwh_rationale": {"type": "string"},
-        "iteration": {"type": "integer"},
+        "iteration_count": {"type": "integer"},
     },
 }

@@ -17,8 +17,11 @@ export default function Navbar({ guardNavigation }) {
   const { systemMessages, removeSystemMessage, clearSystemMessages } = useToast();
 
   const [avatarOpen, setAvatarOpen] = useState(false);
-  const [msgOpen, setMsgOpen] = useState(false);
+  const [msgHover, setMsgHover] = useState(false);
+  const [msgPinned, setMsgPinned] = useState(false);
+  const msgOpen = msgHover || msgPinned;
   const avatarRef = useRef(null);
+  const msgRef = useRef(null);
 
   const initials = user?.name
     ? user.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
@@ -34,6 +37,17 @@ export default function Navbar({ guardNavigation }) {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [avatarOpen]);
+
+  useEffect(() => {
+    if (!msgPinned) return;
+    const handler = e => {
+      if (msgRef.current && !msgRef.current.contains(e.target)) {
+        setMsgPinned(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [msgPinned]);
 
   // Route all navigation through the guard when one is provided (e.g. dirty form)
   const go = (path, opts) => {
@@ -107,12 +121,13 @@ export default function Navbar({ guardNavigation }) {
         {/* Mensajes */}
         <div
           className="sidebar__msg-wrap"
-          onMouseEnter={() => setMsgOpen(true)}
-          onMouseLeave={() => setMsgOpen(false)}
+          ref={msgRef}
+          onMouseEnter={() => setMsgHover(true)}
+          onMouseLeave={() => setMsgHover(false)}
         >
           <button
             className="sidebar__btn"
-            data-tooltip="Mensajes"
+            onClick={() => setMsgPinned(p => !p)}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 4h16v16H4z" />

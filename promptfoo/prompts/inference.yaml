@@ -70,14 +70,14 @@
     Devolver ÚNICAMENTE este JSON, sin texto adicional, sin bloques de código:
 
     {
-      "stg_definition": "DDL SQL completo de la tabla STG",
-      "dwh_model": "DDL SQL completo del modelo DWH (una o más sentencias CREATE TABLE separadas por punto y coma)",
+      "stg_ddl": "DDL SQL completo de la tabla STG",
+      "dwh_ddl": "DDL SQL completo del modelo DWH (una o más sentencias CREATE TABLE separadas por punto y coma)",
       "stg_rationale": "Explicación breve de las decisiones de diseño del STG",
       "dwh_rationale": "Explicación breve del modelo DWH elegido y sus entidades principales",
-      "iteration": 1
+      "iteration_count": 1
     }
 
-    El campo iteration debe incrementarse con cada refinamiento. En la inferencia inicial siempre es 1.
+    El campo iteration_count debe incrementarse con cada refinamiento. En la inferencia inicial siempre es 1.
 
 - role: user
   content: "{{message}}"

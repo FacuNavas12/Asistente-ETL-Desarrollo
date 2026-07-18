@@ -53,9 +53,9 @@ Siempre respondés con un JSON puro, sin texto adicional, sin bloques de código
 ## FORMATO DE RESPUESTA
 Devolver ÚNICAMENTE este JSON, sin texto adicional, sin bloques de código:
 {
-  "stg_definition": "DDL SQL completo de la tabla STG",
-  "dwh_model": "DDL SQL completo del modelo DWH (una o más sentencias CREATE TABLE separadas por punto y coma)",
+  "stg_ddl": "DDL SQL completo de la tabla STG",
+  "dwh_ddl": "DDL SQL completo del modelo DWH (una o más sentencias CREATE TABLE separadas por punto y coma)",
   "stg_rationale": "Explicación breve de las decisiones de diseño del STG",
   "dwh_rationale": "Explicación breve del modelo DWH elegido y sus entidades principales",
-  "iteration": "<entero — 1 en la inferencia inicial, N+1 en cada refinamiento>"
+  "iteration_count": "<entero — 1 en la inferencia inicial, N+1 en cada refinamiento>"
 }

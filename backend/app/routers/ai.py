@@ -138,15 +138,13 @@ async def generate_from_inference(
 
 
 @router.post("/api/v1/etl/build-from-raw", response_model=ETLGenerateResponse)
-async def build_from_raw(
-    req: BuildFromRawRequest,
-    llm: BaseLLM = Depends(get_main_llm),
-):
+async def build_from_raw(req: BuildFromRawRequest):
     """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada previamente
-    por el frontend (descargada tras un fallo de build_ktr). Antes de reconstruir, intenta
-    reparar steps con config incompleto (ver repair_ktr_steps) — es el caso más común de
-    por qué este endpoint se usa: el fallo original fue justamente config incompleto."""
-    return await _handle(build_etl_from_raw, req.raw_llm_data, llm)
+    por el frontend (descargada tras un fallo de build_ktr). No llama al LLM.
+
+    Repair loop (repair_ktr_steps) desconectado a propósito acá — ver discusión
+    pendiente sobre si "Reutilizar respuesta" debe poder llamar al modelo."""
+    return await _handle(build_etl_from_raw, req.raw_llm_data)
 
 
 # ── Flujo async: modelo + conexiones destino en paralelo ─────────────────────
@@ -188,7 +186,10 @@ def _status_response(job: KtrBuildJob) -> KtrJobStatusResponse:
     # Devolvemos esa respuesta cruda para que el frontend no la pierda.
     raw_llm_data = None
     if job.build_status.value == "failed" and job.model_json:
-        raw_llm_data = job.model_json.get("raw_data")
+        data_1 = job.model_json.get("raw_data_1")
+        data_2 = job.model_json.get("raw_data_2")
+        if data_1 is not None and data_2 is not None:
+            raw_llm_data = {"ktr_1": data_1, "ktr_2": data_2}
 
     return KtrJobStatusResponse(
         model_status=job.model_status.value,
@@ -227,9 +228,19 @@ async def submit_job_connections(
 ):
     """Ata connection_id ya creados (vía POST /api/connections, mismo formulario
     reusado del frontend) al job. No pide datos de conexión — eso ya ocurrió
-    en el navegador antes de esta llamada."""
+    en el navegador antes de esta llamada.
+
+    El frontend dispara una llamada fire-and-forget por cada conexión (origen,
+    staging, dwh) apenas queda lista, sin esperar a las anteriores — nada
+    garantiza que lleguen acá en el mismo orden en que se enviaron. Mergear
+    (en vez de reemplazar el dict entero) hace que el orden de llegada no
+    importe: una request más chica que llega tarde ya no puede pisar una
+    conexión que otra request más nueva escribió antes. Reemplazar el dict
+    entero perdía en silencio la conexión que no venía en el último payload
+    en llegar — build_ktr() terminaba con esa capa en placeholder sin que
+    nada lo señalara como error de este paso."""
     job = _job_or_404(job_id, db)
-    job.connections_map = body.model_dump(exclude_none=True)
+    job.connections_map = {**(job.connections_map or {}), **body.model_dump(exclude_none=True)}
     db.commit()
     _try_build(job.id, db)
     db.refresh(job)
@@ -314,24 +325,110 @@ async def generate_from_inference_sse(
 
 # ── Integración Superset ─────────────────────────────────────────────────────
 
-@router.post("/api/v1/superset/import")
-async def superset_import(
-    zip_file: UploadFile = File(...),
-    dwh_sample: str = Form(default="{}"),
-):
-    """Importa el ZIP del dashboard a Superset y devuelve la URL directa al dashboard."""
-    from app.services.superset_client import SupersetClient, SupersetError
+def _resolve_conn_dwh(etl_id: str, db: Session):
+    """
+    Connection real de conn_dwh para un Etl ya persistido, o None si el ETL
+    no existe, nunca se configuró una conexión destino, o el id no resuelve.
+    Nunca lanza — llamado desde paths best-effort (status check, provisioning).
+    """
+    from app.models.etl import Etl
+    from app.models.connection import Connection
+
+    etl = db.get(Etl, etl_id)
+    if etl is None:
+        return None
+    conn_id = ((etl.form_data or {}).get("connectionsMap") or {}).get("conn_dwh")
+    if not conn_id:
+        return None
+    try:
+        conn_uuid = uuid.UUID(str(conn_id))
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return db.get(Connection, conn_uuid)
+
+
+def _expected_dwh_tables(etl) -> list[str]:
+    """Nombres de tabla DWH (no-staging) esperados según dwh_sample del resultado."""
+    from app.services.superset_client import STAGING_PREFIXES
+
+    dwh_sample = ((etl.result or {}).get("dwh_sample")) or {}
+    return [
+        name for name in dwh_sample.keys()
+        if not any(str(name).lower().startswith(p) for p in STAGING_PREFIXES)
+    ]
+
+
+@router.get("/api/v1/etl/{etl_id}/superset/dwh-status")
+def superset_dwh_status(etl_id: str, db: Session = Depends(get_db)):
+    """
+    Estado real (existencia + row count, sin filas) de las tablas DWH
+    esperadas para este ETL, consultando conn_dwh directamente. Gate on-click
+    antes de exportar a Superset: available=False si no hay conn_dwh
+    configurada (ETLs viejos, o el usuario nunca la completó) — en ese caso
+    el frontend no bloquea, simplemente no puede confirmar nada.
+    """
+    from app.models.etl import Etl
+    from app.services.db_connector import check_dwh_tables
+
+    etl = db.get(Etl, etl_id)
+    if etl is None:
+        raise HTTPException(status_code=404, detail="ETL no encontrado.")
+
+    conn = _resolve_conn_dwh(etl_id, db)
+    if conn is None:
+        return {"available": False, "hasData": False, "tables": []}
+
+    table_names = _expected_dwh_tables(etl)
+    if not table_names:
+        return {"available": False, "hasData": False, "tables": []}
+
+    tables = check_dwh_tables(conn, table_names)
+    has_data = any(t["rowCount"] > 0 for t in tables)
+    return {"available": True, "hasData": has_data, "tables": tables}
+
+
+@router.post("/api/v1/etl/{etl_id}/superset/export")
+async def superset_export(etl_id: str, db: Session = Depends(get_db)):
+    """Arma el ZIP de dashboard de Superset para este ETL (backend, sin upload) y lo
+    importa. Reemplaza al viejo POST /api/v1/superset/import — el frontend ya no
+    construye el ZIP, solo pide con el etl_id."""
+    from app.models.etl import Etl
+    from app.services.db_connector import check_dwh_tables
+    from app.services.superset_client import SupersetClient, SupersetError, build_superset_uri
+    from app.services.superset_export import build as build_export_zip
     from app.core.config import settings as _settings
-    import json as _json
+
+    etl = db.get(Etl, etl_id)
+    if etl is None:
+        raise HTTPException(status_code=404, detail="ETL no encontrado.")
+
+    try:
+        zip_bytes, dwh_sample = build_export_zip(etl)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    real_table_status: dict[str, dict] | None = None
+    real_uri: str | None = None
+    conn = _resolve_conn_dwh(etl_id, db)
+    if conn is not None:
+        try:
+            real_uri = build_superset_uri(conn)
+        except Exception as exc:
+            logger.warning("No se pudo armar la URI real de conn_dwh: %s", exc)
+        table_names = _expected_dwh_tables(etl)
+        if table_names:
+            status_list = check_dwh_tables(conn, table_names)
+            real_table_status = {s["name"].lower(): s for s in status_list}
+
     client = SupersetClient(
         _settings.superset_url,
         _settings.superset_username,
         _settings.superset_password,
     )
     try:
-        zip_bytes = await zip_file.read()
-        sample = _json.loads(dwh_sample) if dwh_sample else {}
-        url = await client.import_dashboard(zip_bytes, dwh_sample=sample)
+        url = await client.import_dashboard(
+            zip_bytes, dwh_sample=dwh_sample, real_table_status=real_table_status, real_uri=real_uri,
+        )
         return {"dashboard_url": url}
     except SupersetError as e:
         logger.error("Superset import error: %s", str(e))

@@ -62,6 +62,78 @@ def _quote_identifier(identifier: str, db_type: DbType) -> str:
     return _quote_pg(identifier) if db_type == DbType.postgresql else _quote_mssql(identifier)
 
 
+def _split_dotted(s: str) -> list[str]:
+    """Split on top-level dots, respecting double-quoted segments (dots inside
+    a quoted identifier, e.g. "my.table", are literal and not a separator)."""
+    parts: list[str] = []
+    buf: list[str] = []
+    in_quotes = False
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch == '"':
+            if in_quotes and i + 1 < len(s) and s[i + 1] == '"':
+                buf.append('"')
+                i += 2
+                continue
+            in_quotes = not in_quotes
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == "." and not in_quotes:
+            parts.append("".join(buf))
+            buf = []
+            i += 1
+            continue
+        buf.append(ch)
+        i += 1
+    parts.append("".join(buf))
+    return parts
+
+
+def _unquote_identifier(part: str) -> str:
+    if len(part) >= 2 and part[0] == '"' and part[-1] == '"':
+        return part[1:-1].replace('""', '"')
+    return part
+
+
+def qualify(tname: str, schema: str = "") -> str:
+    """
+    Builds 'schema.table' from a table name that may or may not already be
+    qualified — single source of truth so callers stop gluing schema +
+    tname themselves (that's how 'public.public.ventas' happened).
+
+    Contract: if tname already carries a schema prefix, that prefix wins —
+    schema_name is a hint, not a second source of truth. Dots inside a
+    double-quoted identifier (e.g. "my.table") are literal, not a separator.
+
+    Case note: unquoted Postgres identifiers are catalog-folded to lowercase;
+    this function does not fold — callers must pass names as they appear in
+    information_schema, or the catalog lookup simply won't match.
+    """
+    tname = tname.strip()
+    schema = (schema or "").strip()
+
+    if "." in tname:
+        parts = _split_dotted(tname)
+        if len(parts) >= 2:
+            embedded_schema = _unquote_identifier(parts[-2])
+            table = _unquote_identifier(parts[-1])
+            if schema and schema != embedded_schema:
+                logger.warning(
+                    "qualify(): tname '%s' ya trae schema embebido '%s', "
+                    "distinto de schema_name '%s'; se usa el embebido",
+                    tname, embedded_schema, schema,
+                )
+            return f"{embedded_schema}.{table}"
+        # single quoted segment with a literal dot inside, e.g. "my.table"
+        table = _unquote_identifier(parts[0])
+        return f"{schema}.{table}" if schema else table
+
+    tname = _unquote_identifier(tname)
+    return f"{schema}.{tname}" if schema else tname
+
+
 # ─── Row serialization ────────────────────────────────────────────────────────
 
 def _serialize_row(row) -> list:
@@ -554,3 +626,42 @@ def get_table_data(
         )
     finally:
         engine.dispose()
+
+
+def check_dwh_tables(conn: Connection, table_names: list[str], schema: str = "public") -> list[dict]:
+    """
+    Estado real de un set de tablas DWH: existencia + COUNT(*) exacto.
+    Nunca hace SELECT * — solo counts/booleans, para el gate de "¿hay datos
+    reales antes de exportar/sembrar en Superset?". Tolera tabla inexistente
+    o fallo de conexión reportando exists=False en vez de propagar el error —
+    este chequeo es informativo, nunca debe romper el flujo que lo llama.
+    """
+    try:
+        engine = build_engine(conn, read_only=True)
+    except Exception as exc:
+        logger.warning("check_dwh_tables: no se pudo construir el engine — %s", sanitize_error(str(exc)))
+        return [{"name": t, "exists": False, "rowCount": 0} for t in table_names]
+
+    results: list[dict] = []
+    try:
+        with engine.connect() as c:
+            for table in table_names:
+                try:
+                    _validate_table_exists(c, schema, table)
+                except ValueError:
+                    results.append({"name": table, "exists": False, "rowCount": 0})
+                    continue
+                try:
+                    qualified = f"{_quote_identifier(schema, conn.db_type)}.{_quote_identifier(table, conn.db_type)}"
+                    count = int(c.execute(text(f"SELECT COUNT(*) FROM {qualified}")).scalar() or 0)
+                    results.append({"name": table, "exists": True, "rowCount": count})
+                except Exception as exc:
+                    logger.warning("check_dwh_tables: COUNT falló para '%s' — %s", table, sanitize_error(str(exc)))
+                    results.append({"name": table, "exists": True, "rowCount": 0})
+    except Exception as exc:
+        logger.warning("check_dwh_tables: fallo de conexión — %s", sanitize_error(str(exc)))
+        return [{"name": t, "exists": False, "rowCount": 0} for t in table_names]
+    finally:
+        engine.dispose()
+
+    return results

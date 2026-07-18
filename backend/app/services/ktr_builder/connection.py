@@ -153,10 +153,19 @@ def _generic_var(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", name or "conn").upper()
 
 
-def _build_connection(trans: Element, conn: dict, real: dict | None = None) -> None:
+def _build_connection(trans: Element, conn: dict, real: dict | None = None) -> list[tuple[str, str]]:
+    """Devuelve [(nombre_variable_Kettle, valor_default)] para toda variable
+    ${...} que esta conexión dejó sin resolver en el XML (lista vacía si
+    `real` estaba disponible) — el caller (build.py) las declara como
+    <parameters> de la transformación y las vuelca a una plantilla
+    kettle.properties, así el .ktr documenta qué variables tiene que
+    completar el usuario antes de ejecutar en Spoon en vez de dejarlas
+    ${SIN_DECLARAR} silenciosas (Kettle resuelve una variable no declarada a
+    string vacío sin avisar)."""
     c = SubElement(trans, "connection")
     name = conn.get("name", "conn_default")
     _sub(c, "name", name)
+    undeclared_params: list[tuple[str, str]] = []
     if real:
         _sub(c, "server",   real["host"])
         _sub(c, "type",     real["type"])
@@ -167,17 +176,30 @@ def _build_connection(trans: Element, conn: dict, real: dict | None = None) -> N
         _sub(c, "password", real["password"])
         conn_type = real["type"]
     else:
-        _sub(c, "server",   conn.get("host", "PLACEHOLDER_HOST"))
+        var = _generic_var(name)
         conn_type = conn.get("type", "GENERIC")
+        _sub(c, "server",   conn.get("host", "PLACEHOLDER_HOST"))
         _sub(c, "type",     conn_type)
         _sub(c, "access",   "Native")
         _sub(c, "database", conn.get("database", "PLACEHOLDER_DATABASE"))
         _sub(c, "port",     str(conn.get("port", 0)))
-        _sub(c, "username", conn.get("username", "PLACEHOLDER_USER"))
+        # username SÍ se parametriza (a diferencia de server/database, que
+        # quedan como texto plano PLACEHOLDER_* solo para diagnóstico visual
+        # en Spoon): es el único de los tres que Kettle realmente usa para
+        # autenticar contra el motor real vía CUSTOM_URL.
+        _sub(c, "username", f"${{{var}_USER}}")
         # Sin conexión real resuelta: no hay password que ofuscar. Vacío es
         # honesto (Spoon lo muestra en blanco); "Encrypted " a secas simulaba
-        # un password ofuscado inexistente.
+        # un password ofuscado inexistente. El password NUNCA se declara acá
+        # ni en la plantilla kettle.properties (ver build_kettle_properties_template)
+        # — se completa a mano en el conector de Spoon, nunca en texto plano.
         _sub(c, "password", "")
+        undeclared_params = [
+            (f"{var}_HOST",     conn.get("host", "PLACEHOLDER_HOST")),
+            (f"{var}_PORT",     str(conn.get("port") or 5432)),
+            (f"{var}_DATABASE", conn.get("database", "PLACEHOLDER_DATABASE")),
+            (f"{var}_USER",     conn.get("username", "PLACEHOLDER_USER")),
+        ]
     _sub(c, "servername")
     _sub(c, "data_tablespace")
     _sub(c, "index_tablespace")
@@ -187,3 +209,27 @@ def _build_connection(trans: Element, conn: dict, real: dict | None = None) -> N
         custom_url = f"jdbc:postgresql://${{{var}_HOST}}:${{{var}_PORT}}/${{{var}_DATABASE}}"
         _add_attribute(attributes, "CUSTOM_DRIVER_CLASS", _GENERIC_DRIVER_CLASS)
         _add_attribute(attributes, "CUSTOM_URL", custom_url)
+    return undeclared_params
+
+
+def build_kettle_properties_template(undeclared_params: list[tuple[str, str]]) -> str:
+    """Plantilla kettle.properties para toda variable ${...} que quedó sin
+    resolver en las conexiones del .ktr (ver _build_connection). "" si no hay
+    ninguna. Nunca incluye password — eso se completa a mano en Spoon."""
+    if not undeclared_params:
+        return ""
+    lines = [
+        "# Generado por el acelerador ETL — completar antes de ejecutar en Spoon/Kitchen/Pan.",
+        "# Pegar en $HOME/.kettle/kettle.properties (Linux/Mac) o",
+        "# %USERPROFILE%\\.kettle\\kettle.properties (Windows), o pasar como",
+        "# parametro de ejecucion de Kitchen/Pan (-param:NOMBRE=valor).",
+        "# El password de cada conexion NO se incluye aca por seguridad --",
+        "# completarlo directamente en el conector de Spoon.",
+    ]
+    seen: set[str] = set()
+    for var_name, default in undeclared_params:
+        if var_name in seen:
+            continue
+        seen.add(var_name)
+        lines.append(f"{var_name}={default}")
+    return "\n".join(lines) + "\n"

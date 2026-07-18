@@ -1,0 +1,36 @@
+2026-07-10 00:18:37,240 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-10 00:20:07,816 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-07-10 00:20:07,816 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-10 00:20:08,940 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-09-2025:generateContent "HTTP/1.1 404 Not Found"
+2026-07-10 00:20:08,942 | ERROR | app.routers.ai | Service error: [Gemini] Non-recoverable error: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-2.5-flash-lite-preview-09-2025 is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-07-10 00:22:49,437 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-10 00:24:04,254 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-07-10 00:24:04,255 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-10 00:24:05,392 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent "HTTP/1.1 404 Not Found"
+2026-07-10 00:24:05,393 | ERROR | app.routers.ai | Service error: [Gemini] Non-recoverable error: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-pro is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}
+2026-07-10 00:28:10,637 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-10 00:29:26,468 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-07-10 00:29:26,469 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-10 00:29:32,078 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-10 00:29:32,083 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 3488 | out: 1390 | stop: end_turn | 5614ms
+2026-07-10 00:32:06,992 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-10 00:33:37,002 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-07-10 00:33:37,003 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-10 00:33:45,878 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-10 00:33:45,880 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 3482 | out: 1214 | stop: end_turn | 8877ms
+2026-07-10 00:35:29,449 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-10 00:35:47,863 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-10 00:35:47,866 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 11939 | out: 3523 | stop: end_turn | 18416ms
+2026-07-10 00:35:47,867 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-10 00:36:18,853 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-10 00:36:18,863 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 11014 | out: 6413 | stop: end_turn | 30996ms
+2026-07-10 00:36:20,125 | ERROR | app.services.ktr_builder.build | KTR field integrity: Campo 'stg_estado' requerido por 'Cargar stg_productos' no está en el stream (productores aguas arriba: ['Leer Productos']).
+2026-07-10 00:36:20,125 | ERROR | app.services.ktr_builder.build | KTR field integrity: Campo 'stg_origen' requerido por 'Cargar stg_productos' no está en el stream (productores aguas arriba: ['Leer Productos']).
+2026-07-10 00:36:20,126 | ERROR | app.services.ktr_builder.build | KTR field integrity: Campo 'stg_estado' requerido por 'Cargar stg_sucursales' no está en el stream (productores aguas arriba: ['Leer Sucursales']).
+2026-07-10 00:36:20,126 | ERROR | app.services.ktr_builder.build | KTR field integrity: Campo 'stg_origen' requerido por 'Cargar stg_sucursales' no está en el stream (productores aguas arriba: ['Leer Sucursales']).
+2026-07-10 00:36:20,126 | ERROR | app.services.ktr_builder.build | KTR field integrity: Campo 'stg_estado' requerido por 'Cargar stg_ventas' no está en el stream (productores aguas arriba: ['Leer Ventas']).
+2026-07-10 00:36:20,126 | ERROR | app.services.ktr_builder.build | KTR field integrity: Campo 'stg_origen' requerido por 'Cargar stg_ventas' no está en el stream (productores aguas arriba: ['Leer Ventas']).
+2026-07-10 00:36:20,126 | ERROR | app.services.ktr_builder.build | KTR field integrity: Campo 'stg_estado' requerido por 'Cargar stg_clientes' no está en el stream (productores aguas arriba: ['Deduplicar Clientes']).
+2026-07-10 00:36:20,127 | ERROR | app.services.ktr_builder.build | KTR field integrity: Campo 'stg_origen' requerido por 'Cargar stg_clientes' no está en el stream (productores aguas arriba: ['Deduplicar Clientes']).
+2026-07-10 00:37:49,944 | INFO | app.outbox.sqlite_outbox | outbox.synced id=6a6b9e9c-1763-4224-b041-73155cd70cf1
+2026-07-10 15:51:43,586 | INFO | app.outbox.runner | outbox.runner started (in-process)

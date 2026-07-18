@@ -19,7 +19,7 @@ export default function AppRouter() {
       <Route path="/settings"   element={<PrivateRoute><Settings /></PrivateRoute>} />
       <Route path="/etl-create" element={<PrivateRoute><CreateETL /></PrivateRoute>} />
       <Route path="/etl/:id"    element={<PrivateRoute><EtlDetail /></PrivateRoute>} />
-<Route path="/superset"   element={<PrivateRoute><SupersetPage /></PrivateRoute>} />
+      <Route path="/superset"   element={<PrivateRoute><SupersetPage /></PrivateRoute>} />
     </Routes>
   );
 }

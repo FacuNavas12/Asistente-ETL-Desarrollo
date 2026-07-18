@@ -11,8 +11,32 @@
 
 .infer-review__header {
   display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.infer-review__header-side {
+  display: flex;
+  flex: 1 1 0;
+}
+
+.infer-review__header-side--left {
+  justify-content: flex-start;
+}
+
+.infer-review__header-side--right {
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.infer-review__header-center {
+  display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
   gap: 6px;
+  flex: 2 1 0;
 }
 
 .infer-review__title {
@@ -20,6 +44,10 @@
   font-weight: 700;
   color: var(--text-h);
   margin: 0;
+}
+
+.infer-review__title-name {
+  color: var(--accent);
 }
 
 .infer-review__subtitle {
@@ -37,7 +65,7 @@
   background: var(--accent-bg);
   color: var(--accent);
   border: 1px solid var(--accent-border);
-  align-self: flex-start;
+  align-self: center;
 }
 
 /* Paneles STG + DWH */

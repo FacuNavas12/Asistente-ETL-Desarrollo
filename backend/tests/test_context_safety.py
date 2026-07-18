@@ -123,8 +123,8 @@ def _infer_request() -> InferRequest:
         }
     ]
     return InferRequest(
-        source_structure=json.dumps(origin_with_data),
-        process_description="Load customers",
+        source_schema_json=json.dumps(origin_with_data),
+        process_goal="Load customers",
         business_rules="",
     )
 
@@ -137,13 +137,13 @@ def _refine_request() -> RefineRequest:
         }
     ]
     return RefineRequest(
-        source_structure=json.dumps(origin_with_data),
-        process_description="Load customers",
+        source_schema_json=json.dumps(origin_with_data),
+        process_goal="Load customers",
         business_rules="",
-        current_stg="CREATE TABLE STG_CUSTOMERS (email VARCHAR(255));",
-        current_dwh="CREATE TABLE DIM_CUSTOMERS (SK INTEGER PRIMARY KEY);",
+        previous_stg="CREATE TABLE STG_CUSTOMERS (email VARCHAR(255));",
+        previous_dwh="CREATE TABLE DIM_CUSTOMERS (SK INTEGER PRIMARY KEY);",
         correction="Add a name column",
-        history=[],
+        correction_history=[],
     )
 
 
@@ -186,11 +186,11 @@ def test_generate_etl_from_inference_no_raw_data():
 def test_infer_structures_no_raw_data():
     captured: list[str] = []
     infer_resp = {
-        "stg_definition": "CREATE TABLE STG_TEST (id INTEGER);",
-        "dwh_model":      "CREATE TABLE DIM_TEST (SK INTEGER PRIMARY KEY);",
+        "stg_ddl":        "CREATE TABLE STG_TEST (id INTEGER);",
+        "dwh_ddl":        "CREATE TABLE DIM_TEST (SK INTEGER PRIMARY KEY);",
         "stg_rationale":  "",
         "dwh_rationale":  "",
-        "iteration":      1,
+        "iteration_count": 1,
     }
     from app.services.structure_inferrer import infer_structures
     _run(infer_structures(_infer_request(), _make_llm(captured, infer_resp)))
@@ -201,11 +201,11 @@ def test_infer_structures_no_raw_data():
 def test_refine_structures_no_raw_data():
     captured: list[str] = []
     infer_resp = {
-        "stg_definition": "CREATE TABLE STG_TEST (id INTEGER, name VARCHAR);",
-        "dwh_model":      "CREATE TABLE DIM_TEST (SK INTEGER PRIMARY KEY);",
+        "stg_ddl":        "CREATE TABLE STG_TEST (id INTEGER, name VARCHAR);",
+        "dwh_ddl":        "CREATE TABLE DIM_TEST (SK INTEGER PRIMARY KEY);",
         "stg_rationale":  "",
         "dwh_rationale":  "",
-        "iteration":      2,
+        "iteration_count": 2,
     }
     from app.services.structure_inferrer import refine_structures
     _run(refine_structures(_refine_request(), _make_llm(captured, infer_resp)))

@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
 import Layout from "@/components/layout/Layout";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/Toast";
+import { parseEtlFile } from "@/utils/etlImport";
 import EtlCard from "./components/EtlCard";
 import "./Home.css";
 import logo from "@/assets/Logo_blanco_esp.png";
@@ -19,11 +21,30 @@ function EmptyState() {
 
 export default function Home() {
   const navigate = useNavigate();
-  const { visibleEtls, hideEtlLocally, deleteEtlPermanently } = useEtl();
+  const { visibleEtls, hideEtlLocally, deleteEtlPermanently, addEtl } = useEtl();
+  const { addToast } = useToast();
   const [hideTarget, setHideTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const importInputRef = useRef(null);
 
   const isEmpty = visibleEtls.length === 0;
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const parsed = await parseEtlFile(file);
+      if (parsed.type === "full") {
+        const id = await addEtl(parsed.etl.formData, parsed.etl.result, parsed.etl.name);
+        navigate(`/etl/${id}`);
+      } else {
+        navigate("/etl-create", { state: { initialFormData: parsed.formData } });
+      }
+    } catch (err) {
+      addToast(`Error al importar: ${err.message}`);
+    }
+  };
 
   return (
     <Layout>
@@ -56,6 +77,19 @@ export default function Home() {
               <span className="home-count__label">Transformaciones</span>
               <span className="home-count__badge">{visibleEtls.length}</span>
             </div>
+          </div>
+
+          <div className="home-header__right">
+            <button className="home-import-btn" onClick={() => importInputRef.current?.click()}>
+              Importar
+            </button>
+            <input
+              type="file"
+              accept=".json,application/json"
+              ref={importInputRef}
+              style={{ display: "none" }}
+              onChange={handleImport}
+            />
           </div>
         </div>
 

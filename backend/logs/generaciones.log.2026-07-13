@@ -1,0 +1,2597 @@
+2026-07-13 13:12:00,956 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 13:54:34,217 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-07-13 13:54:34,217 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 13:54:35,562 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-07-13 13:54:35,563 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 1/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 1s
+2026-07-13 13:54:36,564 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 13:54:37,404 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-07-13 13:54:37,404 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 2/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 2s
+2026-07-13 13:54:39,405 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 13:54:40,028 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-07-13 13:54:40,029 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 3/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 4s
+2026-07-13 13:54:44,030 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 13:54:44,407 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-07-13 13:54:44,408 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 4/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 8s
+2026-07-13 13:54:44,409 | ERROR | app.routers.ai | Service error: [Gemini] Max retries reached: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-07-13 13:56:02,654 | INFO | app.outbox.sqlite_outbox | outbox.synced id=a7e633a8-325c-4479-91f4-0936819418bd
+2026-07-13 13:57:03,515 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 13:57:04,769 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-07-13 13:57:04,771 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 1/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 1s
+2026-07-13 13:57:05,772 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 13:57:06,515 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-07-13 13:57:06,517 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 2/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 2s
+2026-07-13 13:57:08,518 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 13:57:08,963 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-07-13 13:57:08,964 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 3/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 4s
+2026-07-13 13:57:12,965 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 13:57:13,696 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-07-13 13:57:13,697 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 4/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 8s
+2026-07-13 13:57:13,697 | ERROR | app.routers.ai | Service error: [Gemini] Max retries reached: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-07-13 19:35:17,892 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 19:36:11,880 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-07-13 19:36:11,881 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 19:36:38,950 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 19:36:38,952 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 2156 | out: 656 | stop: end_turn | 27071ms
+2026-07-13 19:38:20,691 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 19:38:34,319 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 19:38:34,322 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 11967 | out: 2396 | stop: end_turn | 13630ms
+2026-07-13 19:38:34,901 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 19:38:51,698 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 19:38:51,702 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 11918 | out: 3214 | stop: end_turn | 16800ms
+2026-07-13 19:38:52,993 | ERROR | app.services.ktr_builder.build | KTR field integrity: Step 'Descartar Precios Negativos' (Dummy) no tiene fuente de filas: no tiene ningún step predecesor y 'Dummy' no es un step generador (TableInput/CsvInput/RowGenerator/GetSystemInfo/...) — nunca va a ejecutarse ni a producir filas. Si necesita sembrar literales o parámetros sin depender de otra tabla, anteponer un 'RowGenerator' (Generate Rows, 1 fila).
+2026-07-13 19:38:52,994 | ERROR | app.services.etl_generator | build_ktr (KTR_1 origen→STG) failed: [Integridad de datos] Step 'Descartar Precios Negativos' (Dummy) no tiene fuente de filas: no tiene ningún step predecesor y 'Dummy' no es un step generador (TableInput/CsvInput/RowGenerator/GetSystemInfo/...) — nunca va a ejecutarse ni a producir filas. Si necesita sembrar literales o parámetros sin depender de otra tabla, anteponer un 'RowGenerator' (Generate Rows, 1 fila). — conservando raw_data para reintento manual
+2026-07-13 19:51:42,044 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 19:57:50,028 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-07-13 19:57:50,029 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 19:58:04,771 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 19:58:04,773 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 12124 | out: 2499 | stop: end_turn | 14744ms
+2026-07-13 19:58:04,774 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 19:58:20,460 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 19:58:20,464 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 12075 | out: 3327 | stop: end_turn | 15689ms
+2026-07-13 19:58:21,764 | ERROR | app.services.ktr_builder.build | KTR field integrity: Campo 'stg_estado' requerido por 'Cargar stg_categorias' no está en el stream (productores aguas arriba: ['Agregar Constantes Categorias']).
+2026-07-13 19:58:21,764 | ERROR | app.services.ktr_builder.build | KTR field integrity: Campo 'stg_origen' requerido por 'Cargar stg_categorias' no está en el stream (productores aguas arriba: ['Agregar Constantes Categorias']).
+2026-07-13 19:58:21,765 | ERROR | app.services.etl_generator | build_ktr (KTR_1 origen→STG) failed: [Integridad de datos] Campo 'stg_estado' requerido por 'Cargar stg_categorias' no está en el stream (productores aguas arriba: ['Agregar Constantes Categorias']). | [Integridad de datos] Campo 'stg_origen' requerido por 'Cargar stg_categorias' no está en el stream (productores aguas arriba: ['Agregar Constantes Categorias']). — conservando raw_data para reintento manual
+2026-07-13 20:29:01,003 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:29:24,124 | INFO | httpx | HTTP Request: POST http://localhost:8088/api/v1/security/login "HTTP/1.1 200 OK"
+2026-07-13 20:29:24,153 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/security/csrf_token/ "HTTP/1.1 200 OK"
+2026-07-13 20:29:24,229 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/database/?q=%28page_size%3A100%29 "HTTP/1.1 200 OK"
+2026-07-13 20:29:24,230 | INFO | app.services.superset_client | Creando ETL_DWH en Superset con URI placeholder
+2026-07-13 20:29:24,327 | INFO | httpx | HTTP Request: POST http://localhost:8088/api/v1/database/ "HTTP/1.1 422 UNPROCESSABLE ENTITY"
+2026-07-13 20:29:24,328 | WARNING | app.services.superset_client | No se pudo crear ETL_DWH (422): {"message":"Connection failed, please check your connection settings"}
+
+2026-07-13 20:29:24,435 | INFO | app.services.superset_client | ZIP a importar (19 archivos): ['etl_Test_02_2ktr1kjb_04_export/metadata.yaml', 'etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_cliente.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_cliente_nombre_cliente_Distribucion_9fb1138a.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_cliente_nombre_cliente_Detalle_55d14732.yaml', 'etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_producto.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_producto_nombre_producto_Distribucion_42791a60.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_producto_nombre_producto_Detalle_7c45979e.yaml', 'etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_sucursal.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_sucursal_nombre_sucursal_Distribucion_84da209c.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_sucursal_nombre_sucursal_Detalle_8f680126.yaml', 'etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_tiempo.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_tiempo_fecha_venta_Distribucion_c08f3146.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_tiempo_fecha_venta_Detalle_7805e570.yaml', 'etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/fact_ventas.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_cantidad_KPI_1cd153aa.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_precio_unitario_original_KPI_6276b823.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_descuento_Por_categoria_cebc5f81.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_cantidad_Detalle_edcc4c81.yaml', 'etl_Test_02_2ktr1kjb_04_export/dashboards/Test_02_2ktr1kjb_04_986817e4.yaml']
+2026-07-13 20:29:24,437 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/metadata.yaml ===
+version: 1.0.0
+type: Dashboard
+timestamp: '2026-07-13T23:29:22.671Z'
+
+2026-07-13 20:29:24,437 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_cliente.yaml ===
+table_name: dim_cliente
+main_dttm_col: null
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: public
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 6ef3ad13-6d9e-4bc0-bd36-d51360405e62
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: cod_cliente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nombre_cliente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: documento
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: email
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ciudad
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fecha_alta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: categoria_cliente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: sk_cliente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+2026-07-13 20:29:24,437 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_cliente_nombre_cliente_Distribucion_9fb1138a.yaml ===
+slice_name: dim_cliente - nombre_cliente (Distribucion)
+description: null
+certified_by: null
+certification_details: null
+viz_type: pie
+params:
+  datasource: 6ef3ad13-6d9e-4bc0-bd36-d51360405e62__table
+  viz_type: pie
+  url_params: {}
+  time_range: No filter
+  metric:
+    label: COUNT(*)
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    hasCustomLabel: false
+    optionName: metric_count
+  adhoc_filters: []
+  groupby:
+    - nombre_cliente
+  row_limit: 100
+  color_scheme: supersetColors
+  show_legend: true
+  rich_tooltip: true
+  donut: true
+  show_labels: true
+  labels_outside: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 9fb1138a-0c29-4ae0-aa9c-4f8affdf4891
+version: 1.0.0
+dataset_uuid: 6ef3ad13-6d9e-4bc0-bd36-d51360405e62
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,438 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_cliente_nombre_cliente_Detalle_55d14732.yaml ===
+slice_name: dim_cliente - nombre_cliente (Detalle)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: 6ef3ad13-6d9e-4bc0-bd36-d51360405e62__table
+  viz_type: table
+  url_params: {}
+  time_grain_sqla: null
+  time_range: No filter
+  query_mode: aggregate
+  groupby:
+    - nombre_cliente
+  metrics:
+    - label: COUNT(*)
+      expressionType: SQL
+      sqlExpression: COUNT(*)
+      hasCustomLabel: false
+      optionName: metric_count
+  all_columns: []
+  percent_metrics: []
+  adhoc_filters: []
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  include_time: false
+  show_cell_bars: true
+  align_pn: false
+  page_length: 25
+  include_search: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 55d14732-43a7-44ef-a13b-dad2491d7c09
+version: 1.0.0
+dataset_uuid: 6ef3ad13-6d9e-4bc0-bd36-d51360405e62
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,438 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_producto.yaml ===
+table_name: dim_producto
+main_dttm_col: null
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: public
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: f14bfc49-add0-4e0b-9b4a-3d2953f97182
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: cod_producto
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nombre_producto
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: categoria
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: precio_lista
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: sk_producto
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+2026-07-13 20:29:24,438 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_producto_nombre_producto_Distribucion_42791a60.yaml ===
+slice_name: dim_producto - nombre_producto (Distribucion)
+description: null
+certified_by: null
+certification_details: null
+viz_type: pie
+params:
+  datasource: f14bfc49-add0-4e0b-9b4a-3d2953f97182__table
+  viz_type: pie
+  url_params: {}
+  time_range: No filter
+  metric:
+    label: SUM(precio_lista)
+    expressionType: SQL
+    sqlExpression: SUM(precio_lista)
+    hasCustomLabel: false
+    optionName: metric_sum_precio_lista
+  adhoc_filters: []
+  groupby:
+    - nombre_producto
+  row_limit: 100
+  color_scheme: supersetColors
+  show_legend: true
+  rich_tooltip: true
+  donut: true
+  show_labels: true
+  labels_outside: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 42791a60-4cbb-4451-8501-904044f4e71d
+version: 1.0.0
+dataset_uuid: f14bfc49-add0-4e0b-9b4a-3d2953f97182
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,439 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_producto_nombre_producto_Detalle_7c45979e.yaml ===
+slice_name: dim_producto - nombre_producto (Detalle)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: f14bfc49-add0-4e0b-9b4a-3d2953f97182__table
+  viz_type: table
+  url_params: {}
+  time_grain_sqla: null
+  time_range: No filter
+  query_mode: aggregate
+  groupby:
+    - nombre_producto
+  metrics:
+    - label: COUNT(*)
+      expressionType: SQL
+      sqlExpression: COUNT(*)
+      hasCustomLabel: false
+      optionName: metric_count
+  all_columns: []
+  percent_metrics: []
+  adhoc_filters: []
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  include_time: false
+  show_cell_bars: true
+  align_pn: false
+  page_length: 25
+  include_search: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 7c45979e-4616-442d-ae89-123e499ed6de
+version: 1.0.0
+dataset_uuid: f14bfc49-add0-4e0b-9b4a-3d2953f97182
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,439 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_sucursal.yaml ===
+table_name: dim_sucursal
+main_dttm_col: null
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: public
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: cod_sucursal
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nombre_sucursal
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ciudad
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: region
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: sk_sucursal
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+2026-07-13 20:29:24,439 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_sucursal_nombre_sucursal_Distribucion_84da209c.yaml ===
+slice_name: dim_sucursal - nombre_sucursal (Distribucion)
+description: null
+certified_by: null
+certification_details: null
+viz_type: pie
+params:
+  datasource: d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0__table
+  viz_type: pie
+  url_params: {}
+  time_range: No filter
+  metric:
+    label: COUNT(*)
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    hasCustomLabel: false
+    optionName: metric_count
+  adhoc_filters: []
+  groupby:
+    - nombre_sucursal
+  row_limit: 100
+  color_scheme: supersetColors
+  show_legend: true
+  rich_tooltip: true
+  donut: true
+  show_labels: true
+  labels_outside: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 84da209c-aac8-45ff-8dde-9f7c5a5361ec
+version: 1.0.0
+dataset_uuid: d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,440 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_sucursal_nombre_sucursal_Detalle_8f680126.yaml ===
+slice_name: dim_sucursal - nombre_sucursal (Detalle)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0__table
+  viz_type: table
+  url_params: {}
+  time_grain_sqla: null
+  time_range: No filter
+  query_mode: aggregate
+  groupby:
+    - nombre_sucursal
+  metrics:
+    - label: COUNT(*)
+      expressionType: SQL
+      sqlExpression: COUNT(*)
+      hasCustomLabel: false
+      optionName: metric_count
+  all_columns: []
+  percent_metrics: []
+  adhoc_filters: []
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  include_time: false
+  show_cell_bars: true
+  align_pn: false
+  page_length: 25
+  include_search: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 8f680126-577b-43bc-a01a-76a6a6969398
+version: 1.0.0
+dataset_uuid: d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,440 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_tiempo.yaml ===
+table_name: dim_tiempo
+main_dttm_col: null
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: public
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: ea0cb83a-42df-4887-a1e1-a8dabf9eff80
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: fecha_venta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: dia
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: mes
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trimestre
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: anio
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: sk_tiempo
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+2026-07-13 20:29:24,441 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_tiempo_fecha_venta_Distribucion_c08f3146.yaml ===
+slice_name: dim_tiempo - fecha_venta (Distribucion)
+description: null
+certified_by: null
+certification_details: null
+viz_type: pie
+params:
+  datasource: ea0cb83a-42df-4887-a1e1-a8dabf9eff80__table
+  viz_type: pie
+  url_params: {}
+  time_range: No filter
+  metric:
+    label: COUNT(*)
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    hasCustomLabel: false
+    optionName: metric_count
+  adhoc_filters: []
+  groupby:
+    - fecha_venta
+  row_limit: 100
+  color_scheme: supersetColors
+  show_legend: true
+  rich_tooltip: true
+  donut: true
+  show_labels: true
+  labels_outside: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: c08f3146-bba5-49d1-a42c-0b6643b4fff9
+version: 1.0.0
+dataset_uuid: ea0cb83a-42df-4887-a1e1-a8dabf9eff80
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,441 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_tiempo_fecha_venta_Detalle_7805e570.yaml ===
+slice_name: dim_tiempo - fecha_venta (Detalle)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: ea0cb83a-42df-4887-a1e1-a8dabf9eff80__table
+  viz_type: table
+  url_params: {}
+  time_grain_sqla: null
+  time_range: No filter
+  query_mode: aggregate
+  groupby:
+    - fecha_venta
+  metrics:
+    - label: COUNT(*)
+      expressionType: SQL
+      sqlExpression: COUNT(*)
+      hasCustomLabel: false
+      optionName: metric_count
+  all_columns: []
+  percent_metrics: []
+  adhoc_filters: []
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  include_time: false
+  show_cell_bars: true
+  align_pn: false
+  page_length: 25
+  include_search: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 7805e570-73f0-4bc1-8606-9d507cf0a76f
+version: 1.0.0
+dataset_uuid: ea0cb83a-42df-4887-a1e1-a8dabf9eff80
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,442 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/fact_ventas.yaml ===
+table_name: fact_ventas
+main_dttm_col: null
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: public
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 828989fc-16c7-49c2-8a6e-b1bce69608fd
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: cod_venta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nro_linea
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fk_cliente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fk_sucursal
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fk_producto
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fk_tiempo
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: cantidad
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: precio_unitario_original
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: moneda_origen
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: descuento
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: importe_neto_original
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: importe_neto_usd
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+2026-07-13 20:29:24,442 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_cantidad_KPI_1cd153aa.yaml ===
+slice_name: fact_ventas - cantidad (KPI)
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  datasource: 828989fc-16c7-49c2-8a6e-b1bce69608fd__table
+  viz_type: big_number_total
+  metric:
+    label: SUM(cantidad)
+    expressionType: SQL
+    sqlExpression: SUM(cantidad)
+    hasCustomLabel: false
+    optionName: metric_sum_cantidad
+  adhoc_filters: []
+  time_range: No filter
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 1cd153aa-ebcf-4b4c-a532-3a2ae8553139
+version: 1.0.0
+dataset_uuid: 828989fc-16c7-49c2-8a6e-b1bce69608fd
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,443 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_precio_unitario_original_KPI_6276b823.yaml ===
+slice_name: fact_ventas - precio_unitario_original (KPI)
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  datasource: 828989fc-16c7-49c2-8a6e-b1bce69608fd__table
+  viz_type: big_number_total
+  metric:
+    label: SUM(precio_unitario_original)
+    expressionType: SQL
+    sqlExpression: SUM(precio_unitario_original)
+    hasCustomLabel: false
+    optionName: metric_sum_precio_unitario_original
+  adhoc_filters: []
+  time_range: No filter
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 6276b823-cda9-4f18-b75d-5b23c1e7881c
+version: 1.0.0
+dataset_uuid: 828989fc-16c7-49c2-8a6e-b1bce69608fd
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,443 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_descuento_Por_categoria_cebc5f81.yaml ===
+slice_name: fact_ventas - descuento (Por categoria)
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  datasource: 828989fc-16c7-49c2-8a6e-b1bce69608fd__table
+  viz_type: echarts_timeseries_bar
+  x_axis: descuento
+  metrics:
+    - label: SUM(cantidad)
+      expressionType: SQL
+      sqlExpression: SUM(cantidad)
+      hasCustomLabel: false
+      optionName: metric_sum_cantidad
+  groupby: []
+  adhoc_filters: []
+  row_limit: 10000
+  time_range: No filter
+  color_scheme: supersetColors
+  extra_form_data: {}
+  orientation: vertical
+  x_axis_sort_asc: true
+  x_axis_sort_series: name
+query_context: null
+cache_timeout: null
+uuid: cebc5f81-3ccc-4483-9724-cfe1c51b4f73
+version: 1.0.0
+dataset_uuid: 828989fc-16c7-49c2-8a6e-b1bce69608fd
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,443 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_cantidad_Detalle_edcc4c81.yaml ===
+slice_name: fact_ventas - cantidad (Detalle)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: 828989fc-16c7-49c2-8a6e-b1bce69608fd__table
+  viz_type: table
+  url_params: {}
+  time_grain_sqla: null
+  time_range: No filter
+  query_mode: raw
+  groupby: []
+  metrics: []
+  all_columns:
+    - cantidad
+  percent_metrics: []
+  adhoc_filters: []
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  include_time: false
+  show_cell_bars: true
+  align_pn: false
+  page_length: 25
+  include_search: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: edcc4c81-0c4f-493c-9439-6b01f1f620ac
+version: 1.0.0
+dataset_uuid: 828989fc-16c7-49c2-8a6e-b1bce69608fd
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:29:24,444 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/dashboards/Test_02_2ktr1kjb_04_986817e4.yaml ===
+dashboard_title: ETL - Test_02_2ktr1kjb_04
+description: null
+css: ''
+slug: null
+uuid: 986817e4-64ae-44d2-8db2-8da497a3d62e
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+      - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+      - ROW-0
+      - ROW-1
+      - ROW-2
+      - ROW-3
+      - ROW-4
+      - ROW-5
+    parents:
+      - ROOT_ID
+  ROW-0:
+    type: ROW
+    id: ROW-0
+    children:
+      - CHART-9fb1138a
+      - CHART-55d14732
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+      - ROOT_ID
+      - GRID_ID
+  CHART-9fb1138a:
+    type: CHART
+    id: CHART-9fb1138a
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_cliente - nombre_cliente (Distribucion)
+      uuid: 9fb1138a-0c29-4ae0-aa9c-4f8affdf4891
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-0
+  CHART-55d14732:
+    type: CHART
+    id: CHART-55d14732
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_cliente - nombre_cliente (Detalle)
+      uuid: 55d14732-43a7-44ef-a13b-dad2491d7c09
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-0
+  ROW-1:
+    type: ROW
+    id: ROW-1
+    children:
+      - CHART-42791a60
+      - CHART-7c45979e
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+      - ROOT_ID
+      - GRID_ID
+  CHART-42791a60:
+    type: CHART
+    id: CHART-42791a60
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_producto - nombre_producto (Distribucion)
+      uuid: 42791a60-4cbb-4451-8501-904044f4e71d
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-1
+  CHART-7c45979e:
+    type: CHART
+    id: CHART-7c45979e
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_producto - nombre_producto (Detalle)
+      uuid: 7c45979e-4616-442d-ae89-123e499ed6de
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-1
+  ROW-2:
+    type: ROW
+    id: ROW-2
+    children:
+      - CHART-84da209c
+      - CHART-8f680126
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+      - ROOT_ID
+      - GRID_ID
+  CHART-84da209c:
+    type: CHART
+    id: CHART-84da209c
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_sucursal - nombre_sucursal (Distribucion)
+      uuid: 84da209c-aac8-45ff-8dde-9f7c5a5361ec
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-2
+  CHART-8f680126:
+    type: CHART
+    id: CHART-8f680126
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_sucursal - nombre_sucursal (Detalle)
+      uuid: 8f680126-577b-43bc-a01a-76a6a6969398
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-2
+  ROW-3:
+    type: ROW
+    id: ROW-3
+    children:
+      - CHART-c08f3146
+      - CHART-7805e570
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+      - ROOT_ID
+      - GRID_ID
+  CHART-c08f3146:
+    type: CHART
+    id: CHART-c08f3146
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_tiempo - fecha_venta (Distribucion)
+      uuid: c08f3146-bba5-49d1-a42c-0b6643b4fff9
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-3
+  CHART-7805e570:
+    type: CHART
+    id: CHART-7805e570
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_tiempo - fecha_venta (Detalle)
+      uuid: 7805e570-73f0-4bc1-8606-9d507cf0a76f
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-3
+  ROW-4:
+    type: ROW
+    id: ROW-4
+    children:
+      - CHART-1cd153aa
+      - CHART-6276b823
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+      - ROOT_ID
+      - GRID_ID
+  CHART-1cd153aa:
+    type: CHART
+    id: CHART-1cd153aa
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: fact_ventas - cantidad (KPI)
+      uuid: 1cd153aa-ebcf-4b4c-a532-3a2ae8553139
+    paren
+2026-07-13 20:29:24,502 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/database/?q=%28page_size%3A100%29 "HTTP/1.1 200 OK"
+2026-07-13 20:29:24,503 | WARNING | app.services.superset_client | No se encontró ETL_DWH para crear tablas del DWH
+2026-07-13 20:29:24,670 | INFO | httpx | HTTP Request: POST http://localhost:8088/api/v1/assets/import/ "HTTP/1.1 500 INTERNAL SERVER ERROR"
+2026-07-13 20:29:24,671 | ERROR | app.services.superset_client | assets/import/ falló (500): <!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><meta name="viewport" content="width=q,initial-scale=1"/><link rel="icon" type="image/png" href="/static/assets/e3bafb62eb2592c0bb0e.png"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet"/><style>html {
+        height: 100%;
+      }
+      body {
+        color: #1985a0;
+        font-family: 'Inter', sans-serif;
+        height: 100%
+2026-07-13 20:29:24,731 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/database/?q=%28page_size%3A100%29 "HTTP/1.1 200 OK"
+2026-07-13 20:29:24,794 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/database/?q=%28page_size%3A100%29 "HTTP/1.1 200 OK"
+2026-07-13 20:29:24,795 | WARNING | app.services.superset_client | No se encontró ETL_DWH para crear tablas del DWH
+2026-07-13 20:29:24,795 | WARNING | app.services.superset_client | No se encontró db_id de ETL_DWH — saltando creación directa de datasets
+2026-07-13 20:29:25,002 | INFO | httpx | HTTP Request: POST http://localhost:8088/api/v1/dataset/import/ "HTTP/1.1 200 OK"
+2026-07-13 20:29:25,003 | INFO | app.services.superset_client | /api/v1/dataset/import/ → 200: {"message":"OK"}
+
+2026-07-13 20:29:25,146 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/dataset/?q=%28page_size%3A200%29 "HTTP/1.1 200 OK"
+2026-07-13 20:29:25,148 | INFO | app.services.superset_client | Datasets disponibles en Superset: 0
+2026-07-13 20:29:25,269 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/chart/?q=%28page_size%3A100%2Cpage%3A0%29 "HTTP/1.1 200 OK"
+2026-07-13 20:29:25,276 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=6ef3ad13-6d9e-4bc0-bd36-d51360405e62 (chart 'dim_cliente - nombre_cliente (Distribucion)')
+2026-07-13 20:29:25,283 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=6ef3ad13-6d9e-4bc0-bd36-d51360405e62 (chart 'dim_cliente - nombre_cliente (Detalle)')
+2026-07-13 20:29:25,288 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=f14bfc49-add0-4e0b-9b4a-3d2953f97182 (chart 'dim_producto - nombre_producto (Distribucion)')
+2026-07-13 20:29:25,294 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=f14bfc49-add0-4e0b-9b4a-3d2953f97182 (chart 'dim_producto - nombre_producto (Detalle)')
+2026-07-13 20:29:25,299 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0 (chart 'dim_sucursal - nombre_sucursal (Distribucion)')
+2026-07-13 20:29:25,305 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0 (chart 'dim_sucursal - nombre_sucursal (Detalle)')
+2026-07-13 20:29:25,310 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=ea0cb83a-42df-4887-a1e1-a8dabf9eff80 (chart 'dim_tiempo - fecha_venta (Distribucion)')
+2026-07-13 20:29:25,317 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=ea0cb83a-42df-4887-a1e1-a8dabf9eff80 (chart 'dim_tiempo - fecha_venta (Detalle)')
+2026-07-13 20:29:25,320 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=828989fc-16c7-49c2-8a6e-b1bce69608fd (chart 'fact_ventas - cantidad (KPI)')
+2026-07-13 20:29:25,324 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=828989fc-16c7-49c2-8a6e-b1bce69608fd (chart 'fact_ventas - precio_unitario_original (KPI)')
+2026-07-13 20:29:25,328 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=828989fc-16c7-49c2-8a6e-b1bce69608fd (chart 'fact_ventas - descuento (Por categoria)')
+2026-07-13 20:29:25,334 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=828989fc-16c7-49c2-8a6e-b1bce69608fd (chart 'fact_ventas - cantidad (Detalle)')
+2026-07-13 20:29:25,334 | INFO | app.services.superset_client | Charts creados/actualizados: {}
+2026-07-13 20:29:25,458 | INFO | httpx | HTTP Request: POST http://localhost:8088/api/v1/dashboard/import/ "HTTP/1.1 200 OK"
+2026-07-13 20:29:25,459 | INFO | app.services.superset_client | /api/v1/dashboard/import/ → 200: {"message":"OK"}
+
+2026-07-13 20:29:25,459 | WARNING | app.services.superset_client | No se pudieron resolver chart IDs — dashboard importado sin charts vinculados
+2026-07-13 20:29:25,459 | INFO | app.services.superset_client | Superset import OK
+2026-07-13 20:29:25,534 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/dashboard/986817e4-64ae-44d2-8db2-8da497a3d62e "HTTP/1.1 200 OK"
+2026-07-13 20:42:55,775 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:43:14,820 | INFO | httpx | HTTP Request: POST http://localhost:8088/api/v1/security/login "HTTP/1.1 200 OK"
+2026-07-13 20:43:14,860 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/security/csrf_token/ "HTTP/1.1 200 OK"
+2026-07-13 20:43:14,929 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/database/?q=%28page_size%3A100%29 "HTTP/1.1 200 OK"
+2026-07-13 20:43:14,930 | INFO | app.services.superset_client | Creando ETL_DWH en Superset con URI placeholder
+2026-07-13 20:43:15,046 | INFO | httpx | HTTP Request: POST http://localhost:8088/api/v1/database/ "HTTP/1.1 422 UNPROCESSABLE ENTITY"
+2026-07-13 20:43:15,047 | WARNING | app.services.superset_client | No se pudo crear ETL_DWH (422): {"message":"Connection failed, please check your connection settings"}
+
+2026-07-13 20:43:15,163 | INFO | app.services.superset_client | ZIP a importar (19 archivos): ['etl_Test_02_2ktr1kjb_04_export/metadata.yaml', 'etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_cliente.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_cliente_nombre_cliente_Distribucion_9fb1138a.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_cliente_nombre_cliente_Detalle_55d14732.yaml', 'etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_producto.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_producto_nombre_producto_Distribucion_42791a60.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_producto_nombre_producto_Detalle_7c45979e.yaml', 'etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_sucursal.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_sucursal_nombre_sucursal_Distribucion_84da209c.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_sucursal_nombre_sucursal_Detalle_8f680126.yaml', 'etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_tiempo.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_tiempo_fecha_venta_Distribucion_c08f3146.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/dim_tiempo_fecha_venta_Detalle_7805e570.yaml', 'etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/fact_ventas.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_cantidad_KPI_1cd153aa.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_precio_unitario_original_KPI_6276b823.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_descuento_Por_categoria_cebc5f81.yaml', 'etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_cantidad_Detalle_edcc4c81.yaml', 'etl_Test_02_2ktr1kjb_04_export/dashboards/Test_02_2ktr1kjb_04_986817e4.yaml']
+2026-07-13 20:43:15,164 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/metadata.yaml ===
+version: 1.0.0
+type: Dashboard
+timestamp: '2026-07-13T23:43:13.534Z'
+
+2026-07-13 20:43:15,164 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_cliente.yaml ===
+table_name: dim_cliente
+main_dttm_col: null
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: public
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 6ef3ad13-6d9e-4bc0-bd36-d51360405e62
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: cod_cliente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nombre_cliente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: documento
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: email
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ciudad
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fecha_alta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: categoria_cliente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: sk_cliente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+2026-07-13 20:43:15,164 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_cliente_nombre_cliente_Distribucion_9fb1138a.yaml ===
+slice_name: dim_cliente - nombre_cliente (Distribucion)
+description: null
+certified_by: null
+certification_details: null
+viz_type: pie
+params:
+  datasource: 6ef3ad13-6d9e-4bc0-bd36-d51360405e62__table
+  viz_type: pie
+  url_params: {}
+  time_range: No filter
+  metric:
+    label: COUNT(*)
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    hasCustomLabel: false
+    optionName: metric_count
+  adhoc_filters: []
+  groupby:
+    - nombre_cliente
+  row_limit: 100
+  color_scheme: supersetColors
+  show_legend: true
+  rich_tooltip: true
+  donut: true
+  show_labels: true
+  labels_outside: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 9fb1138a-0c29-4ae0-aa9c-4f8affdf4891
+version: 1.0.0
+dataset_uuid: 6ef3ad13-6d9e-4bc0-bd36-d51360405e62
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,164 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_cliente_nombre_cliente_Detalle_55d14732.yaml ===
+slice_name: dim_cliente - nombre_cliente (Detalle)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: 6ef3ad13-6d9e-4bc0-bd36-d51360405e62__table
+  viz_type: table
+  url_params: {}
+  time_grain_sqla: null
+  time_range: No filter
+  query_mode: aggregate
+  groupby:
+    - nombre_cliente
+  metrics:
+    - label: COUNT(*)
+      expressionType: SQL
+      sqlExpression: COUNT(*)
+      hasCustomLabel: false
+      optionName: metric_count
+  all_columns: []
+  percent_metrics: []
+  adhoc_filters: []
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  include_time: false
+  show_cell_bars: true
+  align_pn: false
+  page_length: 25
+  include_search: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 55d14732-43a7-44ef-a13b-dad2491d7c09
+version: 1.0.0
+dataset_uuid: 6ef3ad13-6d9e-4bc0-bd36-d51360405e62
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,165 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_producto.yaml ===
+table_name: dim_producto
+main_dttm_col: null
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: public
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: f14bfc49-add0-4e0b-9b4a-3d2953f97182
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: cod_producto
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nombre_producto
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: categoria
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: precio_lista
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: sk_producto
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+2026-07-13 20:43:15,165 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_producto_nombre_producto_Distribucion_42791a60.yaml ===
+slice_name: dim_producto - nombre_producto (Distribucion)
+description: null
+certified_by: null
+certification_details: null
+viz_type: pie
+params:
+  datasource: f14bfc49-add0-4e0b-9b4a-3d2953f97182__table
+  viz_type: pie
+  url_params: {}
+  time_range: No filter
+  metric:
+    label: SUM(precio_lista)
+    expressionType: SQL
+    sqlExpression: SUM(precio_lista)
+    hasCustomLabel: false
+    optionName: metric_sum_precio_lista
+  adhoc_filters: []
+  groupby:
+    - nombre_producto
+  row_limit: 100
+  color_scheme: supersetColors
+  show_legend: true
+  rich_tooltip: true
+  donut: true
+  show_labels: true
+  labels_outside: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 42791a60-4cbb-4451-8501-904044f4e71d
+version: 1.0.0
+dataset_uuid: f14bfc49-add0-4e0b-9b4a-3d2953f97182
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,165 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_producto_nombre_producto_Detalle_7c45979e.yaml ===
+slice_name: dim_producto - nombre_producto (Detalle)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: f14bfc49-add0-4e0b-9b4a-3d2953f97182__table
+  viz_type: table
+  url_params: {}
+  time_grain_sqla: null
+  time_range: No filter
+  query_mode: aggregate
+  groupby:
+    - nombre_producto
+  metrics:
+    - label: COUNT(*)
+      expressionType: SQL
+      sqlExpression: COUNT(*)
+      hasCustomLabel: false
+      optionName: metric_count
+  all_columns: []
+  percent_metrics: []
+  adhoc_filters: []
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  include_time: false
+  show_cell_bars: true
+  align_pn: false
+  page_length: 25
+  include_search: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 7c45979e-4616-442d-ae89-123e499ed6de
+version: 1.0.0
+dataset_uuid: f14bfc49-add0-4e0b-9b4a-3d2953f97182
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,166 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_sucursal.yaml ===
+table_name: dim_sucursal
+main_dttm_col: null
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: public
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: cod_sucursal
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nombre_sucursal
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ciudad
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: region
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: sk_sucursal
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+2026-07-13 20:43:15,166 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_sucursal_nombre_sucursal_Distribucion_84da209c.yaml ===
+slice_name: dim_sucursal - nombre_sucursal (Distribucion)
+description: null
+certified_by: null
+certification_details: null
+viz_type: pie
+params:
+  datasource: d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0__table
+  viz_type: pie
+  url_params: {}
+  time_range: No filter
+  metric:
+    label: COUNT(*)
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    hasCustomLabel: false
+    optionName: metric_count
+  adhoc_filters: []
+  groupby:
+    - nombre_sucursal
+  row_limit: 100
+  color_scheme: supersetColors
+  show_legend: true
+  rich_tooltip: true
+  donut: true
+  show_labels: true
+  labels_outside: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 84da209c-aac8-45ff-8dde-9f7c5a5361ec
+version: 1.0.0
+dataset_uuid: d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,166 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_sucursal_nombre_sucursal_Detalle_8f680126.yaml ===
+slice_name: dim_sucursal - nombre_sucursal (Detalle)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0__table
+  viz_type: table
+  url_params: {}
+  time_grain_sqla: null
+  time_range: No filter
+  query_mode: aggregate
+  groupby:
+    - nombre_sucursal
+  metrics:
+    - label: COUNT(*)
+      expressionType: SQL
+      sqlExpression: COUNT(*)
+      hasCustomLabel: false
+      optionName: metric_count
+  all_columns: []
+  percent_metrics: []
+  adhoc_filters: []
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  include_time: false
+  show_cell_bars: true
+  align_pn: false
+  page_length: 25
+  include_search: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 8f680126-577b-43bc-a01a-76a6a6969398
+version: 1.0.0
+dataset_uuid: d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,166 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/dim_tiempo.yaml ===
+table_name: dim_tiempo
+main_dttm_col: null
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: public
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: ea0cb83a-42df-4887-a1e1-a8dabf9eff80
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: fecha_venta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: dia
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: mes
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trimestre
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: anio
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: sk_tiempo
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+2026-07-13 20:43:15,167 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_tiempo_fecha_venta_Distribucion_c08f3146.yaml ===
+slice_name: dim_tiempo - fecha_venta (Distribucion)
+description: null
+certified_by: null
+certification_details: null
+viz_type: pie
+params:
+  datasource: ea0cb83a-42df-4887-a1e1-a8dabf9eff80__table
+  viz_type: pie
+  url_params: {}
+  time_range: No filter
+  metric:
+    label: COUNT(*)
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    hasCustomLabel: false
+    optionName: metric_count
+  adhoc_filters: []
+  groupby:
+    - fecha_venta
+  row_limit: 100
+  color_scheme: supersetColors
+  show_legend: true
+  rich_tooltip: true
+  donut: true
+  show_labels: true
+  labels_outside: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: c08f3146-bba5-49d1-a42c-0b6643b4fff9
+version: 1.0.0
+dataset_uuid: ea0cb83a-42df-4887-a1e1-a8dabf9eff80
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,167 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/dim_tiempo_fecha_venta_Detalle_7805e570.yaml ===
+slice_name: dim_tiempo - fecha_venta (Detalle)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: ea0cb83a-42df-4887-a1e1-a8dabf9eff80__table
+  viz_type: table
+  url_params: {}
+  time_grain_sqla: null
+  time_range: No filter
+  query_mode: aggregate
+  groupby:
+    - fecha_venta
+  metrics:
+    - label: COUNT(*)
+      expressionType: SQL
+      sqlExpression: COUNT(*)
+      hasCustomLabel: false
+      optionName: metric_count
+  all_columns: []
+  percent_metrics: []
+  adhoc_filters: []
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  include_time: false
+  show_cell_bars: true
+  align_pn: false
+  page_length: 25
+  include_search: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 7805e570-73f0-4bc1-8606-9d507cf0a76f
+version: 1.0.0
+dataset_uuid: ea0cb83a-42df-4887-a1e1-a8dabf9eff80
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,167 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/datasets/ETL_DWH/fact_ventas.yaml ===
+table_name: fact_ventas
+main_dttm_col: null
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: public
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 828989fc-16c7-49c2-8a6e-b1bce69608fd
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: cod_venta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nro_linea
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fk_cliente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fk_sucursal
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fk_producto
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fk_tiempo
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: cantidad
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: precio_unitario_original
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: moneda_origen
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: descuento
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: importe_neto_original
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: importe_neto_usd
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+2026-07-13 20:43:15,168 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_cantidad_KPI_1cd153aa.yaml ===
+slice_name: fact_ventas - cantidad (KPI)
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  datasource: 828989fc-16c7-49c2-8a6e-b1bce69608fd__table
+  viz_type: big_number_total
+  metric:
+    label: SUM(cantidad)
+    expressionType: SQL
+    sqlExpression: SUM(cantidad)
+    hasCustomLabel: false
+    optionName: metric_sum_cantidad
+  adhoc_filters: []
+  time_range: No filter
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 1cd153aa-ebcf-4b4c-a532-3a2ae8553139
+version: 1.0.0
+dataset_uuid: 828989fc-16c7-49c2-8a6e-b1bce69608fd
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,168 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_precio_unitario_original_KPI_6276b823.yaml ===
+slice_name: fact_ventas - precio_unitario_original (KPI)
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  datasource: 828989fc-16c7-49c2-8a6e-b1bce69608fd__table
+  viz_type: big_number_total
+  metric:
+    label: SUM(precio_unitario_original)
+    expressionType: SQL
+    sqlExpression: SUM(precio_unitario_original)
+    hasCustomLabel: false
+    optionName: metric_sum_precio_unitario_original
+  adhoc_filters: []
+  time_range: No filter
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 6276b823-cda9-4f18-b75d-5b23c1e7881c
+version: 1.0.0
+dataset_uuid: 828989fc-16c7-49c2-8a6e-b1bce69608fd
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,168 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_descuento_Por_categoria_cebc5f81.yaml ===
+slice_name: fact_ventas - descuento (Por categoria)
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  datasource: 828989fc-16c7-49c2-8a6e-b1bce69608fd__table
+  viz_type: echarts_timeseries_bar
+  x_axis: descuento
+  metrics:
+    - label: SUM(cantidad)
+      expressionType: SQL
+      sqlExpression: SUM(cantidad)
+      hasCustomLabel: false
+      optionName: metric_sum_cantidad
+  groupby: []
+  adhoc_filters: []
+  row_limit: 10000
+  time_range: No filter
+  color_scheme: supersetColors
+  extra_form_data: {}
+  orientation: vertical
+  x_axis_sort_asc: true
+  x_axis_sort_series: name
+query_context: null
+cache_timeout: null
+uuid: cebc5f81-3ccc-4483-9724-cfe1c51b4f73
+version: 1.0.0
+dataset_uuid: 828989fc-16c7-49c2-8a6e-b1bce69608fd
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,168 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/charts/fact_ventas_cantidad_Detalle_edcc4c81.yaml ===
+slice_name: fact_ventas - cantidad (Detalle)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: 828989fc-16c7-49c2-8a6e-b1bce69608fd__table
+  viz_type: table
+  url_params: {}
+  time_grain_sqla: null
+  time_range: No filter
+  query_mode: raw
+  groupby: []
+  metrics: []
+  all_columns:
+    - cantidad
+  percent_metrics: []
+  adhoc_filters: []
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  include_time: false
+  show_cell_bars: true
+  align_pn: false
+  page_length: 25
+  include_search: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: edcc4c81-0c4f-493c-9439-6b01f1f620ac
+version: 1.0.0
+dataset_uuid: 828989fc-16c7-49c2-8a6e-b1bce69608fd
+is_managed_externally: false
+external_url: null
+
+2026-07-13 20:43:15,168 | INFO | app.services.superset_client | === etl_Test_02_2ktr1kjb_04_export/dashboards/Test_02_2ktr1kjb_04_986817e4.yaml ===
+dashboard_title: ETL - Test_02_2ktr1kjb_04
+description: null
+css: ''
+slug: null
+uuid: 986817e4-64ae-44d2-8db2-8da497a3d62e
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+      - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+      - ROW-0
+      - ROW-1
+      - ROW-2
+      - ROW-3
+      - ROW-4
+      - ROW-5
+    parents:
+      - ROOT_ID
+  ROW-0:
+    type: ROW
+    id: ROW-0
+    children:
+      - CHART-9fb1138a
+      - CHART-55d14732
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+      - ROOT_ID
+      - GRID_ID
+  CHART-9fb1138a:
+    type: CHART
+    id: CHART-9fb1138a
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_cliente - nombre_cliente (Distribucion)
+      uuid: 9fb1138a-0c29-4ae0-aa9c-4f8affdf4891
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-0
+  CHART-55d14732:
+    type: CHART
+    id: CHART-55d14732
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_cliente - nombre_cliente (Detalle)
+      uuid: 55d14732-43a7-44ef-a13b-dad2491d7c09
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-0
+  ROW-1:
+    type: ROW
+    id: ROW-1
+    children:
+      - CHART-42791a60
+      - CHART-7c45979e
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+      - ROOT_ID
+      - GRID_ID
+  CHART-42791a60:
+    type: CHART
+    id: CHART-42791a60
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_producto - nombre_producto (Distribucion)
+      uuid: 42791a60-4cbb-4451-8501-904044f4e71d
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-1
+  CHART-7c45979e:
+    type: CHART
+    id: CHART-7c45979e
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_producto - nombre_producto (Detalle)
+      uuid: 7c45979e-4616-442d-ae89-123e499ed6de
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-1
+  ROW-2:
+    type: ROW
+    id: ROW-2
+    children:
+      - CHART-84da209c
+      - CHART-8f680126
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+      - ROOT_ID
+      - GRID_ID
+  CHART-84da209c:
+    type: CHART
+    id: CHART-84da209c
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_sucursal - nombre_sucursal (Distribucion)
+      uuid: 84da209c-aac8-45ff-8dde-9f7c5a5361ec
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-2
+  CHART-8f680126:
+    type: CHART
+    id: CHART-8f680126
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_sucursal - nombre_sucursal (Detalle)
+      uuid: 8f680126-577b-43bc-a01a-76a6a6969398
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-2
+  ROW-3:
+    type: ROW
+    id: ROW-3
+    children:
+      - CHART-c08f3146
+      - CHART-7805e570
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+      - ROOT_ID
+      - GRID_ID
+  CHART-c08f3146:
+    type: CHART
+    id: CHART-c08f3146
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_tiempo - fecha_venta (Distribucion)
+      uuid: c08f3146-bba5-49d1-a42c-0b6643b4fff9
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-3
+  CHART-7805e570:
+    type: CHART
+    id: CHART-7805e570
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: dim_tiempo - fecha_venta (Detalle)
+      uuid: 7805e570-73f0-4bc1-8606-9d507cf0a76f
+    parents:
+      - ROOT_ID
+      - GRID_ID
+      - ROW-3
+  ROW-4:
+    type: ROW
+    id: ROW-4
+    children:
+      - CHART-1cd153aa
+      - CHART-6276b823
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+      - ROOT_ID
+      - GRID_ID
+  CHART-1cd153aa:
+    type: CHART
+    id: CHART-1cd153aa
+    children: []
+    meta:
+      width: 6
+      height: 50
+      chartId: 0
+      sliceName: fact_ventas - cantidad (KPI)
+      uuid: 1cd153aa-ebcf-4b4c-a532-3a2ae8553139
+    paren
+2026-07-13 20:43:15,228 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/database/?q=%28page_size%3A100%29 "HTTP/1.1 200 OK"
+2026-07-13 20:43:15,230 | WARNING | app.services.superset_client | No se encontró ETL_DWH para crear tablas del DWH
+2026-07-13 20:43:15,429 | INFO | httpx | HTTP Request: POST http://localhost:8088/api/v1/assets/import/ "HTTP/1.1 500 INTERNAL SERVER ERROR"
+2026-07-13 20:43:15,430 | ERROR | app.services.superset_client | assets/import/ falló (500): <!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><meta name="viewport" content="width=q,initial-scale=1"/><link rel="icon" type="image/png" href="/static/assets/e3bafb62eb2592c0bb0e.png"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet"/><style>html {
+        height: 100%;
+      }
+      body {
+        color: #1985a0;
+        font-family: 'Inter', sans-serif;
+        height: 100%
+2026-07-13 20:43:15,512 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/database/?q=%28page_size%3A100%29 "HTTP/1.1 200 OK"
+2026-07-13 20:43:15,632 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/database/?q=%28page_size%3A100%29 "HTTP/1.1 200 OK"
+2026-07-13 20:43:15,634 | WARNING | app.services.superset_client | No se encontró ETL_DWH para crear tablas del DWH
+2026-07-13 20:43:15,634 | WARNING | app.services.superset_client | No se encontró db_id de ETL_DWH — saltando creación directa de datasets
+2026-07-13 20:43:15,819 | INFO | httpx | HTTP Request: POST http://localhost:8088/api/v1/dataset/import/ "HTTP/1.1 200 OK"
+2026-07-13 20:43:15,820 | INFO | app.services.superset_client | /api/v1/dataset/import/ → 200: {"message":"OK"}
+
+2026-07-13 20:43:15,900 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/dataset/?q=%28page_size%3A200%29 "HTTP/1.1 200 OK"
+2026-07-13 20:43:15,901 | INFO | app.services.superset_client | Datasets disponibles en Superset: 0
+2026-07-13 20:43:15,989 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/chart/?q=%28page_size%3A100%2Cpage%3A0%29 "HTTP/1.1 200 OK"
+2026-07-13 20:43:15,995 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=6ef3ad13-6d9e-4bc0-bd36-d51360405e62 (chart 'dim_cliente - nombre_cliente (Distribucion)')
+2026-07-13 20:43:16,000 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=6ef3ad13-6d9e-4bc0-bd36-d51360405e62 (chart 'dim_cliente - nombre_cliente (Detalle)')
+2026-07-13 20:43:16,005 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=f14bfc49-add0-4e0b-9b4a-3d2953f97182 (chart 'dim_producto - nombre_producto (Distribucion)')
+2026-07-13 20:43:16,009 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=f14bfc49-add0-4e0b-9b4a-3d2953f97182 (chart 'dim_producto - nombre_producto (Detalle)')
+2026-07-13 20:43:16,013 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0 (chart 'dim_sucursal - nombre_sucursal (Distribucion)')
+2026-07-13 20:43:16,017 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=d5f72ed9-1e7c-443b-9a65-a9b9e4c271e0 (chart 'dim_sucursal - nombre_sucursal (Detalle)')
+2026-07-13 20:43:16,022 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=ea0cb83a-42df-4887-a1e1-a8dabf9eff80 (chart 'dim_tiempo - fecha_venta (Distribucion)')
+2026-07-13 20:43:16,026 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=ea0cb83a-42df-4887-a1e1-a8dabf9eff80 (chart 'dim_tiempo - fecha_venta (Detalle)')
+2026-07-13 20:43:16,029 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=828989fc-16c7-49c2-8a6e-b1bce69608fd (chart 'fact_ventas - cantidad (KPI)')
+2026-07-13 20:43:16,032 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=828989fc-16c7-49c2-8a6e-b1bce69608fd (chart 'fact_ventas - precio_unitario_original (KPI)')
+2026-07-13 20:43:16,036 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=828989fc-16c7-49c2-8a6e-b1bce69608fd (chart 'fact_ventas - descuento (Por categoria)')
+2026-07-13 20:43:16,039 | WARNING | app.services.superset_client | No se encontro datasource_id para dataset_uuid=828989fc-16c7-49c2-8a6e-b1bce69608fd (chart 'fact_ventas - cantidad (Detalle)')
+2026-07-13 20:43:16,039 | INFO | app.services.superset_client | Charts creados/actualizados: {}
+2026-07-13 20:43:16,135 | INFO | httpx | HTTP Request: POST http://localhost:8088/api/v1/dashboard/import/ "HTTP/1.1 200 OK"
+2026-07-13 20:43:16,136 | INFO | app.services.superset_client | /api/v1/dashboard/import/ → 200: {"message":"OK"}
+
+2026-07-13 20:43:16,137 | WARNING | app.services.superset_client | No se pudieron resolver chart IDs — dashboard importado sin charts vinculados
+2026-07-13 20:43:16,137 | INFO | app.services.superset_client | Superset import OK
+2026-07-13 20:43:16,196 | INFO | httpx | HTTP Request: GET http://localhost:8088/api/v1/dashboard/986817e4-64ae-44d2-8db2-8da497a3d62e "HTTP/1.1 200 OK"
+2026-07-13 20:46:53,681 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:47:08,124 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:47:30,479 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:47:42,668 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:48:10,649 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:48:21,817 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:48:36,803 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:48:54,179 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:49:11,270 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 20:49:27,356 | INFO | app.outbox.runner | outbox.runner started (in-process)

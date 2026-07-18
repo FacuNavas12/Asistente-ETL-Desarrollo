@@ -149,27 +149,27 @@ class ETLDocumentResponse(BaseModel):
 # ─── INFERENCIA DE ESTRUCTURAS ────────────────────────────────────────────────
 
 class InferRequest(BaseModel):
-    source_structure: str           # origenTables serializado como JSON string
-    process_description: str
+    source_schema_json: str         # origenTables serializado como JSON string
+    process_goal: str
     business_rules: str
 
 
 class RefineRequest(BaseModel):
-    source_structure: str
-    process_description: str
+    source_schema_json: str
+    process_goal: str
     business_rules: str
-    current_stg: str                # DDL STG de la iteración anterior
-    current_dwh: str                # DDL DWH de la iteración anterior
+    previous_stg: str               # DDL STG de la iteración anterior
+    previous_dwh: str               # DDL DWH de la iteración anterior
     correction: str                 # instrucción del usuario en lenguaje natural
-    history: List[Dict[str, Any]] = []   # [{correction, stg, dwh}, ...]
+    correction_history: List[Dict[str, Any]] = []   # [{correction, stg_ddl, dwh_ddl}, ...]
 
 
 class InferResponse(BaseModel):
-    stg_definition: str
-    dwh_model: str
+    stg_ddl: str
+    dwh_ddl: str
     stg_rationale: str
     dwh_rationale: str
-    iteration: int = 1
+    iteration_count: int = 1
     metadata: MetadataResponse
 
 

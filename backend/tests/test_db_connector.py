@@ -10,6 +10,7 @@ from app.services.db_connector import (
     _build_url,
     _sanitize_error,
     list_tables,
+    qualify,
 )
 
 
@@ -181,3 +182,37 @@ class TestListTablesMultiSchema:
         assert not any("information_schema" in t for t in result)
         assert not any("pg_catalog" in t for t in result)
         assert result == sorted(result)
+
+
+# ─── qualify ───────────────────────────────────────────────────────────────────
+
+class TestQualify:
+    def test_bare_name_with_schema(self):
+        # tname pelado + schema_name separado → glue normal.
+        assert qualify("ventas", "public") == "public.ventas"
+
+    def test_already_qualified_no_schema_hint(self):
+        # tname ya trae "schema.table" y no llega schema_name → se respeta tal cual.
+        assert qualify("public.ventas", "") == "public.ventas"
+
+    def test_bare_name_no_schema(self):
+        # ni prefijo ni schema_name → nombre pelado, sin punto.
+        assert qualify("ventas", "") == "ventas"
+
+    def test_conflicting_embedded_schema_prefers_embedded(self, caplog):
+        # tname ya calificado con un schema distinto al schema_name recibido:
+        # el prefijo embebido gana (es la fuente de verdad) y se loguea el choque,
+        # nunca se concatenan ambos (eso es el bug 'public.public.ventas').
+        with caplog.at_level("WARNING"):
+            result = qualify("staging.ventas", "public")
+        assert result == "staging.ventas"
+        assert "distinto de schema_name" in caplog.text
+
+    def test_quoted_identifier_with_literal_dot(self):
+        # Identificador entrecomillado con un punto literal dentro del nombre:
+        # no debe partirse como separador de schema.
+        assert qualify('"my.table"', "public") == "public.my.table"
+
+    def test_quoted_schema_and_table(self):
+        # 'schema.table' ya calificado con ambos segmentos entrecomillados.
+        assert qualify('"public"."ventas"', "") == "public.ventas"

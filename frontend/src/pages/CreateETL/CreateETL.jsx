@@ -36,15 +36,15 @@ export default function CreateETL() {
   const navigate  = useNavigate();
   const location  = useLocation();
   const { draft, saveDraft, clearDraft, addEtl, saveInProgressEtl } = useEtl();
-  const { addToast } = useToast();
+  const { addToast, notifySystem, notifyValidation } = useToast();
 
-  // fresh: true → always open blank (navbar "Generación Nuevo ETL" button)
+  // fresh: true → always open blank (navbar "Nuevo ETL" button)
   // initialFormData → load from prior ETL (Continuar / Reutilizar)
   const initSource  = location.state?.fresh
     ? null
     : (location.state?.initialFormData ?? draft);
 
-  const defaultName = initSource?.etlName ?? "";
+  const defaultName = initSource?.etlName ?? "Generar ETL";
 
   const { control, setValue, reset, getValues, formState: { isDirty } } = useForm({
     defaultValues: {
@@ -67,13 +67,12 @@ export default function CreateETL() {
   const [inferResult,    setInferResult]    = useState(() => {
     if (initSource?.inferResult) return initSource.inferResult;
     if (initSource?.stg_definition || initSource?.dwh_model) {
-      return { stg_definition: initSource.stg_definition ?? "", dwh_model: initSource.dwh_model ?? "" };
+      return { stg_ddl: initSource.stg_definition ?? "", dwh_ddl: initSource.dwh_model ?? "" };
     }
     return null;
   });
   const [inferHistory,   setInferHistory]   = useState([]);
   const [isRefining,     setIsRefining]     = useState(false);
-  const [errors,         setErrors]         = useState([]);
   const [etlPhase,       setEtlPhase]       = useState("waiting");
   const [ktrLogs,        setKtrLogs]        = useState([]);
   // Raw LLM response saved when build_ktr() fails server-side, so the (expensive) model
@@ -172,8 +171,8 @@ export default function CreateETL() {
     const { id, syncStatus: ss } = await saveInProgressEtl(values.etlName, {
       ...values,
       inferResult,
-      stg_definition: inferResult?.stg_definition ?? null,
-      dwh_model:      inferResult?.dwh_model       ?? null,
+      stg_definition: inferResult?.stg_ddl ?? null,
+      dwh_model:      inferResult?.dwh_ddl ?? null,
     }, currentEtlIdRef.current);
     currentEtlIdRef.current = id;
     setSyncStatus(ss);
@@ -197,26 +196,25 @@ export default function CreateETL() {
 
   const handleLimpiar = () => {
     const empty = {
-      etlName:             "",
+      etlName:             "Generar ETL",
       descripcionObjetivo: "",
       origenTables:        [],
       reglasNegocio:       "",
     };
     reset(empty);
-    setNameInputVal("");
+    setNameInputVal("Generar ETL");
     setInferResult(null);
     setInferHistory([]);
     setRawLlmData(null);
     clearDraft();
-    setErrors([]);
     setStep(STEP.FORM);
   };
 
   const handleDownload = () => {
     downloadEtlSkeleton({
       ...getValues(),
-      stg_definition: inferResult?.stg_definition ?? null,
-      dwh_model:      inferResult?.dwh_model       ?? null,
+      stg_definition: inferResult?.stg_ddl ?? null,
+      dwh_model:      inferResult?.dwh_ddl ?? null,
     }, etlName);
   };
 
@@ -232,13 +230,20 @@ export default function CreateETL() {
       setValue("origenTables",        formData.origenTables        ?? [], { shouldDirty: true });
       setValue("reglasNegocio",       formData.reglasNegocio       ?? "", { shouldDirty: true });
       setNameInputVal(name);
-      setInferResult(null);
+      // Sync ref BEFORE render so the stale-inferResult-clearing effect (which
+      // fires on any origenTables change) doesn't immediately undo the
+      // inferResult restore below — it'd see origenTables changed and wipe it.
+      origenTablesSerialRef.current = JSON.stringify(formData.origenTables ?? []);
+      setInferResult(
+        formData.stg_definition || formData.dwh_model
+          ? { stg_ddl: formData.stg_definition ?? "", dwh_ddl: formData.dwh_model ?? "" }
+          : null
+      );
       setInferHistory([]);
       setRawLlmData(null);
-      setErrors([]);
       setStep(STEP.FORM);
     } catch (err) {
-      setErrors([`Error al importar: ${err.message}`]);
+      notifySystem(`Error al importar: ${err.message}`);
     }
   };
 
@@ -246,7 +251,6 @@ export default function CreateETL() {
     setValue("descripcionObjetivo", SAMPLE_ETL.descripcionObjetivo, { shouldDirty: true });
     setValue("origenTables",        SAMPLE_ETL.origenTables,        { shouldDirty: true });
     setValue("reglasNegocio",       SAMPLE_ETL.reglasNegocio,       { shouldDirty: true });
-    setErrors([]);
   };
 
   const serializeOrigen = () => JSON.stringify(origenTables, null, 2);
@@ -254,25 +258,24 @@ export default function CreateETL() {
   // ── PASO 1 → PASO 2: llamar a /infer-structures ──────────────────────────
   const handleInfer = async () => {
     if (!origenTables.length) {
-      setErrors(["Debe agregar al menos una tabla de origen."]);
+      notifyValidation("Debe agregar al menos una tabla de origen.");
       return;
     }
     if (!descripcionObjetivo.trim()) {
-      setErrors(["Debe describir el objetivo del proceso."]);
+      notifyValidation("Debe describir el objetivo del proceso.");
       return;
     }
     if (!reglasNegocio.trim()) {
-      setErrors(["Debe describir las reglas de negocio."]);
+      notifyValidation("Debe describir las reglas de negocio.");
       return;
     }
 
-    setErrors([]);
     setStep(STEP.INFERRING);
 
     try {
       const data = await inferStructures({
-        source_structure:    serializeOrigen(),
-        process_description: descripcionObjetivo,
+        source_schema_json: serializeOrigen(),
+        process_goal:        descripcionObjetivo,
         business_rules:      reglasNegocio,
       });
       setInferResult(data);
@@ -280,7 +283,7 @@ export default function CreateETL() {
       setStep(STEP.REVIEW);
     } catch (err) {
       setStep(STEP.FORM);
-      setErrors([`Error al inferir estructuras: ${err.message}`]);
+      notifySystem(`Error al inferir estructuras: ${err.message}`);
     }
   };
 
@@ -289,21 +292,21 @@ export default function CreateETL() {
     setIsRefining(true);
     try {
       const data = await refineInference({
-        source_structure:    serializeOrigen(),
-        process_description: descripcionObjetivo,
+        source_schema_json: serializeOrigen(),
+        process_goal:        descripcionObjetivo,
         business_rules:      reglasNegocio,
-        current_stg:         inferResult.stg_definition,
-        current_dwh:         inferResult.dwh_model,
+        previous_stg:        inferResult.stg_ddl,
+        previous_dwh:        inferResult.dwh_ddl,
         correction,
-        history:             inferHistory,
+        correction_history:  inferHistory,
       });
       setInferHistory(prev => [
         ...prev,
-        { correction, stg: inferResult.stg_definition, dwh: inferResult.dwh_model },
+        { correction, stg_ddl: inferResult.stg_ddl, dwh_ddl: inferResult.dwh_ddl },
       ]);
       setInferResult(data);
     } catch (err) {
-      setErrors([`Error al aplicar corrección: ${err.message}`]);
+      notifySystem(`Error al aplicar corrección: ${err.message}`);
     } finally {
       setIsRefining(false);
     }
@@ -316,8 +319,12 @@ export default function CreateETL() {
       descripcionObjetivo,
       origenTables,
       reglasNegocio,
-      stg_definition: inferResult?.stg_definition ?? "",
-      dwh_model:      inferResult?.dwh_model       ?? "",
+      stg_definition: inferResult?.stg_ddl ?? "",
+      dwh_model:      inferResult?.dwh_ddl ?? "",
+      // connections_map se pierde junto con el KtrBuildJob (TTL) — lo persistimos
+      // acá para que el ETL guardado pueda resolver conn_dwh más adelante
+      // (ej. validación de estado del DWH antes de exportar a Superset).
+      connectionsMap: connectionsMapRef.current,
     }, apiResult, etlName);
     setRawLlmData(null);
     const dest = `/etl/${id}`;
@@ -361,17 +368,17 @@ export default function CreateETL() {
         if (status.build_status === "failed") {
           if (status.raw_llm_data) setRawLlmData(status.raw_llm_data);
           setStep(STEP.REVIEW);
-          setErrors([`Error al generar el ETL: ${status.error ?? "fallo desconocido"}`]);
+          notifySystem(`Error al generar el ETL: ${status.error ?? "fallo desconocido"}`);
           return;
         }
       } catch (err) {
         setStep(STEP.REVIEW);
-        setErrors([`Error al consultar el estado de la generación: ${err.message}`]);
+        notifySystem(`Error al consultar el estado de la generación: ${err.message}`);
         return;
       }
       if (attempts >= POLL_MAX_ATTEMPTS) {
         setStep(STEP.REVIEW);
-        setErrors(["La generación del ETL tardó demasiado y fue cancelada. Intentá de nuevo."]);
+        notifySystem("La generación del ETL tardó demasiado y fue cancelada. Intentá de nuevo.");
         return;
       }
       pollTimeoutRef.current = setTimeout(tick, POLL_INTERVAL_MS);
@@ -387,7 +394,7 @@ export default function CreateETL() {
     connectionsMapRef.current = { ...connectionsMapRef.current, [logicalName]: connId };
     if (!jobId) return;
     submitJobConnections(jobId, connectionsMapRef.current).catch(err => {
-      setErrors([`Error al registrar la conexión: ${err.message}`]);
+      notifySystem(`Error al registrar la conexión: ${err.message}`);
     });
   };
 
@@ -396,7 +403,6 @@ export default function CreateETL() {
   // de conexiones destino en paralelo — no se espera al modelo para empezar
   // a pedirlas. build_ktr() en el backend actúa de barrera entre ambos.
   const handleConfirm = async () => {
-    setErrors([]);
     setEtlPhase("waiting");
     setKtrLogs([]);
     setRawLlmData(null);
@@ -408,8 +414,8 @@ export default function CreateETL() {
       const { job_id } = await generateAsync({
         descripcionObjetivo,
         origenTables,
-        stg_definition: inferResult.stg_definition,
-        dwh_model:      inferResult.dwh_model,
+        stg_definition: inferResult.stg_ddl,
+        dwh_model:      inferResult.dwh_ddl,
         reglasNegocio,
       });
       setJobId(job_id);
@@ -421,7 +427,7 @@ export default function CreateETL() {
       _pollJobStatus(job_id);
     } catch (err) {
       setStep(STEP.REVIEW);
-      setErrors([`Error al generar el ETL: ${err.message}`]);
+      notifySystem(`Error al generar el ETL: ${err.message}`);
     }
   };
 
@@ -429,7 +435,6 @@ export default function CreateETL() {
   // Salta la llamada al LLM: reconstruye el .ktr en backend a partir de rawLlmData.
   const handleReuseResponse = async () => {
     if (!rawLlmData) return;
-    setErrors([]);
     setEtlPhase("building");
     setKtrLogs([]);
     setJobId(null); // reconstrucción directa desde JSON guardado — sin flujo async / conexiones paralelas
@@ -441,7 +446,7 @@ export default function CreateETL() {
     } catch (err) {
       if (err.rawLlmData) setRawLlmData(err.rawLlmData);
       setStep(STEP.REVIEW);
-      setErrors([`Error al reconstruir el .ktr: ${err.message}`]);
+      notifySystem(`Error al reconstruir el .ktr: ${err.message}`);
     }
   };
 
@@ -457,9 +462,8 @@ export default function CreateETL() {
     try {
       const data = await importLlmRaw(file);
       setRawLlmData(data);
-      setErrors([]);
     } catch (err) {
-      setErrors([`Error al importar respuesta del modelo: ${err.message}`]);
+      notifySystem(`Error al importar respuesta del modelo: ${err.message}`);
     }
   };
 
@@ -478,19 +482,35 @@ export default function CreateETL() {
 
       <div className="etl-page">
         <div className="etl-page__header">
-          <div className="etl-header__title-block">
-            <div className="etl-header__logo-row">
-              <img src={logo} alt="Logo" className="etl-header__logo" />
-              <h1 className="etl-title">Generación Nuevo ETL</h1>
-            </div>
-            <input
-              className="etl-name-input"
-              value={nameInputVal}
-              onChange={e => setNameInputVal(e.target.value)}
-              onBlur={handleNameConfirm}
-              onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
-              placeholder="Agregue un nombre descriptivo a este proceso"
-            />
+          <div className="etl-header__logo-row">
+            <img src={logo} alt="Logo" className="etl-header__logo" />
+            {step === STEP.FORM && (
+              isEditingName ? (
+                <input
+                  className="etl-title-input"
+                  value={nameInputVal}
+                  onChange={e => setNameInputVal(e.target.value)}
+                  onBlur={handleNameConfirm}
+                  onFocus={e => e.target.select()}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") handleNameConfirm();
+                    if (e.key === "Escape") { setNameInputVal(etlName); setIsEditingName(false); }
+                  }}
+                  autoFocus
+                />
+              ) : (
+                <h1
+                  className="etl-title etl-title--editable"
+                  onClick={() => { setNameInputVal(etlName); setIsEditingName(true); }}
+                >
+                  {etlName}
+                  <span className="etl-title-edit-hint">Editar</span>
+                </h1>
+              )
+            )}
+            {step !== STEP.FORM && step !== STEP.REVIEW && (
+              <h1 className="etl-title">{etlName}</h1>
+            )}
           </div>
           {syncStatus && (
             <span className={`etl-sync-badge etl-sync-badge--${syncStatus}`}>
@@ -505,18 +525,13 @@ export default function CreateETL() {
           )}
 
           {step === STEP.REVIEW && (
-            <div className="etl-header-actions">
-              <input
-                ref={importRawInputRef}
-                type="file"
-                accept=".json"
-                style={{ display: "none" }}
-                onChange={handleImportRaw}
-              />
-              <button className="etl-save-btn" onClick={handleGuardarFromReview}>
-                Guardar
-              </button>
-            </div>
+            <input
+              ref={importRawInputRef}
+              type="file"
+              accept=".json"
+              style={{ display: "none" }}
+              onChange={handleImportRaw}
+            />
           )}
 
           {step === STEP.FORM && (
@@ -581,16 +596,13 @@ export default function CreateETL() {
 
         {step === STEP.REVIEW && (
           <div className="etl-body">
-            {errors.length > 0 && (
-              <div className="etl-errors-box">
-                <ul>{errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
-              </div>
-            )}
             <InferenceReview
               inferResult={inferResult}
+              etlName={etlName}
               onConfirm={handleConfirm}
               onRefine={handleRefine}
               onBack={() => setStep(STEP.FORM)}
+              onGuardar={handleGuardarFromReview}
               isRefining={isRefining}
               rawLlmData={rawLlmData}
               onReuseResponse={handleReuseResponse}
@@ -615,12 +627,6 @@ export default function CreateETL() {
                 tables={Array.isArray(origenTables) ? origenTables : []}
                 onChange={(v) => setValue("origenTables", v, { shouldDirty: true })}
               />
-
-              {errors.length > 0 && (
-                <div className="etl-errors-box">
-                  <ul>{errors.map((err, i) => <li key={i}>{err}</li>)}</ul>
-                </div>
-              )}
             </div>
 
             <BusinessRules

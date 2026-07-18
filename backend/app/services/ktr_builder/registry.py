@@ -20,6 +20,7 @@ from app.services.ktr_builder.steps.input import (
     _step_CsvInput,
     _step_ExcelInput,
     _step_JsonInput,
+    _step_RowGenerator,
     _step_TableInput,
     _step_TextFileInput,
 )
@@ -91,6 +92,9 @@ STEP_TYPE_ALIASES = {
     "Microsoft Excel Input":     "ExcelInput",
     "Excel Input":               "ExcelInput",
     "JSON Input":                "JsonInput",
+    "Generate Rows":             "RowGenerator",
+    "Row Generator":             "RowGenerator",
+    "GenerateRows":              "RowGenerator",
     "XML input stream (SAX)":    "GetXMLData",
     "REST Client":               "Rest",
     # Transformación
@@ -153,6 +157,7 @@ STEP_BUILDERS = {
     "TextFileInput":       _step_TextFileInput,
     "ExcelInput":          _step_ExcelInput,
     "JsonInput":           _step_JsonInput,
+    "RowGenerator":        _step_RowGenerator,
     # Salida
     "TableOutput":         _step_TableOutput,
     "InsertUpdate":        _step_InsertUpdate,
@@ -260,6 +265,7 @@ _CRITICAL_FIELDS: dict[str, list[str]] = {
 STEP_CONFIG_KEYS: dict[str, frozenset[str]] = {
     "WriteToLog":      frozenset({"level", "message", "fields"}),
     "Constant":        frozenset({"fields"}),
+    "RowGenerator":    frozenset({"fields", "limit"}),
     "GetSystemInfo":   frozenset({"fields"}),
     "TableInput":      frozenset({"connection", "sql"}),
     "SelectValues":    frozenset({"select", "fields", "columns", "remove", "cast"}),

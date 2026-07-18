@@ -197,11 +197,11 @@ class TestEtlGeneratorIntegration:
 class TestStructureInferrerUnit:
     def _minimal_inference_json(self) -> Dict[str, Any]:
         return {
-            "stg_definition": "CREATE TABLE STG_VENTAS (id INTEGER, monto DECIMAL);",
-            "dwh_model": "CREATE TABLE FACT_VENTAS (id_sk INTEGER, monto DECIMAL);",
+            "stg_ddl": "CREATE TABLE STG_VENTAS (id INTEGER, monto DECIMAL);",
+            "dwh_ddl": "CREATE TABLE FACT_VENTAS (id_sk INTEGER, monto DECIMAL);",
             "stg_rationale": "staging rationale",
             "dwh_rationale": "dwh rationale",
-            "iteration": 1,
+            "iteration_count": 1,
         }
 
     def test_inference_schema_validates_minimal(self):
@@ -232,8 +232,8 @@ class TestStructureInferrerUnit:
             stop_reason="end_turn",
         )
         result = _parse_response(resp)
-        assert result.stg_definition == data["stg_definition"]
-        assert result.iteration == 1
+        assert result.stg_ddl == data["stg_ddl"]
+        assert result.iteration_count == 1
 
     def test_parse_response_raises_missing_dwh_model(self):
         from app.services.structure_inferrer import _parse_response
@@ -241,7 +241,7 @@ class TestStructureInferrerUnit:
 
         resp = LLMResponse(
             content="{}",
-            json_data={"stg_definition": "CREATE TABLE x (id INT);"},  # missing dwh_model
+            json_data={"stg_ddl": "CREATE TABLE x (id INT);"},  # missing dwh_ddl
             model="m",
             input_tokens=1,
             output_tokens=1,
@@ -285,8 +285,8 @@ class TestStructureInferrerIntegration:
         assert resp.json_data is not None
         assert resp.stop_reason != "max_tokens"
         jsonschema.validate(resp.json_data, INFERENCE_OUTPUT_SCHEMA)
-        assert "CREATE TABLE" in resp.json_data["stg_definition"].upper()
-        assert "CREATE TABLE" in resp.json_data["dwh_model"].upper()
+        assert "CREATE TABLE" in resp.json_data["stg_ddl"].upper()
+        assert "CREATE TABLE" in resp.json_data["dwh_ddl"].upper()
 
 
 # ---------------------------------------------------------------------------
