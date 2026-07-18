@@ -81,53 +81,6 @@
   color: var(--text-1);
 }
 
-/* ── Filter toggle ── */
-.home-filter {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 3px;
-}
-
-.home-filter__btn {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 5px 14px;
-  border-radius: 7px;
-  border: none;
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  letter-spacing: 0.02em;
-}
-
-.home-filter__btn:hover:not(.home-filter__btn--active) {
-  background: var(--accent-bg);
-  color: var(--text-1);
-}
-
-.home-filter__btn--active {
-  background: var(--accent);
-  color: #fff;
-}
-
-/* ── Botón crear job (variante outlined del botón principal) ── */
-.job-create-btn {
-  background: none !important;
-  border: 1px solid var(--accent-border) !important;
-  color: var(--accent) !important;
-  box-shadow: none !important;
-}
-.job-create-btn:hover {
-  background: var(--accent-bg) !important;
-  opacity: 1;
-  box-shadow: none !important;
-}
-
 /* ── Empty state ── */
 .home-empty {
   display: flex;
@@ -196,19 +149,10 @@
   transition: opacity 0.2s;
 }
 
-.etl-card--job::before {
-  background: linear-gradient(90deg, #6366f1, rgba(99, 102, 241, 0.2));
-}
-
 .etl-card:hover {
   border-color: var(--accent-border);
   box-shadow: 0 4px 20px var(--accent-shadow);
   transform: translateY(-2px);
-}
-
-.etl-card--job:hover {
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
 }
 
 .etl-card:hover::before {
@@ -232,11 +176,7 @@
   flex-shrink: 0;
 }
 
-.etl-card__icon--job {
-  background: rgba(99, 102, 241, 0.1);
-}
-
-/* Type tag (ETL / Job) */
+/* Type tag */
 .etl-card__type-tag {
   display: inline-flex;
   align-self: flex-start;
@@ -251,11 +191,6 @@
 .etl-card__type-tag--etl {
   background: var(--accent-bg);
   color: var(--accent);
-}
-
-.etl-card__type-tag--job {
-  background: rgba(99, 102, 241, 0.1);
-  color: #6366f1;
 }
 
 .etl-card__name {
@@ -307,10 +242,6 @@
 
 .etl-card:hover .etl-card__action {
   color: var(--accent);
-}
-
-.etl-card--job:hover .etl-card__action {
-  color: #6366f1;
 }
 
 /* ── Top-right action cluster ──────────────────────────────────────────── */
