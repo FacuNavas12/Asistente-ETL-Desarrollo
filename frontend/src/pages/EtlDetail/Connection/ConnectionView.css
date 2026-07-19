@@ -1,0 +1,27 @@
+.etl-connections-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.etl-connection-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.etl-connection-item__role {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  flex-shrink: 0;
+}
+
+.etl-connection-item__id {
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-3);
+}

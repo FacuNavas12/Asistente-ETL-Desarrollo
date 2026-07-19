@@ -1,0 +1,31 @@
+2026-07-13 21:14:27,644 | INFO | app.outbox.runner | outbox.runner started (in-process)
+2026-07-13 21:15:21,322 | INFO | app.models.gemini_llm | Gemini client created — Google AI Studio
+2026-07-13 21:15:21,323 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 21:15:51,256 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-07-13 21:15:51,257 | WARNING | app.models.gemini_llm | [Gemini] Transient error (attempt 1/4): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} — retrying in 1s
+2026-07-13 21:15:52,258 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 21:16:14,155 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 21:16:14,157 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 2 | in: 2156 | out: 764 | stop: end_turn | 21899ms
+2026-07-13 21:18:27,093 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 21:24:05,503 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 21:24:25,089 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 21:24:25,091 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 13892 | out: 4571 | stop: end_turn | 19588ms
+2026-07-13 21:24:25,092 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 21:24:39,536 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 21:24:39,542 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 13929 | out: 3288 | stop: end_turn | 14449ms
+2026-07-13 21:24:39,542 | INFO | app.services.ktr_builder.repair | repair_ktr_steps: reparando 'Agregar Constantes Categorias' (Constant), intento 1/2, faltan=['fields']
+2026-07-13 21:24:39,543 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 21:25:29,431 | INFO | app.outbox.sqlite_outbox | outbox.synced id=a7e633a8-325c-4479-91f4-0936819418bd
+2026-07-13 21:25:29,732 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 21:25:29,733 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 887 | out: 6 | stop: end_turn | 50190ms
+2026-07-13 21:25:29,733 | INFO | app.services.ktr_builder.repair | repair_ktr_steps: reparando 'Agregar Constantes Categorias' (Constant), intento 2/2, faltan=['fields']
+2026-07-13 21:25:29,734 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 21:25:55,305 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 21:25:55,307 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 887 | out: 6 | stop: end_turn | 25573ms
+2026-07-13 21:25:55,310 | INFO | app.services.ktr_builder.repair | repair_integrity_gaps: reparando 'Agregar Constantes Categorias' (Constant), intento 1/1, campos_faltantes=['stg_estado', 'stg_origen']
+2026-07-13 21:25:55,310 | INFO | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-07-13 21:26:14,477 | INFO | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-07-13 21:26:14,478 | INFO | app.models.gemini_llm | Gemini complete — model: gemini-3.5-flash | attempt: 1 | in: 1032 | out: 5 | stop: end_turn | 19167ms
+2026-07-13 21:26:15,772 | ERROR | app.services.ktr_builder.build | KTR field integrity: Step 'Descartar Precios Negativos' (Dummy) no tiene fuente de filas: no tiene ningún step predecesor y 'Dummy' no es un step generador (TableInput/CsvInput/RowGenerator/GetSystemInfo/...) — nunca va a ejecutarse ni a producir filas. Si necesita sembrar literales o parámetros sin depender de otra tabla, anteponer un 'RowGenerator' (Generate Rows, 1 fila).
+2026-07-13 21:26:15,779 | ERROR | app.services.ktr_builder.build | KTR field integrity: Step 'Buscar cod_categoria' (DBLookup) busca el SK de 'dim_categoria' con un lookup separado, pero 'Cargar dim_categoria' ya carga esa misma dimensión en esta transformación — PDI ejecuta todos los steps en paralelo (no en el orden visual), así que el DBLookup puede correr antes de que el DimensionLookup/CombinationLookup commitee la fila nueva (condición de carrera, FK nula en runtime). 'Cargar dim_categoria' ya devuelve el SK en su propio campo de retorno — conectar el step de hechos directamente a esa salida y eliminar el DBLookup redundante, o separar la carga de dimensiones y la carga de hechos en dos transformaciones distintas si de verdad necesitan mecanismos distintos.
+2026-07-13 21:26:38,564 | INFO | app.outbox.sqlite_outbox | outbox.synced id=915d6a29-a8c7-4d2a-9397-77a01e766dab

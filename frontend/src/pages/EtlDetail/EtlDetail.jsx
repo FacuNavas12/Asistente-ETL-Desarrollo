@@ -4,6 +4,7 @@ import { useEtl } from "@/context/EtlContext";
 import Layout from "@/components/layout/Layout";
 import LineageView from "@/pages/EtlDetail/Lineage/LineageView";
 import ResultView from "@/pages/EtlDetail/Result/ResultView";
+import ConnectionView from "@/pages/EtlDetail/Connection/ConnectionView";
 import { computeLineage } from "@/api/lineage";
 import { exportEtlToSuperset } from "@/utils/supersetExport";
 import "./etlDetail-global.css";
@@ -110,7 +111,7 @@ export default function EtlDetail() {
 
   return (
     <Layout>
-      <div className="etl-detail">
+      <div className={`etl-detail${pageTab === "linaje" ? " etl-detail--fill" : ""}`}>
 
         <div className="etl-detail__header">
           <h1 className="etl-detail__title">{etl.name}</h1>
@@ -119,8 +120,8 @@ export default function EtlDetail() {
           </span>
           <div className="etl-detail__actions">
             {etl.status === "done" && (
-              <button
-                className="etl-reuse-btn"
+              <button 
+                className="ktr-download-btn"
                 onClick={() => navigate("/etl-create", {
                   state: { initialFormData: { ...etl.formData, etlName: etl.name } },
                 })}
@@ -137,6 +138,7 @@ export default function EtlDetail() {
             ) : (
               <span className="ktr-unavailable">No se pudo generar el .ktr</span>
             )}
+             {/* 
             {canExportSuperset && (
               <button
                 className="superset-export-btn"
@@ -146,6 +148,7 @@ export default function EtlDetail() {
                 {supersetBusy ? "Abriendo en Superset..." : "Ver dashboard en Superset"}
               </button>
             )}
+            */}
           </div>
         </div>
 
@@ -166,11 +169,22 @@ export default function EtlDetail() {
             Linaje
             {isPending && <span className="etl-page-tab__hint">generando…</span>}
           </button>
+          <button
+            className={`etl-page-tab${pageTab === "conexion" ? " is-active" : ""}`}
+            onClick={() => setPageTab("conexion")}
+          >
+            Conexión
+          </button>
         </div>
 
         {/* ── Pestaña: Resultado ────────────────────────────────────────── */}
         {pageTab === "resultado" && (
           <ResultView result={etl.result} formData={etl.formData} />
+        )}
+
+        {/* ── Pestaña: Conexión ─────────────────────────────────────────── */}
+        {pageTab === "conexion" && (
+          <ConnectionView formData={etl.formData} />
         )}
 
         {/* ── Pestaña: Linaje ───────────────────────────────────────────── */}

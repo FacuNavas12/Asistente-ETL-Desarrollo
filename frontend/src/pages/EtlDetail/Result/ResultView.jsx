@@ -1,4 +1,5 @@
 import ChartPanel from "@/components/ui/ChartPanel";
+import CollapsibleSection from "../components/CollapsibleSection";
 import "../etlDetail-global.css";
 import "./ResultView.css";
 
@@ -26,44 +27,39 @@ export default function ResultView({ result }) {
     <div className="etl-detail__body">
 
       {proceso_etl?.descripcion && (
-        <div className="etl-section">
-          <h2 className="etl-section__title">Descripción</h2>
+        <CollapsibleSection title="Descripción">
           <p className="etl-section__text">{proceso_etl.descripcion}</p>
-        </div>
+        </CollapsibleSection>
       )}
 
       {proceso_etl?.steps?.length > 0 && (
-        <div className="etl-section">
-          <h2 className="etl-section__title">Estadísticas del proceso</h2>
+        <CollapsibleSection title="Estadísticas del proceso">
           <ChartPanel data={result} />
-        </div>
+        </CollapsibleSection>
       )}
 
       {validaciones.length > 0 && (
-        <div className="etl-section">
-          <h2 className="etl-section__title">Validaciones</h2>
+        <CollapsibleSection title="Validaciones">
           <div className="etl-validations-list">
             {validaciones.map((v, i) => <ValidationItem key={i} v={v} />)}
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
       {documentacion && (
-        <div className="etl-section">
-          <h2 className="etl-section__title">Documentación</h2>
+        <CollapsibleSection title="Documentación">
           <div className="etl-section__text etl-doc">
             {documentacion.split("\n\n").map((p, i) => <p key={i}>{p}</p>)}
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
       {advertencias_buenas_practicas.length > 0 && (
-        <div className="etl-section">
-          <h2 className="etl-section__title">Buenas prácticas</h2>
+        <CollapsibleSection title="Buenas prácticas">
           <ul className="etl-warnings-list">
             {advertencias_buenas_practicas.map((w, i) => <li key={i}>{w}</li>)}
           </ul>
-        </div>
+        </CollapsibleSection>
       )}
 
     </div>

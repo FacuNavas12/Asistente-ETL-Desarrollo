@@ -155,9 +155,36 @@
   font-style: italic;
 }
 
+/* ── Fill-viewport mode (pestaña Linaje: sin scroll de página) ───────────── */
+.etl-detail--fill {
+  /* .etl-detail (arriba) trae flex:1 → flex-basis:0%, que pisa el height de
+     acá para el cálculo de layout. .layout__content solo tiene min-height
+     (auto-sizing), así que con basis:0% este contenedor terminaba colapsando
+     a ~0 de alto — React Flow, adentro, medía 0×0 y no dibujaba los nodos.
+     flex:none desactiva grow/shrink y usa el height de forma literal. */
+  flex: none;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.etl-detail--fill .etl-detail__header,
+.etl-detail--fill .etl-page-tabs {
+  flex-shrink: 0;
+}
+
 /* ── Lineage tab body ────────────────────────────────────────────────────── */
 .etl-lineage-body {
   padding-bottom: 40px;
+}
+
+.etl-detail--fill .etl-lineage-body {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .etl-lineage-loading {
@@ -189,7 +216,7 @@
   font-size: 15px;
   font-weight: 700;
   color: var(--text-h);
-  margin: 0 0 16px;
+  margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
