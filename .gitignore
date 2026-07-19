@@ -24,6 +24,9 @@ __pycache__/
 venv/
 .venv/
 
+# Logs (locales por dev, rotan diario, no interesan al repo)
+backend/logs/
+
 # Sistemas operativos
 Thumbs.db
 .DS_Store
