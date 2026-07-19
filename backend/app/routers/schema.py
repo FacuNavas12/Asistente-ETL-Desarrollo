@@ -16,12 +16,13 @@ import tempfile
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from app.core.auth import require_auth
 from app.schemas.canonical import CanonicalSchema
 
-router = APIRouter(prefix="/api/schema", tags=["schema"])
+router = APIRouter(prefix="/api/schema", tags=["schema"], dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 _ALLOWED_EXTENSIONS = frozenset({".csv", ".xlsx", ".xls"})

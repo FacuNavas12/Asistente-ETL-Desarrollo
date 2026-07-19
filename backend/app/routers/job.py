@@ -5,11 +5,12 @@ from typing import List
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_auth
 from app.core.database import get_db
 from app.schemas.job import JobCreate, JobRead, JobStatusUpdate, JobUpdate
 from app.services import job_service
 
-router = APIRouter(prefix="/api/jobs", tags=["Jobs"])
+router = APIRouter(prefix="/api/jobs", tags=["Jobs"], dependencies=[Depends(require_auth)])
 
 
 @router.get("/", response_model=List[JobRead])
