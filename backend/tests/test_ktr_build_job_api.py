@@ -17,6 +17,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from unittest.mock import MagicMock
 
+from app.core.auth import require_auth
 from app.core.crypto import encrypt_password
 from app.core.database import Base, get_db, get_session_factory
 from app.core.dependencies import get_main_llm
@@ -87,12 +88,18 @@ def client():
     app.dependency_overrides.pop(get_db, None)
     app.dependency_overrides.pop(get_session_factory, None)
     app.dependency_overrides.pop(get_main_llm, None)
+    app.dependency_overrides.pop(require_auth, None)
 
 
-def _make_connection(db_session) -> str:
+def _login_as(sub: str) -> None:
+    app.dependency_overrides[require_auth] = lambda: {"sub": sub}
+
+
+def _make_connection(db_session, owner_id: str | None = None) -> str:
     conn = Connection(
         name="dest_conn", db_type=DbType.postgresql, host="h", port=5432,
         database="d", username="u", encrypted_password=encrypt_password("pw"),
+        owner_id=owner_id,
     )
     db_session.add(conn)
     db_session.commit()
@@ -225,3 +232,76 @@ def test_expired_job_returns_410(client):
     db = _Session()
     assert db.get(KtrBuildJob, job.id) is None
     db.close()
+
+
+# ─── Ownership (hallazgo B) ───────────────────────────────────────────────────
+
+def test_cross_owner_cannot_read_or_attach_connections_to_foreign_job(client):
+    app.dependency_overrides[get_main_llm] = lambda: _fake_llm_ok()
+    db = _Session()
+    conn_id = _make_connection(db)
+    db.close()
+
+    _login_as("user-a")
+    resp = client.post("/api/v1/etl/generate-async", json=_req_body())
+    job_id = resp.json()["job_id"]
+
+    _login_as("user-b")
+    assert client.get(f"/api/v1/etl/{job_id}/status").status_code == 404
+    assert client.post(
+        f"/api/v1/etl/{job_id}/connections", json={"conn_dwh": conn_id}
+    ).status_code == 404
+
+    _login_as("user-a")
+    assert client.get(f"/api/v1/etl/{job_id}/status").status_code == 200
+
+
+def test_attaching_a_foreign_connection_id_to_own_job_falls_back_to_placeholder(client):
+    # user-b arma su propio job (dueño legítimo) pero intenta atar el connection_id
+    # de user-a. Sin el chequeo de ownership en resolve_real_connections, esto
+    # desofuscaba y embebía el password de user-a en el .ktr de user-b.
+    # sql real (no "SELECT 1") — ese literal lo trata build.py como placeholder
+    # de config faltante, independiente de todo lo de ownership acá probado.
+    ktr_json = {
+        "proceso_etl": {"nombre": "TEST_PROC", "descripcion": "", "steps": []},
+        "validaciones": [], "documentacion": "", "advertencias_buenas_practicas": [],
+        "ktr": {
+            "name": "TEST_PROC", "description": "",
+            "connections": [{"name": "conn_dwh", "type": "GENERIC", "host": "PLACEHOLDER_HOST", "database": "PLACEHOLDER_DATABASE", "port": 0, "username": "PLACEHOLDER_USER"}],
+            "steps": [
+                {"name": "Leer", "type": "TableInput", "config": {"connection": "conn_dwh", "sql": "SELECT id FROM origen"}},
+                {"name": "Escribir", "type": "TableOutput", "config": {"connection": "conn_dwh", "table": "dim_x"}},
+            ],
+            "hops": [{"from": "Leer", "to": "Escribir", "enabled": True}],
+        },
+    }
+
+    async def _complete(user_message, system, schema=None):
+        return LLMResponse(content=json.dumps(ktr_json), json_data=ktr_json, model="test", input_tokens=1, output_tokens=1, provider="test")
+
+    llm = MagicMock(spec=BaseLLM)
+    llm.complete = _complete
+    app.dependency_overrides[get_main_llm] = lambda: llm
+    db = _Session()
+    foreign_conn_id = _make_connection(db, owner_id="user-a")
+    db.close()
+
+    _login_as("user-b")
+    resp = client.post("/api/v1/etl/generate-async", json=_req_body())
+    job_id = resp.json()["job_id"]
+
+    resp = client.post(f"/api/v1/etl/{job_id}/connections", json={"conn_dwh": foreign_conn_id})
+    assert resp.status_code == 200
+    asyncio.run(_drain_pending_tasks())
+
+    resp = client.get(f"/api/v1/etl/{job_id}/status")
+    body = resp.json()
+    # _try_build llama a build_ktr con strict_connections=True (ver etl_generator.py) —
+    # una conexión que queda sin resolver aborta el build en vez de entregar un .ktr
+    # con placeholder. Combinado con el chequeo de ownership, el resultado es que
+    # el job de user-b falla en limpio en vez de construir con datos de user-a
+    # o (peor, sin este fix) con el password real de user-a embebido.
+    assert body["build_status"] == "failed"
+    assert body["result"] is None
+    assert "conn_dwh" in body["error"]
+    assert "user-a" not in body["error"]

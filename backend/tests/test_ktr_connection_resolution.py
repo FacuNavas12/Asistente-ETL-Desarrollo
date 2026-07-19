@@ -63,6 +63,36 @@ def _make_connection(db, db_type: DbType, **overrides) -> Connection:
     return conn
 
 
+# ─── ownership (hallazgo B) ────────────────────────────────────────────────────
+# Sin este chequeo, un connections_map armado a mano con el UUID de la conexión
+# de otro usuario dejaba desofuscar y embeber su password en el .ktr resultante.
+
+def test_resolve_rejects_connection_of_a_different_owner(db):
+    conn = _make_connection(db, DbType.postgresql, owner_id="user-a")
+    real, warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db, owner="user-b")
+
+    assert real == {}
+    assert "conn_dwh" in warnings[0]
+
+
+def test_resolve_allows_connection_of_the_same_owner(db):
+    conn = _make_connection(db, DbType.postgresql, owner_id="user-a")
+    real, warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db, owner="user-a")
+
+    assert warnings == []
+    assert real["conn_dwh"]["host"] == "dbhost.internal"
+
+
+def test_resolve_owner_none_skips_ownership_check(db):
+    # owner=None (AUTH_REQUIRED=false) — comportamiento actual preservado,
+    # resuelve cualquier conexión sin importar de quién sea.
+    conn = _make_connection(db, DbType.postgresql, owner_id="user-a")
+    real, warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db, owner=None)
+
+    assert warnings == []
+    assert real["conn_dwh"]["host"] == "dbhost.internal"
+
+
 # ─── resolve_real_connections ─────────────────────────────────────────────────
 
 def test_resolve_postgres_connection(db):

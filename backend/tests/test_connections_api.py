@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.auth import require_auth
 from app.core.crypto import decrypt_password
 from app.core.database import Base, get_db
 from app.main import app
@@ -47,6 +48,12 @@ def client():
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(require_auth, None)
+
+
+def _login_as(sub: str) -> None:
+    """Simula un caller autenticado con ese claim 'sub', sin pasar por JWKS real."""
+    app.dependency_overrides[require_auth] = lambda: {"sub": sub}
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -156,3 +163,51 @@ def test_test_endpoint_updates_status(client, monkeypatch):
     resp = client.post(f"/api/connections/{conn_id}/test")
     assert resp.json()["success"] is False
     assert _get_conn_row(conn_id).last_test_status == TestStatus.failed
+
+
+# ─── Ownership (hallazgo B) ───────────────────────────────────────────────────
+
+def test_create_assigns_owner_from_auth_sub_not_from_body(client):
+    _login_as("user-a")
+    data = _create(client, owner_id=str(uuid.uuid4()))  # ya no existe el campo, se ignora
+    assert _get_conn_row(data["id"]).owner_id == "user-a"
+
+
+def test_cross_owner_access_returns_404_on_every_verb(client):
+    _login_as("user-a")
+    conn_id = _create(client)["id"]
+
+    _login_as("user-b")
+    assert client.get(f"/api/connections/{conn_id}").status_code == 404
+    assert client.put(f"/api/connections/{conn_id}", json={"host": "x"}).status_code == 404
+    assert client.post(f"/api/connections/{conn_id}/test").status_code == 404
+    assert client.get(f"/api/connections/{conn_id}/schema/tables").status_code == 404
+    assert client.get(f"/api/connections/{conn_id}/schema/tables/foo/columns").status_code == 404
+    assert client.get(f"/api/connections/{conn_id}/schema/tables/foo/profile").status_code == 404
+    assert client.get(
+        f"/api/connections/{conn_id}/schema/table-data?schema=public&table=foo"
+    ).status_code == 404
+    assert client.delete(f"/api/connections/{conn_id}").status_code == 404
+
+    # el dueño real sigue teniendo acceso — la fila no se borró en el intento de arriba.
+    _login_as("user-a")
+    assert client.get(f"/api/connections/{conn_id}").status_code == 200
+
+
+def test_list_connections_never_returns_other_owner_rows(client):
+    _login_as("user-a")
+    _create(client, name="conn_a")
+
+    _login_as("user-b")
+    _create(client, name="conn_b")
+    names = [c["name"] for c in client.get("/api/connections").json()]
+    assert names == ["conn_b"]
+
+
+def test_dev_mode_without_auth_override_skips_ownership(client):
+    # Sin _login_as: require_auth real corre con AUTH_REQUIRED=false → payload
+    # None → owner None → ningún filtro de ownership se aplica (comportamiento
+    # actual preservado para desarrollo local).
+    data = _create(client)
+    assert _get_conn_row(data["id"]).owner_id is None
+    assert client.get(f"/api/connections/{data['id']}").status_code == 200

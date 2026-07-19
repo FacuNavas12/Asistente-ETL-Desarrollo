@@ -136,3 +136,18 @@ def require_auth(
         )
 
     return _validate_token(credentials.credentials)
+
+
+def get_current_owner(payload: Optional[dict]) -> Optional[str]:
+    """
+    Identificador de dueño de recurso a partir del payload de require_auth.
+
+    - AUTH_REQUIRED=false: payload es None → devuelve None (sin ownership,
+      modo desarrollo — todo endpoint que filtre por owner debe saltear el
+      filtro cuando esto da None, igual que hoy se saltea la validación de token).
+    - AUTH_REQUIRED=true: devuelve el claim "sub" del JWT — identificador
+      estable de OIDC/Auth0, no requiere namespace custom.
+    """
+    if payload is None:
+        return None
+    return payload.get("sub")

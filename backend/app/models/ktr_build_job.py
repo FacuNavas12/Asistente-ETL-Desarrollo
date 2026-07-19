@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum as SAEnum, JSON, Text, Uuid, func
+from sqlalchemy import DateTime, Enum as SAEnum, JSON, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -35,8 +35,11 @@ class KtrBuildJob(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True), nullable=True, index=True
+    # Claim "sub" del JWT de quien creó el job (mismo criterio que Connection.owner_id)
+    # — se usa para que resolve_real_connections() solo resuelva conexiones del
+    # mismo dueño del job, y para que _job_or_404 rechace jobs ajenos.
+    owner_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
     )
     model_status: Mapped[ModelStatus] = mapped_column(
         SAEnum(ModelStatus, name="ktr_job_model_status_enum"), default=ModelStatus.pending

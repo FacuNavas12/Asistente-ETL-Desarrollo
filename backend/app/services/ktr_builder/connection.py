@@ -79,12 +79,22 @@ _DB_TYPE_TO_KETTLE: dict[str, dict] = {
 }
 
 
-def resolve_real_connections(connections_map: dict, db) -> tuple[dict[str, dict], list[str]]:
+def resolve_real_connections(
+    connections_map: dict,
+    db,
+    owner: str | None = None,
+) -> tuple[dict[str, dict], list[str]]:
     """
     Resuelve un mapa {nombre_lógico: connection_id} a datos de conexión reales
     (host/port/database/username/password-ofuscado/type) consultando la tabla
     Connection y desofuscando el password SOLO en memoria, para inyectarlo en el
     XML final. Nunca devuelve el password en claro ni lo loguea.
+
+    owner: owner_id del job que dispara este build (KtrBuildJob.owner_id). Si no
+    es None, cualquier conn_id cuyo Connection.owner_id no coincida se trata
+    igual que "no encontrada" — sin esto, un connections_map armado a mano con
+    el UUID de la conexión de otro usuario dejaría desofuscar y embeber en el
+    .ktr el password ajeno. owner=None (AUTH_REQUIRED=false) salta el chequeo.
 
     Devuelve (real_connections, warnings). Toda conexión que no se pueda resolver
     genera un warning en vez de fallar — el .ktr sigue el build con placeholder.
@@ -105,7 +115,7 @@ def resolve_real_connections(connections_map: dict, db) -> tuple[dict[str, dict]
             continue
 
         conn = db.get(Connection, conn_uuid)
-        if conn is None:
+        if conn is None or (owner is not None and conn.owner_id != owner):
             warnings.append(f"Conexión '{logical_name}': no encontrada — se usará placeholder, configurar manualmente en Spoon.")
             continue
 

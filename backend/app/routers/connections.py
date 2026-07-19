@@ -11,7 +11,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_auth
+from app.core.auth import get_current_owner, require_auth
 from app.core.crypto import encrypt_password
 from app.core.database import get_db
 from app.core.sanitize import sanitize_error
@@ -37,7 +37,7 @@ from app.services.db_connector import (
 from app.services import profiler as profiler_svc
 from app.services import context_builder
 
-router = APIRouter(prefix="/api/connections", tags=["connections"], dependencies=[Depends(require_auth)])
+router = APIRouter(prefix="/api/connections", tags=["connections"])
 logger = logging.getLogger(__name__)
 
 # Tipo discriminado para el body de creación.
@@ -47,19 +47,32 @@ _CreateBody = Annotated[
 ]
 
 
-def _get_or_404(conn_id: uuid.UUID, db: Session) -> Connection:
+def _get_owned_or_404(conn_id: uuid.UUID, owner: Optional[str], db: Session) -> Connection:
+    """
+    Busca la conexión y, si hay ownership activo (owner is not None, es decir
+    AUTH_REQUIRED=true), exige que pertenezca al caller. "No existe" y "existe
+    pero es de otro" devuelven el mismo 404 — no confirmamos a quien adivina
+    un UUID ajeno que el recurso existe.
+
+    owner is None (AUTH_REQUIRED=false, modo desarrollo) salta el filtro,
+    igual que require_auth ya salta la validación de token en ese modo.
+    """
     conn = db.get(Connection, conn_id)
     if not conn:
+        raise HTTPException(status_code=404, detail="Conexión no encontrada.")
+    if owner is not None and conn.owner_id != owner:
         raise HTTPException(status_code=404, detail="Conexión no encontrada.")
     return conn
 
 
 # ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-# TODO (auth): owner_id se asignará desde la sesión autenticada — por ahora
-#              se acepta del body como campo opcional (Variante A).
 @router.post("", response_model=ConnectionRead, status_code=201)
-def create_connection(body: _CreateBody, db: Session = Depends(get_db)):
+def create_connection(
+    body: _CreateBody,
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
+):
     try:
         conn = Connection(
             name=body.name,
@@ -71,7 +84,7 @@ def create_connection(body: _CreateBody, db: Session = Depends(get_db)):
             encrypted_password=encrypt_password(body.password),
             ssl_mode=getattr(body, "ssl_mode", None),
             extra_options=body.extra_options,
-            owner_id=body.owner_id,
+            owner_id=get_current_owner(payload),
         )
         db.add(conn)
         db.commit()
@@ -91,18 +104,23 @@ def create_connection(body: _CreateBody, db: Session = Depends(get_db)):
 
 @router.get("", response_model=list[ConnectionRead])
 def list_connections(
-    owner_id: Optional[uuid.UUID] = Query(None),
     db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
 ):
+    owner = get_current_owner(payload)
     q = db.query(Connection)
-    if owner_id:
-        q = q.filter(Connection.owner_id == owner_id)
+    if owner is not None:
+        q = q.filter(Connection.owner_id == owner)
     return q.all()
 
 
 @router.get("/{conn_id}", response_model=ConnectionRead)
-def get_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
-    return _get_or_404(conn_id, db)
+def get_connection(
+    conn_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
+):
+    return _get_owned_or_404(conn_id, get_current_owner(payload), db)
 
 
 @router.put("/{conn_id}", response_model=ConnectionRead)
@@ -110,8 +128,9 @@ def update_connection(
     conn_id: uuid.UUID,
     body: ConnectionUpdate,
     db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
 ):
-    conn = _get_or_404(conn_id, db)
+    conn = _get_owned_or_404(conn_id, get_current_owner(payload), db)
     try:
         update_data = body.model_dump(exclude_unset=True)
         # Extraemos password antes de iterar para no llamar encrypt_password(None).
@@ -136,8 +155,12 @@ def update_connection(
 
 
 @router.delete("/{conn_id}", status_code=204)
-def delete_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
-    conn = _get_or_404(conn_id, db)
+def delete_connection(
+    conn_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
+):
+    conn = _get_owned_or_404(conn_id, get_current_owner(payload), db)
     db.delete(conn)
     db.commit()
 
@@ -145,8 +168,12 @@ def delete_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
 # ─── TEST ─────────────────────────────────────────────────────────────────────
 
 @router.post("/{conn_id}/test", response_model=ConnectionTestResult)
-def test_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
-    conn = _get_or_404(conn_id, db)
+def test_connection(
+    conn_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
+):
+    conn = _get_owned_or_404(conn_id, get_current_owner(payload), db)
     result = svc_test(conn)
     try:
         conn.last_test_status = TestStatus.success if result.success else TestStatus.failed
@@ -160,9 +187,13 @@ def test_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
 # ─── SCHEMA EXPLORER ──────────────────────────────────────────────────────────
 
 @router.get("/{conn_id}/schema/tables", response_model=list[str])
-def schema_list_tables(conn_id: uuid.UUID, db: Session = Depends(get_db)):
+def schema_list_tables(
+    conn_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
+):
     """Devuelve 'schema.tabla' para todas las tablas no-sistema."""
-    conn = _get_or_404(conn_id, db)
+    conn = _get_owned_or_404(conn_id, get_current_owner(payload), db)
     try:
         return list_tables(conn)
     except Exception as exc:
@@ -180,13 +211,14 @@ def schema_get_columns(
     conn_id: uuid.UUID,
     table_name: str,
     db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
 ):
     """
     Devuelve las columnas de una tabla como CanonicalField[].
     Acepta formato 'schema.tabla' o 'tabla'.
     No incluye perfil estadístico — usar /profile para eso.
     """
-    conn = _get_or_404(conn_id, db)
+    conn = _get_owned_or_404(conn_id, get_current_owner(payload), db)
     try:
         col_infos = get_columns(conn, table_name)
         schema = db_adapter.build(col_infos, table_name)
@@ -210,6 +242,7 @@ def schema_profile_table(
     conn_id: uuid.UUID,
     table_name: str,
     db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
 ):
     """
     Returns a CanonicalSchema for the requested table.
@@ -221,7 +254,7 @@ def schema_profile_table(
     from a single SQL aggregate pass + ≤20 random sample rows (no raw values
     leave the backend — all embedded in schema.profile.column_profiles).
     """
-    conn = _get_or_404(conn_id, db)
+    conn = _get_owned_or_404(conn_id, get_current_owner(payload), db)
 
     if "." in table_name:
         schema, _, table = table_name.partition(".")
@@ -276,13 +309,14 @@ def schema_get_table_data(
     page_size: int = Query(100, ge=1, le=500),
     exact_count: bool = Query(False),
     db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
 ):
     """
     Devuelve filas paginadas de una tabla.
     schema y table se pasan por separado y se validan contra information_schema.
     Paginación obligatoria: máximo 500 filas por request.
     """
-    conn = _get_or_404(conn_id, db)
+    conn = _get_owned_or_404(conn_id, get_current_owner(payload), db)
     try:
         return get_table_data(conn, schema, table, page, page_size, exact_count)
     except ValueError as exc:

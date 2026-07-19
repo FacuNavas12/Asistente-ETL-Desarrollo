@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_auth
+from app.core.auth import get_current_owner, require_auth
 from app.core.database import get_db, get_session_factory
 from app.core.dependencies import get_main_llm, get_secondary_llm
 from app.models.llm_base import BaseLLM
@@ -156,7 +156,14 @@ async def build_from_raw(req: BuildFromRawRequest):
 _JOB_TTL_MINUTES = 30
 
 
-def _job_or_404(job_id: str, db: Session) -> KtrBuildJob:
+def _job_or_404(job_id: str, db: Session, owner: Optional[str] = None) -> KtrBuildJob:
+    """
+    owner: owner_id del caller autenticado (None en modo AUTH_REQUIRED=false,
+    salta el chequeo). Un job ajeno se trata igual que "no encontrado" — mismo
+    404 que un job_id inválido o inexistente, sin distinción — de lo contrario
+    alguien podría leer /status de un job de otro usuario (y el .ktr con
+    passwords resueltos que ese status devuelve) con solo adivinar el UUID.
+    """
     try:
         job_uuid = uuid.UUID(job_id)
     except ValueError:
@@ -164,6 +171,8 @@ def _job_or_404(job_id: str, db: Session) -> KtrBuildJob:
 
     job = db.get(KtrBuildJob, job_uuid)
     if job is None:
+        raise HTTPException(status_code=404, detail="Job no encontrado.")
+    if owner is not None and job.owner_id != owner:
         raise HTTPException(status_code=404, detail="Job no encontrado.")
 
     # SQLite no preserva tzinfo en columnas DateTime(timezone=True) — expires_at
@@ -206,11 +215,15 @@ async def generate_async(
     llm: BaseLLM = Depends(get_main_llm),
     db:  Session = Depends(get_db),
     session_factory = Depends(get_session_factory),
+    payload: Optional[dict] = Depends(require_auth),
 ):
     """Crea el job y dispara la llamada al modelo en background — responde con
     job_id sin esperar al modelo, para que el cliente arranque el formulario de
     conexiones en paralelo."""
-    job = KtrBuildJob(expires_at=datetime.now(timezone.utc) + timedelta(minutes=_JOB_TTL_MINUTES))
+    job = KtrBuildJob(
+        owner_id=get_current_owner(payload),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=_JOB_TTL_MINUTES),
+    )
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -225,6 +238,7 @@ async def submit_job_connections(
     job_id: str,
     body: ConnectionsMapRequest,
     db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
 ):
     """Ata connection_id ya creados (vía POST /api/connections, mismo formulario
     reusado del frontend) al job. No pide datos de conexión — eso ya ocurrió
@@ -239,7 +253,7 @@ async def submit_job_connections(
     entero perdía en silencio la conexión que no venía en el último payload
     en llegar — build_ktr() terminaba con esa capa en placeholder sin que
     nada lo señalara como error de este paso."""
-    job = _job_or_404(job_id, db)
+    job = _job_or_404(job_id, db, get_current_owner(payload))
     job.connections_map = {**(job.connections_map or {}), **body.model_dump(exclude_none=True)}
     db.commit()
     _try_build(job.id, db)
@@ -248,9 +262,13 @@ async def submit_job_connections(
 
 
 @router.get("/api/v1/etl/{job_id}/status", response_model=KtrJobStatusResponse)
-async def get_job_status(job_id: str, db: Session = Depends(get_db)):
+async def get_job_status(
+    job_id: str,
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
+):
     """Poleado por el cliente hasta build_status == 'built' (o 'failed')."""
-    job = _job_or_404(job_id, db)
+    job = _job_or_404(job_id, db, get_current_owner(payload))
     return _status_response(job)
 
 

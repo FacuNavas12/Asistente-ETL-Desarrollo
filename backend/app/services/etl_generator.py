@@ -733,7 +733,7 @@ def _try_build(job_id, db: Session) -> None:
         db.commit()
         return
 
-    real_connections, conn_warnings = resolve_real_connections(job.connections_map, db)
+    real_connections, conn_warnings = resolve_real_connections(job.connections_map, db, owner=job.owner_id)
     metadata = MetadataResponse(**job.model_json["metadata"])
 
     try:

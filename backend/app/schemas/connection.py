@@ -19,9 +19,8 @@ class ConnectionBase(BaseModel):
     port: int = Field(..., ge=1, le=65535)
     database: str = Field(..., min_length=1, max_length=255)
     username: str = Field(..., min_length=1, max_length=255)
-    # Variante A: owner_id se acepta en el body del create.
-    # TODO (auth): asignarlo desde la sesión autenticada; eliminar del body.
-    owner_id: Optional[uuid.UUID] = None
+    # owner_id ya NO se acepta del body — se deriva del claim "sub" del JWT
+    # autenticado (ver get_current_owner en app.core.auth), nunca del cliente.
 
 
 class PostgresConnectionCreate(ConnectionBase):
@@ -69,7 +68,6 @@ class ConnectionRead(BaseModel):
     username: str
     ssl_mode: Optional[str] = None
     extra_options: Optional[dict] = None
-    owner_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
     last_tested_at: Optional[datetime] = None
