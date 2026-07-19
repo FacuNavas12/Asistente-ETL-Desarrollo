@@ -249,15 +249,15 @@ def _build_url(conn: Connection, *, read_only: bool = False) -> str:
         )
         params = {"driver": settings.mssql_odbc_driver}
 
-        # ssl_mode → Encrypt.
-        # Driver 18 changed default from no→yes; explicit "no" restores Driver 17 behavior
-        # when no ssl_mode is configured (SQL Server schema has no ssl_mode field).
+        # ssl_mode → Encrypt. SqlServerConnectionCreate ya defaultea a "require"
+        # (antes no tenía el campo y esto quedaba siempre en "no" — ver hallazgo
+        # de seguridad C). "disable" sigue siendo una elección explícita del
+        # usuario para SQL Server local sin TLS; None (filas legacy previas a
+        # este fix) ahora también cifra por default en vez de asumir "no".
         if conn.ssl_mode == "disable":
             params["Encrypt"] = "no"
-        elif conn.ssl_mode is not None:
-            params["Encrypt"] = "yes"
         else:
-            params["Encrypt"] = "no"
+            params["Encrypt"] = "yes"
 
         # extra_options: trust_server_certificate + pares string
         if conn.extra_options:

@@ -15,7 +15,7 @@ const EMPTY_FORM = {
   database: "",
   username: "",
   password: "",
-  ssl_mode: "prefer",
+  ssl_mode: "require",
   trustServerCert: false,
 };
 
@@ -67,9 +67,11 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
 
       const payload = form.db_type === "postgresql"
         ? { ...base, ssl_mode: form.ssl_mode }
-        : form.trustServerCert
-          ? { ...base, extra_options: { trust_server_certificate: true } }
-          : { ...base };
+        : {
+            ...base,
+            ssl_mode: form.ssl_mode,
+            ...(form.trustServerCert ? { extra_options: { trust_server_certificate: true } } : {}),
+          };
 
       const conn = await createConnection(payload);
 
@@ -159,14 +161,12 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
           />
         </div>
 
-        {form.db_type === "postgresql" && (
-          <div className="form-field">
-            <label>Modo SSL</label>
-            <select value={form.ssl_mode} onChange={e => set("ssl_mode", e.target.value)}>
-              {SSL_MODES.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-        )}
+        <div className="form-field">
+          <label>Modo SSL</label>
+          <select value={form.ssl_mode} onChange={e => set("ssl_mode", e.target.value)}>
+            {SSL_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
 
         {form.db_type === "sqlserver" && (
           <div className="form-field" style={{ justifyContent: "flex-end" }}>

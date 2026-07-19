@@ -110,6 +110,17 @@ class TestBuildUrl:
         url = _build_url(conn)
         assert "Encrypt=yes" in url
 
+    def test_build_url_mssql_ssl_none_defaults_to_encrypt_yes(self, monkeypatch):
+        # hallazgo de seguridad C: antes ssl_mode=None (filas legacy, o el
+        # campo ni existía en el schema) defaulteaba a Encrypt=no. Solo
+        # "disable" explícito debe seguir apagando el cifrado.
+        monkeypatch.setattr(
+            "app.services.db_connector.decrypt_password", lambda _: "secret"
+        )
+        conn = _make(db_type=DbType.sqlserver, ssl_mode=None, port=1433)
+        url = _build_url(conn)
+        assert "Encrypt=yes" in url
+
     def test_build_url_postgres_sslmode_prefer(self, monkeypatch):
         monkeypatch.setattr(
             "app.services.db_connector.decrypt_password", lambda _: "secret"

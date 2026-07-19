@@ -26,13 +26,21 @@ class ConnectionBase(BaseModel):
 class PostgresConnectionCreate(ConnectionBase):
     db_type: Literal[DbType.postgresql] = DbType.postgresql
     password: str = Field(..., min_length=1)
-    ssl_mode: _SslMode = "prefer"
+    # "require" por default — "prefer" permite degradar a sin cifrar en
+    # silencio si el servidor no ofrece SSL. Sigue siendo configurable
+    # (incluye "disable") para Postgres locales de dev sin TLS, pero ya
+    # no como default silencioso.
+    ssl_mode: _SslMode = "require"
     extra_options: Optional[dict] = None
 
 
 class SqlServerConnectionCreate(ConnectionBase):
     db_type: Literal[DbType.sqlserver] = DbType.sqlserver
     password: str = Field(..., min_length=1)
+    # Antes no existía este campo — _build_url defaulteaba Encrypt=no
+    # incondicionalmente para SQL Server. Mismo criterio que Postgres:
+    # cifrado por default, configurable.
+    ssl_mode: _SslMode = "require"
     extra_options: Optional[dict] = None
 
 

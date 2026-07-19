@@ -34,7 +34,9 @@ class TestPostgresConnectionCreate:
     def test_happy_path(self):
         c = self._valid()
         assert c.db_type == DbType.postgresql
-        assert c.ssl_mode is None
+        # hallazgo de seguridad C: default pasó de "prefer" (permite degradar a
+        # sin cifrar en silencio) a "require".
+        assert c.ssl_mode == "require"
 
     def test_ssl_mode_valid(self):
         c = self._valid(ssl_mode="require")
@@ -82,6 +84,22 @@ class TestSqlServerConnectionCreate:
             password="pass",
         )
         assert c.db_type == DbType.sqlserver
+
+    def test_ssl_mode_defaults_to_require(self):
+        # hallazgo de seguridad C: antes este campo no existía en absoluto acá
+        # y _build_url defaulteaba Encrypt=no incondicionalmente.
+        c = SqlServerConnectionCreate(
+            name="ss_conn", host="h", port=1433, database="db",
+            username="sa", password="pass",
+        )
+        assert c.ssl_mode == "require"
+
+    def test_ssl_mode_disable_still_available(self):
+        c = SqlServerConnectionCreate(
+            name="ss_conn", host="h", port=1433, database="db",
+            username="sa", password="pass", ssl_mode="disable",
+        )
+        assert c.ssl_mode == "disable"
 
 
 # ─── ConnectionUpdate ─────────────────────────────────────────────────────────
