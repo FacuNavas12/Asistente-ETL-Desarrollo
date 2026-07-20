@@ -77,6 +77,18 @@ _DB_TYPE_TO_KETTLE: dict[str, dict] = {
     "sqlserver":  {"type": "MSSQLNATIVE", "access": "Native"},
 }
 
+# Nombre de variable Kettle para el password de cada capa lógica — el usuario
+# la completa en kettle.properties o en el conector de Spoon, nunca acá.
+_PASSWORD_VAR_NAMES: dict[str, str] = {
+    "conn_origen":  "ORIGEN_DB_PASSWORD",
+    "conn_staging": "STAGING_DB_PASSWORD",
+    "conn_dwh":     "DWH_DB_PASSWORD",
+}
+
+
+def _password_var_name(logical_name: str) -> str:
+    return _PASSWORD_VAR_NAMES.get(logical_name, f"{_generic_var(logical_name)}_PASSWORD")
+
 
 def resolve_real_connections(
     connections_map: dict,
@@ -84,15 +96,15 @@ def resolve_real_connections(
     owner: str | None = None,
 ) -> tuple[dict[str, dict], list[str]]:
     """
-    Resuelve un mapa {nombre_lógico: connection_id} contra la tabla Connection,
-    validando que exista y que le pertenezca al owner del job.
+    Resuelve un mapa {nombre_lógico: connection_id} a metadata real de conexión
+    (host/port/database/username/type/access) consultando la tabla Connection.
 
-    El backend ya no persiste passwords de conexión (ver decisión de diseño) —
-    esta función deliberadamente NO arma un dict "real" con credenciales: cada
-    conn_id resuelto o no cae en el mismo camino de warning/placeholder, que
-    build.py ya sabía manejar. El próximo cambio reintroduce host/port/db/user
-    reales en el .ktr (dejando el password como variable de Kettle, nunca
-    embebido) — ver ktr_builder/build.py.
+    El password NUNCA se resuelve ni se embebe — el backend no lo persiste
+    (ver decisión de diseño de no-custodia de credenciales). En su lugar, cada
+    conexión resuelta trae "password_var": el nombre de la variable Kettle
+    (ej. "ORIGEN_DB_PASSWORD") que build.py declara en <parameters> con
+    default vacío y documenta en la plantilla kettle.properties — nunca un
+    valor de password, en ninguna forma (ni claro, ni ofuscado, ni codificado).
 
     owner: owner_id del job que dispara este build (KtrBuildJob.owner_id). Si no
     es None, cualquier conn_id cuyo Connection.owner_id no coincida se trata
@@ -128,10 +140,30 @@ def resolve_real_connections(
             warnings.append(f"Conexión '{logical_name}': motor '{db_type_key}' sin mapeo Kettle — se usará placeholder.")
             continue
 
-        warnings.append(
-            f"Conexión '{logical_name}': el backend ya no completa credenciales en el .ktr "
-            "— completar host/usuario/password manualmente en Spoon."
-        )
+        password_var = _password_var_name(logical_name)
+        real[logical_name] = {
+            "host":         conn.host,
+            "port":         conn.port,
+            "database":     conn.database,
+            "username":     conn.username,
+            "password_var": password_var,
+            "type":         kettle_meta["type"],
+            "access":       kettle_meta["access"],
+        }
+
+        # ssl_mode no se traduce a un atributo JDBC de Kettle acá: no hay un
+        # export real de Spoon contra el que confirmar el código de atributo
+        # correcto para POSTGRESQL/MSSQLNATIVE nativos (a diferencia de
+        # CUSTOM_DRIVER_CLASS/CUSTOM_URL para GENERIC, que sí están
+        # verificados — ver connections_sample.ktr), y escribir un atributo
+        # inventado puede quedar silenciosamente ignorado o, peor, confundir
+        # a Spoon. Se documenta como advertencia en vez de adivinar XML.
+        if conn.ssl_mode:
+            warnings.append(
+                f"Conexión '{logical_name}': ssl_mode='{conn.ssl_mode}' configurado en la app — "
+                "verificar/configurar el modo SSL en la pestaña Options del conector "
+                "en Spoon (Kettle no lo hereda automáticamente de este backend)."
+            )
 
     return real, warnings
 
@@ -161,13 +193,17 @@ def _generic_var(name: str) -> str:
 
 def _build_connection(trans: Element, conn: dict, real: dict | None = None) -> list[tuple[str, str]]:
     """Devuelve [(nombre_variable_Kettle, valor_default)] para toda variable
-    ${...} que esta conexión dejó sin resolver en el XML (lista vacía si
-    `real` estaba disponible) — el caller (build.py) las declara como
-    <parameters> de la transformación y las vuelca a una plantilla
-    kettle.properties, así el .ktr documenta qué variables tiene que
-    completar el usuario antes de ejecutar en Spoon en vez de dejarlas
+    ${...} que quedó en el XML de esta conexión — el caller (build.py) las
+    declara como <parameters> de la transformación y las vuelca a una
+    plantilla kettle.properties, así el .ktr documenta qué variables tiene
+    que completar el usuario antes de ejecutar en Spoon en vez de dejarlas
     ${SIN_DECLARAR} silenciosas (Kettle resuelve una variable no declarada a
-    string vacío sin avisar)."""
+    string vacío sin avisar).
+
+    El password SIEMPRE es una variable Kettle, nunca un valor embebido —
+    tanto si `real` se resolvió (host/port/db/user reales, password
+    parametrizado) como si no (todo placeholder). Ver resolve_real_connections
+    para real["password_var"]."""
     c = SubElement(trans, "connection")
     name = conn.get("name", "conn_default")
     _sub(c, "name", name)
@@ -179,7 +215,9 @@ def _build_connection(trans: Element, conn: dict, real: dict | None = None) -> l
         _sub(c, "database", real["database"])
         _sub(c, "port",     str(real["port"]))
         _sub(c, "username", real["username"])
-        _sub(c, "password", real["password"])
+        password_var = real["password_var"]
+        _sub(c, "password", f"${{{password_var}}}")
+        undeclared_params = [(password_var, "")]
         conn_type = real["type"]
     else:
         var = _generic_var(name)
@@ -219,9 +257,14 @@ def _build_connection(trans: Element, conn: dict, real: dict | None = None) -> l
 
 
 def build_kettle_properties_template(undeclared_params: list[tuple[str, str]]) -> str:
-    """Plantilla kettle.properties para toda variable ${...} que quedó sin
-    resolver en las conexiones del .ktr (ver _build_connection). "" si no hay
-    ninguna. Nunca incluye password — eso se completa a mano en Spoon."""
+    """Plantilla kettle.properties para toda variable ${...} que quedó en las
+    conexiones del .ktr (ver _build_connection) — tanto los *_DB_PASSWORD de
+    conexiones resueltas como los *_HOST/_PORT/_DATABASE/_USER de conexiones
+    sin resolver. "" si no hay ninguna variable.
+
+    Las variables de password se declaran acá CON NOMBRE pero SIEMPRE con
+    default vacío ("VAR=") — nunca un valor. El usuario completa el valor acá
+    o directamente en el conector de Spoon; el backend no lo conoce."""
     if not undeclared_params:
         return ""
     lines = [
@@ -229,8 +272,9 @@ def build_kettle_properties_template(undeclared_params: list[tuple[str, str]]) -
         "# Pegar en $HOME/.kettle/kettle.properties (Linux/Mac) o",
         "# %USERPROFILE%\\.kettle\\kettle.properties (Windows), o pasar como",
         "# parametro de ejecucion de Kitchen/Pan (-param:NOMBRE=valor).",
-        "# El password de cada conexion NO se incluye aca por seguridad --",
-        "# completarlo directamente en el conector de Spoon.",
+        "# Las variables *_DB_PASSWORD quedan sin valor a proposito -- completarlas",
+        "# aca o directamente en el conector de Spoon. Nunca subir este archivo",
+        "# ya completado a un repositorio ni compartirlo fuera del equipo.",
     ]
     seen: set[str] = set()
     for var_name, default in undeclared_params:

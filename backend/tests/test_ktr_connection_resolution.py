@@ -3,14 +3,14 @@ Unit tests para el mapeo DbType->Kettle y resolve_real_connections() en
 ktr_builder.py.
 
 El backend ya no persiste passwords de conexión (ver decisión de diseño) —
-resolve_real_connections ya no arma un dict "real" con credenciales, solo
-valida existencia + ownership y reporta warning en todos los casos. El
-próximo cambio reintroduce metadata real (host/port/db/user) en el .ktr,
-dejando el password como variable de Kettle — ver test_ktr_connection_golden.py
-para la cobertura de ese comportamiento final.
+resolve_real_connections arma metadata real (host/port/db/user/tipo) pero el
+password SIEMPRE es una variable de Kettle (real["password_var"]), nunca un
+valor embebido, resuelto o no. build_kettle_properties_template documenta esa
+variable con default vacío.
 """
 from __future__ import annotations
 
+import base64
 import uuid
 
 import pytest
@@ -19,6 +19,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
+from app.core.kettle_crypto import encode as kettle_encode
 from app.models.connection import Connection, DbType
 from app.services.ktr_builder import (
     _DB_TYPE_TO_KETTLE,
@@ -78,13 +79,12 @@ def test_resolve_rejects_connection_of_a_different_owner(db):
 
 
 def test_resolve_allows_connection_of_the_same_owner(db):
-    # "Allows" hoy significa "no lo rechaza por ownership" — no arma
-    # credenciales reales (ver módulo docstring, pendiente del próximo cambio).
     conn = _make_connection(db, DbType.postgresql, owner_id="user-a")
     real, warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db, owner="user-a")
 
-    assert real == {}
-    assert "conn_dwh" in warnings[0]
+    assert warnings == []
+    assert real["conn_dwh"]["host"] == "dbhost.internal"
+    assert real["conn_dwh"]["password_var"] == "DWH_DB_PASSWORD"
 
 
 def test_resolve_owner_none_skips_ownership_check(db):
@@ -93,30 +93,54 @@ def test_resolve_owner_none_skips_ownership_check(db):
     conn = _make_connection(db, DbType.postgresql, owner_id="user-a")
     real, warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db, owner=None)
 
-    assert real == {}
-    assert "conn_dwh" in warnings[0]
+    assert warnings == []
+    assert real["conn_dwh"]["host"] == "dbhost.internal"
 
 
 # ─── resolve_real_connections ─────────────────────────────────────────────────
-# El backend ya no arma un dict "real" con credenciales (ver decisión de
-# diseño) — toda conexión encontrada y con ownership válido igual cae en el
-# mismo warning informativo que antes usaban solo las no encontradas.
+# Metadata real (host/port/db/user/tipo) sí se arma — el password NUNCA, ni
+# resuelto ni sin resolver: siempre es una variable de Kettle.
 
-def test_resolve_found_connection_still_produces_no_credentials(db):
+def test_resolve_postgres_connection(db):
     conn = _make_connection(db, DbType.postgresql)
     real, warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db)
 
-    assert real == {}
-    assert len(warnings) == 1
-    assert "conn_dwh" in warnings[0]
+    assert warnings == []
+    assert real["conn_dwh"]["host"] == "dbhost.internal"
+    assert real["conn_dwh"]["port"] == 5432
+    assert real["conn_dwh"]["database"] == "mydb"
+    assert real["conn_dwh"]["username"] == "myuser"
+    assert real["conn_dwh"]["type"] == "POSTGRESQL"
+    assert real["conn_dwh"]["access"] == "Native"
+    assert real["conn_dwh"]["password_var"] == "DWH_DB_PASSWORD"
+    assert "password" not in real["conn_dwh"]
 
 
-def test_resolve_sqlserver_connection_also_produces_no_credentials(db):
+def test_resolve_sqlserver_connection(db):
     conn = _make_connection(db, DbType.sqlserver, port=1433)
     real, warnings = resolve_real_connections({"conn_staging": str(conn.id)}, db)
 
-    assert real == {}
-    assert "conn_staging" in warnings[0]
+    assert warnings == []
+    assert real["conn_staging"]["type"] == "MSSQLNATIVE"
+    assert real["conn_staging"]["port"] == 1433
+    assert real["conn_staging"]["password_var"] == "STAGING_DB_PASSWORD"
+
+
+def test_resolve_unknown_logical_name_gets_generic_password_var(db):
+    conn = _make_connection(db, DbType.postgresql)
+    real, warnings = resolve_real_connections({"conn_custom": str(conn.id)}, db)
+
+    assert warnings == []
+    assert real["conn_custom"]["password_var"] == "CONN_CUSTOM_PASSWORD"
+
+
+def test_resolve_warns_about_ssl_mode_without_embedding_it(db):
+    conn = _make_connection(db, DbType.postgresql, ssl_mode="require")
+    real, warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db)
+
+    assert "conn_dwh" in warnings[0]
+    assert "require" in warnings[0]
+    assert "password" not in real["conn_dwh"]
 
 
 def test_resolve_missing_connection_id_produces_warning(db):
@@ -160,21 +184,23 @@ def test_engine_mapping_covers_both_db_types():
 
 # ─── _build_connection XML output ─────────────────────────────────────────────
 
-def test_build_connection_with_real_data_writes_resolved_fields():
+def test_build_connection_with_real_data_writes_resolved_fields_password_as_variable():
     trans = Element("transformation")
     real = {
         "host": "prodhost", "port": 5432, "database": "proddb",
-        "username": "produser", "password": "Encrypted abc123", "type": "POSTGRESQL", "access": "Native",
+        "username": "produser", "password_var": "DWH_DB_PASSWORD",
+        "type": "POSTGRESQL", "access": "Native",
     }
-    _build_connection(trans, {"name": "conn_dwh"}, real=real)
+    undeclared = _build_connection(trans, {"name": "conn_dwh"}, real=real)
     xml = tostring(trans, encoding="unicode")
 
     assert "<name>conn_dwh</name>" in xml
     assert "<server>prodhost</server>" in xml
     assert "<database>proddb</database>" in xml
     assert "<username>produser</username>" in xml
-    assert "<password>Encrypted abc123</password>" in xml
+    assert "<password>${DWH_DB_PASSWORD}</password>" in xml
     assert "PLACEHOLDER" not in xml
+    assert undeclared == [("DWH_DB_PASSWORD", "")]
 
 
 def test_build_connection_without_real_data_falls_back_to_placeholder_empty_password():
@@ -186,18 +212,44 @@ def test_build_connection_without_real_data_falls_back_to_placeholder_empty_pass
     assert "<password></password>" in xml or "<password />" in xml
 
 
+def test_password_never_appears_in_ktr_in_any_form_even_if_present_in_real_dict():
+    """
+    Defensa en profundidad: aunque un caller futuro le agregue por error una
+    clave "password" con un valor real al dict `real` (_build_connection hoy
+    solo lee real["password_var"], nunca "password"), el valor no debe
+    terminar en el XML bajo ninguna representación — ni en claro, ni ofuscado
+    con kettle_crypto, ni en base64.
+    """
+    known_password = "sup3r_s3cr3t_p4ssw0rd!"
+    trans = Element("transformation")
+    real = {
+        "host": "prodhost", "port": 5432, "database": "proddb",
+        "username": "produser", "type": "POSTGRESQL", "access": "Native",
+        "password_var": "DWH_DB_PASSWORD",
+        "password": known_password,  # clave que _build_connection no debe leer
+    }
+    _build_connection(trans, {"name": "conn_dwh"}, real=real)
+    xml = tostring(trans, encoding="unicode")
+
+    assert known_password not in xml
+    assert kettle_encode(known_password) not in xml
+    assert base64.b64encode(known_password.encode()).decode() not in xml
+    assert "${DWH_DB_PASSWORD}" in xml
+
+
 # ─── build_ktr integración: conexión real inyectada + warnings ────────────────
 
-def test_build_ktr_injects_real_connection_and_reports_no_warnings(db):
+def test_build_ktr_injects_real_connection_metadata_password_stays_variable(db):
     conn = _make_connection(db, DbType.postgresql, name="dwh_conn")
     real, resolve_warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db)
+    assert resolve_warnings == []
 
     ktr_data = {
         "name": "test_proc",
         "description": "",
         "connections": [{"name": "conn_dwh", "type": "GENERIC", "host": "PLACEHOLDER_HOST", "database": "PLACEHOLDER_DATABASE", "port": 0, "username": "PLACEHOLDER_USER"}],
         "steps": [
-            {"name": "Leer", "type": "TableInput", "config": {"connection": "conn_dwh", "sql": "SELECT 1"}},
+            {"name": "Leer", "type": "TableInput", "config": {"connection": "conn_dwh", "sql": "SELECT id FROM origen"}},
             {"name": "Escribir", "type": "TableOutput", "config": {"connection": "conn_dwh", "table": "dim_x"}},
         ],
         "hops": [{"from": "Leer", "to": "Escribir", "enabled": True}],
@@ -207,8 +259,15 @@ def test_build_ktr_injects_real_connection_and_reports_no_warnings(db):
 
     assert "<server>dbhost.internal</server>" in xml
     assert "<type>POSTGRESQL</type>" in xml
+    assert "<username>myuser</username>" in xml
+    assert "<password>${DWH_DB_PASSWORD}</password>" in xml
+    assert "DWH_DB_PASSWORD" in xml  # declarado en <parameters>
     assert filename.startswith("test_proc_")
-    assert warnings == []  # sin referencias huérfanas ni conexiones sin resolver
+    # avisos siempre presentes: completar password + no compartir el archivo
+    assert any("password" in w.lower() for w in warnings)
+    assert any("no lo subas" in w.lower() or "no compartas" in w.lower() or "fuera del equipo" in w.lower() for w in warnings)
+    # el comentario de seguridad va en el propio .ktr, no solo en la respuesta
+    assert "no lo subas a repositorios" in xml.lower()
 
 
 def test_build_ktr_warns_on_orphan_connection_reference():

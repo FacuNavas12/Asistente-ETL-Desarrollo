@@ -263,11 +263,13 @@ def build_ktr(
             _build_connection(trans, conn, real=(real_connections or {}).get(conn.get("name", ""))) or []
         )
 
-    # Variables ${...} que alguna conexión dejó sin resolver: se declaran como
-    # <parameters> de la transformación (default = el mismo placeholder, así
-    # Spoon lo muestra explícitamente en vez de resolver en blanco) y se
-    # documentan en una plantilla kettle.properties — ver docstring de
-    # build_ktr (strict_connections) para el caso en que esto aborta el build.
+    # Variables ${...} de las conexiones: SIEMPRE incluye al menos el/los
+    # password (ver decisión de diseño de no-custodia de credenciales — el
+    # password nunca se embebe, ni en conexiones resueltas), y además
+    # host/port/database/username de toda conexión que no se pudo resolver.
+    # Se declaran como <parameters> de la transformación (default = el mismo
+    # placeholder, o vacío para password) y se documentan en una plantilla
+    # kettle.properties.
     if undeclared_params:
         params_el = SubElement(info, "parameters")
         seen_params: set[str] = set()
@@ -279,13 +281,19 @@ def build_ktr(
             _sub(p, "name", var_name)
             _sub(p, "default_value", default)
             _sub(p, "description", "Completar antes de ejecutar en Spoon — ver plantilla kettle.properties.")
-        if not strict_connections:
-            warnings.append(
-                "Conexión(es) sin credenciales reales — quedaron como variables Kettle sin valor "
-                "(declaradas en <parameters> con el placeholder como default). Completar antes de "
-                "ejecutar en Spoon. Plantilla kettle.properties:\n"
-                + build_kettle_properties_template(undeclared_params)
-            )
+        # Estos dos avisos van siempre (no solo en preview): el password es
+        # variable de Kettle en todo .ktr generado, no un caso de error.
+        warnings.append(
+            "Antes de ejecutar en Spoon/Kitchen/Pan: completar el/los password de "
+            "conexión en kettle.properties (plantilla abajo) o directamente en el "
+            "conector de Spoon. El .ktr nunca incluye ningún password.\n"
+            + build_kettle_properties_template(undeclared_params)
+        )
+        warnings.append(
+            "Este .ktr contiene metadata de conexión (host, puerto, base de datos, "
+            "usuario) de uso interno del equipo — no lo subas a repositorios públicos "
+            "ni lo compartas fuera del equipo."
+        )
 
     # Hops
     _build_order(trans, hops)
@@ -367,6 +375,20 @@ def build_ktr(
     lines  = pretty.split("\n")
     if lines[0].startswith("<?xml"):
         lines[0] = '<?xml version="1.0" encoding="UTF-8"?>'
+    # Aviso siempre presente en el .ktr generado (no solo en la respuesta de
+    # la API) — el archivo puede circular por fuera de esta app (adjunto,
+    # subido a un repo por error, etc.) sin el contexto de esos warnings.
+    _SECURITY_NOTE = (
+        "<!--\n"
+        "  Este archivo contiene metadata de conexion (host, puerto, base de\n"
+        "  datos, usuario) de uso interno del equipo. No lo subas a repositorios\n"
+        "  publicos ni lo compartas fuera del equipo.\n"
+        "  Antes de ejecutar en Spoon/Kitchen/Pan: completar el/los password de\n"
+        "  conexion en kettle.properties o en el conector de Spoon. Este archivo\n"
+        "  nunca incluye ningun password.\n"
+        "-->"
+    )
+    lines.insert(1, _SECURITY_NOTE)
     ktr_xml = "\n".join(lines)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
