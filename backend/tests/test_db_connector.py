@@ -18,7 +18,6 @@ from app.services.db_connector import (
 
 class _FakeConn:
     username = "user"
-    encrypted_password = b"dummy"
     host = "localhost"
     port = 5432
     database = "testdb"
@@ -74,88 +73,68 @@ class TestSanitizeError:
 # ─── _build_url ───────────────────────────────────────────────────────────────
 
 class TestBuildUrl:
-    def test_build_url_postgres_with_extra_options(self, monkeypatch):
-        monkeypatch.setattr(
-            "app.services.db_connector.decrypt_password", lambda _: "secret"
-        )
+    def test_build_url_postgres_with_extra_options(self):
         conn = _make(extra_options={"application_name": "etl"})
-        url = _build_url(conn)
+        url = _build_url(conn, "secret")
         assert "application_name=etl" in url
 
-    def test_build_url_mssql_with_trust_server_certificate(self, monkeypatch):
-        monkeypatch.setattr(
-            "app.services.db_connector.decrypt_password", lambda _: "secret"
-        )
+    def test_build_url_mssql_with_trust_server_certificate(self):
         conn = _make(
             db_type=DbType.sqlserver,
             extra_options={"trust_server_certificate": True},
             port=1433,
         )
-        url = _build_url(conn)
+        url = _build_url(conn, "secret")
         assert "TrustServerCertificate=yes" in url
 
-    def test_build_url_mssql_ssl_disable_sets_encrypt_no(self, monkeypatch):
-        monkeypatch.setattr(
-            "app.services.db_connector.decrypt_password", lambda _: "secret"
-        )
+    def test_build_url_mssql_ssl_disable_sets_encrypt_no(self):
         conn = _make(db_type=DbType.sqlserver, ssl_mode="disable", port=1433)
-        url = _build_url(conn)
+        url = _build_url(conn, "secret")
         assert "Encrypt=no" in url
 
-    def test_build_url_mssql_ssl_require_sets_encrypt_yes(self, monkeypatch):
-        monkeypatch.setattr(
-            "app.services.db_connector.decrypt_password", lambda _: "secret"
-        )
+    def test_build_url_mssql_ssl_require_sets_encrypt_yes(self):
         conn = _make(db_type=DbType.sqlserver, ssl_mode="require", port=1433)
-        url = _build_url(conn)
+        url = _build_url(conn, "secret")
         assert "Encrypt=yes" in url
 
-    def test_build_url_mssql_ssl_none_defaults_to_encrypt_yes(self, monkeypatch):
+    def test_build_url_mssql_ssl_none_defaults_to_encrypt_yes(self):
         # hallazgo de seguridad C: antes ssl_mode=None (filas legacy, o el
         # campo ni existía en el schema) defaulteaba a Encrypt=no. Solo
         # "disable" explícito debe seguir apagando el cifrado.
-        monkeypatch.setattr(
-            "app.services.db_connector.decrypt_password", lambda _: "secret"
-        )
         conn = _make(db_type=DbType.sqlserver, ssl_mode=None, port=1433)
-        url = _build_url(conn)
+        url = _build_url(conn, "secret")
         assert "Encrypt=yes" in url
 
-    def test_build_url_postgres_sslmode_prefer(self, monkeypatch):
-        monkeypatch.setattr(
-            "app.services.db_connector.decrypt_password", lambda _: "secret"
-        )
+    def test_build_url_postgres_sslmode_prefer(self):
         conn = _make(ssl_mode="prefer")
-        url = _build_url(conn)
+        url = _build_url(conn, "secret")
         assert "sslmode=prefer" in url
 
-    def test_build_url_postgres_sslmode_allow(self, monkeypatch):
-        monkeypatch.setattr(
-            "app.services.db_connector.decrypt_password", lambda _: "secret"
-        )
+    def test_build_url_postgres_sslmode_allow(self):
         conn = _make(ssl_mode="allow")
-        url = _build_url(conn)
+        url = _build_url(conn, "secret")
         assert "sslmode=allow" in url
 
-    def test_build_url_postgres_no_sslmode_when_none(self, monkeypatch):
-        monkeypatch.setattr(
-            "app.services.db_connector.decrypt_password", lambda _: "secret"
-        )
+    def test_build_url_postgres_no_sslmode_when_none(self):
         conn = _make(ssl_mode=None)
-        url = _build_url(conn)
+        url = _build_url(conn, "secret")
         assert "sslmode" not in url
 
     def test_build_url_mssql_uses_configurable_driver(self, monkeypatch):
-        monkeypatch.setattr(
-            "app.services.db_connector.decrypt_password", lambda _: "secret"
-        )
         monkeypatch.setattr(
             "app.services.db_connector.settings",
             MagicMock(mssql_odbc_driver="My Custom Driver"),
         )
         conn = _make(db_type=DbType.sqlserver, port=1433)
-        url = _build_url(conn)
+        url = _build_url(conn, "secret")
         assert "My+Custom+Driver" in url or "My Custom Driver" in url
+
+    def test_build_url_never_leaks_password_verbatim_in_a_weird_way(self):
+        # No es un test de seguridad exhaustivo — solo confirma que el
+        # password viaja url-quoted, no en texto plano sin procesar.
+        conn = _make()
+        url = _build_url(conn, "p@ss/word?")
+        assert "p@ss/word?" not in url
 
 
 # ─── list_tables multi-schema ─────────────────────────────────────────────────
@@ -182,10 +161,10 @@ class TestListTablesMultiSchema:
 
         monkeypatch.setattr(
             "app.services.db_connector.build_engine",
-            lambda _conn, **_kwargs: mock_engine,
+            lambda _conn, _password, **_kwargs: mock_engine,
         )
 
-        result = list_tables(_make())
+        result = list_tables(_make(), "secret")
 
         assert "public.orders" in result
         assert "public.customers" in result

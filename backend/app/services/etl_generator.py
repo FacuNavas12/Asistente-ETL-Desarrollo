@@ -772,6 +772,10 @@ def _try_build(job_id, db: Session) -> None:
     # Provisioning de Superset: si conn_dwh se resolvió, alinear (o crear) la
     # conexión ETL_DWH en Superset con la URI real — evita que el usuario la
     # reconfigure a mano. Best-effort, nunca debe romper el build ya commiteado.
+    # Inalcanzable desde este cambio: resolve_real_connections ya no arma
+    # "real" con credenciales, así que real_connections.get("conn_dwh") nunca
+    # es truthy. Se deja documentado el porqué en vez de borrarlo a medias —
+    # el bloque entero se elimina en el cambio de Superset a config manual.
     if real_connections.get("conn_dwh"):
         try:
             import uuid as _uuid

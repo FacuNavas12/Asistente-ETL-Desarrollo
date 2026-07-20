@@ -53,13 +53,14 @@ class SqlServerConnectionCreate(ConnectionBase):
 
 
 class ConnectionUpdate(BaseModel):
-    """Todos los campos son opcionales; solo se actualizan los provistos."""
+    """Todos los campos son opcionales; solo se actualizan los provistos.
+    Sin password — no hay nada persistido que actualizar; se resuelve
+    fresco en cada operación que conecta de verdad (test, exploración)."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     host: Optional[str] = Field(None, min_length=1, max_length=255)
     port: Optional[int] = Field(None, ge=1, le=65535)
     database: Optional[str] = Field(None, min_length=1, max_length=255)
     username: Optional[str] = Field(None, min_length=1, max_length=255)
-    password: Optional[str] = Field(None, min_length=1)
     ssl_mode: _SslMode = None
     extra_options: Optional[dict] = None
 

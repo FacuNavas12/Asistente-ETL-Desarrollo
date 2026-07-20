@@ -1,8 +1,8 @@
 """
 Resolución y serialización de conexiones Kettle: mapeo motor->tipo Kettle,
 inferencia de conexión lógica por prefijo de tabla, resolución de conexiones
-reales (Connection ORM + password desofuscado en memoria) y construcción del
-bloque <connection> del XML.
+reales (Connection ORM, sin password — ver decisión de diseño de no
+persistencia) y construcción del bloque <connection> del XML.
 """
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import re
 import uuid
 from xml.etree.ElementTree import Element, SubElement
 
-from app.core.kettle_crypto import encode as kettle_encode
 from app.services.ktr_builder.common import _sub
 
 _STAGING_PREFIXES = ("stg_", "staging_", "tmp_", "temp_", "ods_", "raw_", "wrk_", "work_")
@@ -85,21 +84,25 @@ def resolve_real_connections(
     owner: str | None = None,
 ) -> tuple[dict[str, dict], list[str]]:
     """
-    Resuelve un mapa {nombre_lógico: connection_id} a datos de conexión reales
-    (host/port/database/username/password-ofuscado/type) consultando la tabla
-    Connection y desofuscando el password SOLO en memoria, para inyectarlo en el
-    XML final. Nunca devuelve el password en claro ni lo loguea.
+    Resuelve un mapa {nombre_lógico: connection_id} contra la tabla Connection,
+    validando que exista y que le pertenezca al owner del job.
+
+    El backend ya no persiste passwords de conexión (ver decisión de diseño) —
+    esta función deliberadamente NO arma un dict "real" con credenciales: cada
+    conn_id resuelto o no cae en el mismo camino de warning/placeholder, que
+    build.py ya sabía manejar. El próximo cambio reintroduce host/port/db/user
+    reales en el .ktr (dejando el password como variable de Kettle, nunca
+    embebido) — ver ktr_builder/build.py.
 
     owner: owner_id del job que dispara este build (KtrBuildJob.owner_id). Si no
     es None, cualquier conn_id cuyo Connection.owner_id no coincida se trata
-    igual que "no encontrada" — sin esto, un connections_map armado a mano con
-    el UUID de la conexión de otro usuario dejaría desofuscar y embeber en el
-    .ktr el password ajeno. owner=None (AUTH_REQUIRED=false) salta el chequeo.
+    igual que "no encontrada" — evita que un connections_map armado a mano con
+    el UUID de la conexión de otro usuario resuelva algo de esa conexión ajena.
+    owner=None (AUTH_REQUIRED=false) salta el chequeo.
 
     Devuelve (real_connections, warnings). Toda conexión que no se pueda resolver
     genera un warning en vez de fallar — el .ktr sigue el build con placeholder.
     """
-    from app.core.crypto import decrypt_password
     from app.models.connection import Connection
 
     real: dict[str, dict] = {}
@@ -125,17 +128,10 @@ def resolve_real_connections(
             warnings.append(f"Conexión '{logical_name}': motor '{db_type_key}' sin mapeo Kettle — se usará placeholder.")
             continue
 
-        password_plain = decrypt_password(conn.encrypted_password)
-        real[logical_name] = {
-            "host":     conn.host,
-            "port":     conn.port,
-            "database": conn.database,
-            "username": conn.username,
-            "password": kettle_encode(password_plain),
-            "type":     kettle_meta["type"],
-            "access":   kettle_meta["access"],
-        }
-        password_plain = None  # nunca queda referenciado más allá de este punto
+        warnings.append(
+            f"Conexión '{logical_name}': el backend ya no completa credenciales en el .ktr "
+            "— completar host/usuario/password manualmente en Spoon."
+        )
 
     return real, warnings
 

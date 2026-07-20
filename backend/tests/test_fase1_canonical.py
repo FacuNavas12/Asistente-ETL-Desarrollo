@@ -78,6 +78,11 @@ def _create_conn(client, **overrides) -> str:
     return resp.json()["id"]
 
 
+# El backend ya no persiste passwords de conexión — el header es obligatorio
+# en /profile aunque acá todo lo que conecta de verdad esté mockeado.
+_PW_HEADERS = {"X-DB-Password": "secret"}
+
+
 _COL_INFOS = [
     ColumnInfo(name="id",          type="integer",       nullable=False, primary_key=True),
     ColumnInfo(name="customer_id", type="integer",       nullable=False, primary_key=False),
@@ -125,7 +130,7 @@ class TestProfileEndpointReturnsCanonicalSchema:
     def test_response_is_canonical_schema_shape(self, client, monkeypatch):
         self._setup_mocks(monkeypatch)
         conn_id = _create_conn(client)
-        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile")
+        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile", headers=_PW_HEADERS)
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert "schema_version" in body
@@ -137,13 +142,13 @@ class TestProfileEndpointReturnsCanonicalSchema:
     def test_schema_version_is_1_0(self, client, monkeypatch):
         self._setup_mocks(monkeypatch)
         conn_id = _create_conn(client)
-        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile")
+        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile", headers=_PW_HEADERS)
         assert resp.json()["schema_version"] == "1.0"
 
     def test_fields_contain_all_columns(self, client, monkeypatch):
         self._setup_mocks(monkeypatch)
         conn_id = _create_conn(client)
-        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile")
+        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile", headers=_PW_HEADERS)
         fields = resp.json()["fields"]
         assert len(fields) == len(_COL_INFOS)
         assert [f["name"] for f in fields] == [ci.name for ci in _COL_INFOS]
@@ -151,7 +156,7 @@ class TestProfileEndpointReturnsCanonicalSchema:
     def test_primary_key_detected(self, client, monkeypatch):
         self._setup_mocks(monkeypatch)
         conn_id = _create_conn(client)
-        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile")
+        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile", headers=_PW_HEADERS)
         body = resp.json()
         id_field = next(f for f in body["fields"] if f["name"] == "id")
         assert id_field["is_primary_key"] is True
@@ -160,21 +165,21 @@ class TestProfileEndpointReturnsCanonicalSchema:
     def test_non_pk_not_marked(self, client, monkeypatch):
         self._setup_mocks(monkeypatch)
         conn_id = _create_conn(client)
-        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile")
+        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile", headers=_PW_HEADERS)
         amount_field = next(f for f in resp.json()["fields"] if f["name"] == "amount")
         assert amount_field["is_primary_key"] is False
 
     def test_canonical_type_integer(self, client, monkeypatch):
         self._setup_mocks(monkeypatch)
         conn_id = _create_conn(client)
-        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile")
+        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile", headers=_PW_HEADERS)
         id_field = next(f for f in resp.json()["fields"] if f["name"] == "id")
         assert id_field["type"] == "integer"
 
     def test_canonical_type_number_with_precision_scale(self, client, monkeypatch):
         self._setup_mocks(monkeypatch)
         conn_id = _create_conn(client)
-        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile")
+        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile", headers=_PW_HEADERS)
         amount = next(f for f in resp.json()["fields"] if f["name"] == "amount")
         assert amount["type"] == "number"
         assert amount["precision"] == 10
@@ -183,7 +188,7 @@ class TestProfileEndpointReturnsCanonicalSchema:
     def test_profile_embedded_in_response(self, client, monkeypatch):
         self._setup_mocks(monkeypatch)
         conn_id = _create_conn(client)
-        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile")
+        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile", headers=_PW_HEADERS)
         body = resp.json()
         assert "profile" in body
         assert body["profile"] is not None
@@ -193,13 +198,13 @@ class TestProfileEndpointReturnsCanonicalSchema:
     def test_inferred_by_database(self, client, monkeypatch):
         self._setup_mocks(monkeypatch)
         conn_id = _create_conn(client)
-        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile")
+        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile", headers=_PW_HEADERS)
         for field in resp.json()["fields"]:
             assert field["inferred_by"] == "database"
 
     def test_404_when_connection_not_found(self, client, monkeypatch):
         fake_id = str(uuid.uuid4())
-        resp = client.get(f"/api/connections/{fake_id}/schema/tables/orders/profile")
+        resp = client.get(f"/api/connections/{fake_id}/schema/tables/orders/profile", headers=_PW_HEADERS)
         assert resp.status_code == 404
 
     def test_foreign_keys_embedded(self, client, monkeypatch):
@@ -226,7 +231,7 @@ class TestProfileEndpointReturnsCanonicalSchema:
         monkeypatch.setattr("app.services.db_connector._resolve_schema", lambda *a, **k: "public")
 
         conn_id = _create_conn(client)
-        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile")
+        resp = client.get(f"/api/connections/{conn_id}/schema/tables/public.orders/profile", headers=_PW_HEADERS)
         body = resp.json()
         assert len(body["foreign_keys"]) == 1
         assert body["foreign_keys"][0]["reference_resource"] == "public.customers"

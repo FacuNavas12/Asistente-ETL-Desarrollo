@@ -2,7 +2,7 @@
 en Superset — con los drivers que existen EN EL ENTORNO DE SUPERSET, no en este backend."""
 
 
-def build_superset_uri(conn) -> str:
+def build_superset_uri(conn, password: str) -> str:
     """
     sqlalchemy_uri real para el connection registrado en Superset, a partir
     de un Connection ya resuelto (conn_dwh). Deliberadamente NO reusa los
@@ -11,14 +11,14 @@ def build_superset_uri(conn) -> str:
     Superset (proceso/entorno Python separado). Postgres usa el driver
     default de Superset (sin sufijo); SQL Server usa pymssql (convención más
     común en imágenes de Superset — no requiere ODBC de sistema).
+
+    password llega por parámetro — el backend ya no lo persiste.
     """
     from urllib.parse import quote
 
     from app.core.config import settings
-    from app.core.crypto import decrypt_password
     from app.models.connection import DbType
 
-    password = decrypt_password(conn.encrypted_password)
     safe_user = quote(conn.username, safe="")
     safe_pass = quote(password, safe="")
     host_db = f"{conn.host}:{conn.port}/{conn.database}"

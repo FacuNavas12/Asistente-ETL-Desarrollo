@@ -11,7 +11,6 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
-from app.core.crypto import decrypt_password
 from app.core.sanitize import sanitize_error
 from app.models.connection import Connection, DbType
 from app.schemas.connection import ColumnInfo, ConnectionTestResult, TableDataResponse
@@ -218,9 +217,9 @@ def _connect_args(db_type: DbType, *, read_only: bool = False) -> dict[str, Any]
     return {"timeout": _TIMEOUT_SECONDS}  # pyodbc
 
 
-def _build_url(conn: Connection, *, read_only: bool = False) -> str:
-    """Construye la URL de conexión SQLAlchemy. Password se descifra aquí."""
-    password = decrypt_password(conn.encrypted_password)
+def _build_url(conn: Connection, password: str, *, read_only: bool = False) -> str:
+    """Construye la URL de conexión SQLAlchemy. password llega por parámetro
+    en cada llamada — el backend no lo persiste (ver decisión de diseño)."""
     safe_user = quote(conn.username, safe="")
     safe_pass = quote(password, safe="")
 
@@ -283,13 +282,14 @@ def _build_url(conn: Connection, *, read_only: bool = False) -> str:
         return base + "?" + urlencode(params)
 
 
-def build_engine(conn: Connection, *, read_only: bool = False):
-    """Construye un SQLAlchemy Engine para la conexión dada."""
+def build_engine(conn: Connection, password: str, *, read_only: bool = False):
+    """Construye un SQLAlchemy Engine para la conexión dada. password nunca
+    viene de un campo persistido — la pasa el caller en cada request."""
     logger.debug(
         "build_engine: db_type=%s host=%s port=%s user=%s db=%s read_only=%s",
         conn.db_type, conn.host, conn.port, conn.username, conn.database, read_only,
     )
-    url = _build_url(conn, read_only=read_only)
+    url = _build_url(conn, password, read_only=read_only)
     logger.debug("SQLAlchemy URL (masked): %s", _mask_url(url))
     return create_engine(
         url,
@@ -302,10 +302,10 @@ def build_engine(conn: Connection, *, read_only: bool = False):
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
-def test_connection(conn: Connection) -> ConnectionTestResult:
+def test_connection(conn: Connection, password: str) -> ConnectionTestResult:
     """Intenta conectar y ejecuta SELECT 1. Devuelve resultado saneado."""
     try:
-        engine = build_engine(conn, read_only=True)
+        engine = build_engine(conn, password, read_only=True)
         with engine.connect() as session:
             session.execute(text("SELECT 1"))
         engine.dispose()
@@ -320,13 +320,13 @@ def test_connection(conn: Connection) -> ConnectionTestResult:
         return ConnectionTestResult(success=False, message=f"Error inesperado: {msg}")
 
 
-def list_tables(conn: Connection) -> list[str]:
+def list_tables(conn: Connection, password: str) -> list[str]:
     """
     Devuelve 'schema.tabla' para todos los schemas no-sistema.
     Usa information_schema.tables (ANSI SQL, compatible con PG y SQL Server).
     Ordenado alfabéticamente.
     """
-    engine = build_engine(conn, read_only=True)
+    engine = build_engine(conn, password, read_only=True)
     try:
         with engine.connect() as c:
             rows = c.execute(
@@ -394,7 +394,7 @@ def _format_type(r) -> str:
     return t
 
 
-def get_columns(conn: Connection, table_name: str) -> list[ColumnInfo]:
+def get_columns(conn: Connection, table_name: str, password: str) -> list[ColumnInfo]:
     """
     Columnas de 'schema.tabla' (o 'tabla', resolviendo el schema).
     Usa information_schema.columns — NO reflexión — para no tocar catálogos
@@ -405,7 +405,7 @@ def get_columns(conn: Connection, table_name: str) -> list[ColumnInfo]:
     else:
         schema, table = None, table_name
 
-    engine = build_engine(conn, read_only=True)
+    engine = build_engine(conn, password, read_only=True)
     try:
         with engine.connect() as c:
             if schema is None:
@@ -442,6 +442,7 @@ def get_columns(conn: Connection, table_name: str) -> list[ColumnInfo]:
 def get_foreign_keys(
     conn: Connection,
     tables: list[str],
+    password: str,
 ) -> dict[str, list]:
     """
     Retrieves FK relationships for the given tables.
@@ -462,7 +463,7 @@ def get_foreign_keys(
     if not tables:
         return result
 
-    engine = build_engine(conn, read_only=True)
+    engine = build_engine(conn, password, read_only=True)
     try:
         with engine.connect() as c:
             for qualified_name in tables:
@@ -532,6 +533,7 @@ def get_sample_rows(
     conn: Connection,
     schema: str,
     table: str,
+    password: str,
     limit: int = 20,
 ) -> SampleResult:
     """
@@ -544,7 +546,7 @@ def get_sample_rows(
     Raw rows are returned to the profiler only. They must not leave the backend.
     """
     dialect   = get_dialect(conn.db_type)
-    engine    = build_engine(conn, read_only=True)
+    engine    = build_engine(conn, password, read_only=True)
     qualified = f"{_quote_identifier(schema, conn.db_type)}.{_quote_identifier(table, conn.db_type)}"
 
     primary  = dialect.primary_sample(qualified, limit)
@@ -576,6 +578,7 @@ def get_table_data(
     table: str,
     page: int,
     page_size: int,
+    password: str,
     exact_count: bool = False,
 ) -> TableDataResponse:
     """
@@ -585,7 +588,7 @@ def get_table_data(
     - Conteo estimado por defecto; exacto solo si exact_count=True.
     """
     offset = (page - 1) * page_size
-    engine = build_engine(conn, read_only=True)
+    engine = build_engine(conn, password, read_only=True)
     try:
         with engine.connect() as c:
             _validate_table_exists(c, schema, table)
@@ -628,7 +631,9 @@ def get_table_data(
         engine.dispose()
 
 
-def check_dwh_tables(conn: Connection, table_names: list[str], schema: str = "public") -> list[dict]:
+def check_dwh_tables(
+    conn: Connection, password: str, table_names: list[str], schema: str = "public"
+) -> list[dict]:
     """
     Estado real de un set de tablas DWH: existencia + COUNT(*) exacto.
     Nunca hace SELECT * — solo counts/booleans, para el gate de "¿hay datos
@@ -637,7 +642,7 @@ def check_dwh_tables(conn: Connection, table_names: list[str], schema: str = "pu
     este chequeo es informativo, nunca debe romper el flujo que lo llama.
     """
     try:
-        engine = build_engine(conn, read_only=True)
+        engine = build_engine(conn, password, read_only=True)
     except Exception as exc:
         logger.warning("check_dwh_tables: no se pudo construir el engine — %s", sanitize_error(str(exc)))
         return [{"name": t, "exists": False, "rowCount": 0} for t in table_names]

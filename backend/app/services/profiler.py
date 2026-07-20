@@ -33,6 +33,7 @@ def fetch_db_column_stats(
     schema: str,
     table: str,
     col_names: list[str],
+    password: str,
 ) -> dict[str, ColumnStats]:
     """
     Single table-scan query for population-level stats per column.
@@ -40,7 +41,7 @@ def fetch_db_column_stats(
     Returns an empty ColumnStats on any failure rather than raising.
     """
     dialect   = get_dialect(conn.db_type)
-    engine    = build_engine(conn, read_only=True)
+    engine    = build_engine(conn, password, read_only=True)
     qualified = f"{dialect.quote(schema)}.{dialect.quote(table)}"
     sql       = dialect.population_stats_sql(qualified, col_names)
     try:

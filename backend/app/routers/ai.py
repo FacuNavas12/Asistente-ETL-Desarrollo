@@ -345,24 +345,16 @@ async def generate_from_inference_sse(
 
 def _resolve_conn_dwh(etl_id: str, db: Session):
     """
-    Connection real de conn_dwh para un Etl ya persistido, o None si el ETL
-    no existe, nunca se configuró una conexión destino, o el id no resuelve.
-    Nunca lanza — llamado desde paths best-effort (status check, provisioning).
+    Devuelve siempre None: el backend ya no persiste passwords de conexión,
+    así que no hay forma de abrir una conexión real a conn_dwh en este punto
+    (no hay ninguna request en curso de la que tomar un password fresco —
+    esto corre en checks post-hoc, potencialmente mucho después de que el
+    usuario tipeó la contraseña). Los dos callers (superset_dwh_status,
+    superset_export) ya tratan conn is None como "no se puede confirmar
+    nada" sin romper el flujo. Esta función y sus callers se revisan a
+    fondo en el cambio de Superset a configuración manual.
     """
-    from app.models.etl import Etl
-    from app.models.connection import Connection
-
-    etl = db.get(Etl, etl_id)
-    if etl is None:
-        return None
-    conn_id = ((etl.form_data or {}).get("connectionsMap") or {}).get("conn_dwh")
-    if not conn_id:
-        return None
-    try:
-        conn_uuid = uuid.UUID(str(conn_id))
-    except (ValueError, TypeError, AttributeError):
-        return None
-    return db.get(Connection, conn_uuid)
+    return None
 
 
 def _expected_dwh_tables(etl) -> list[str]:

@@ -1,8 +1,13 @@
 """
 Unit tests para el mapeo DbType->Kettle y resolve_real_connections() en
-ktr_builder.py — verifica que las conexiones reales del usuario (Connection,
-password cifrado) se resuelvan a los valores que build_ktr() inyecta en el XML,
-sin que el password en claro quede expuesto fuera de esa resolución.
+ktr_builder.py.
+
+El backend ya no persiste passwords de conexión (ver decisión de diseño) —
+resolve_real_connections ya no arma un dict "real" con credenciales, solo
+valida existencia + ownership y reporta warning en todos los casos. El
+próximo cambio reintroduce metadata real (host/port/db/user) en el .ktr,
+dejando el password como variable de Kettle — ver test_ktr_connection_golden.py
+para la cobertura de ese comportamiento final.
 """
 from __future__ import annotations
 
@@ -13,9 +18,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.crypto import encrypt_password
 from app.core.database import Base
-from app.core.kettle_crypto import decode
 from app.models.connection import Connection, DbType
 from app.services.ktr_builder import (
     _DB_TYPE_TO_KETTLE,
@@ -53,7 +56,6 @@ def _make_connection(db, db_type: DbType, **overrides) -> Connection:
         port=5432 if db_type == DbType.postgresql else 1433,
         database="mydb",
         username="myuser",
-        encrypted_password=encrypt_password("s3cr3t!"),
     )
     base.update(overrides)
     conn = Connection(**base)
@@ -76,47 +78,45 @@ def test_resolve_rejects_connection_of_a_different_owner(db):
 
 
 def test_resolve_allows_connection_of_the_same_owner(db):
+    # "Allows" hoy significa "no lo rechaza por ownership" — no arma
+    # credenciales reales (ver módulo docstring, pendiente del próximo cambio).
     conn = _make_connection(db, DbType.postgresql, owner_id="user-a")
     real, warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db, owner="user-a")
 
-    assert warnings == []
-    assert real["conn_dwh"]["host"] == "dbhost.internal"
+    assert real == {}
+    assert "conn_dwh" in warnings[0]
 
 
 def test_resolve_owner_none_skips_ownership_check(db):
     # owner=None (AUTH_REQUIRED=false) — comportamiento actual preservado,
-    # resuelve cualquier conexión sin importar de quién sea.
+    # no rechaza por ownership sin importar de quién sea la conexión.
     conn = _make_connection(db, DbType.postgresql, owner_id="user-a")
     real, warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db, owner=None)
 
-    assert warnings == []
-    assert real["conn_dwh"]["host"] == "dbhost.internal"
+    assert real == {}
+    assert "conn_dwh" in warnings[0]
 
 
 # ─── resolve_real_connections ─────────────────────────────────────────────────
+# El backend ya no arma un dict "real" con credenciales (ver decisión de
+# diseño) — toda conexión encontrada y con ownership válido igual cae en el
+# mismo warning informativo que antes usaban solo las no encontradas.
 
-def test_resolve_postgres_connection(db):
+def test_resolve_found_connection_still_produces_no_credentials(db):
     conn = _make_connection(db, DbType.postgresql)
     real, warnings = resolve_real_connections({"conn_dwh": str(conn.id)}, db)
 
-    assert warnings == []
-    assert real["conn_dwh"]["host"] == "dbhost.internal"
-    assert real["conn_dwh"]["port"] == 5432
-    assert real["conn_dwh"]["database"] == "mydb"
-    assert real["conn_dwh"]["username"] == "myuser"
-    assert real["conn_dwh"]["type"] == "POSTGRESQL"
-    assert real["conn_dwh"]["access"] == "Native"
-    # El password nunca viaja en claro — solo la forma ofuscada de Kettle.
-    assert decode(real["conn_dwh"]["password"]) == "s3cr3t!"
+    assert real == {}
+    assert len(warnings) == 1
+    assert "conn_dwh" in warnings[0]
 
 
-def test_resolve_sqlserver_connection(db):
+def test_resolve_sqlserver_connection_also_produces_no_credentials(db):
     conn = _make_connection(db, DbType.sqlserver, port=1433)
     real, warnings = resolve_real_connections({"conn_staging": str(conn.id)}, db)
 
-    assert warnings == []
-    assert real["conn_staging"]["type"] == "MSSQLNATIVE"
-    assert real["conn_staging"]["port"] == 1433
+    assert real == {}
+    assert "conn_staging" in warnings[0]
 
 
 def test_resolve_missing_connection_id_produces_warning(db):

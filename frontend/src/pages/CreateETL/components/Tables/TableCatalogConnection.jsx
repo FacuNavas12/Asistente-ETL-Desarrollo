@@ -23,7 +23,7 @@ function mapCanonicalType(canonicalType) {
   }
 }
 
-export default function TableCatalogConnection({ tables, connId, value, onChange }) {
+export default function TableCatalogConnection({ tables, connId, password, value, onChange }) {
   const [open, setOpen]                       = useState(false);
   const [tableStructure, setTableStructure]   = useState({});
   const [selectedTable, setSelectedTable]     = useState(null);
@@ -43,7 +43,7 @@ export default function TableCatalogConnection({ tables, connId, value, onChange
     setDataError("");
     setTableData(null);
     try {
-      const data = await getTableData(connId, schema, table, page);
+      const data = await getTableData(connId, schema, table, password, page);
       setTableData(data);
     } catch (err) {
       setDataError(err.message);
@@ -62,7 +62,7 @@ export default function TableCatalogConnection({ tables, connId, value, onChange
     setConfirmingTable(qualified);
     setConfirmError("");
     try {
-      const canonicalSchema = await getTableProfile(connId, qualified);
+      const canonicalSchema = await getTableProfile(connId, qualified, password);
       const pkSet = new Set(canonicalSchema.primary_key ?? []);
       const fkSet = new Set(
         (canonicalSchema.foreign_keys ?? []).flatMap(fk => fk.fields)

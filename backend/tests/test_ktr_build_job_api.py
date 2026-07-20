@@ -18,7 +18,6 @@ from sqlalchemy.pool import StaticPool
 from unittest.mock import MagicMock
 
 from app.core.auth import require_auth
-from app.core.crypto import encrypt_password
 from app.core.database import Base, get_db, get_session_factory
 from app.core.dependencies import get_main_llm
 from app.main import app
@@ -98,7 +97,7 @@ def _login_as(sub: str) -> None:
 def _make_connection(db_session, owner_id: str | None = None) -> str:
     conn = Connection(
         name="dest_conn", db_type=DbType.postgresql, host="h", port=5432,
-        database="d", username="u", encrypted_password=encrypt_password("pw"),
+        database="d", username="u",
         owner_id=owner_id,
     )
     db_session.add(conn)

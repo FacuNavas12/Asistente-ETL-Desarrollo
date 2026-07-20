@@ -10,7 +10,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.auth import require_auth
-from app.core.crypto import decrypt_password
 from app.core.database import Base, get_db
 from app.main import app
 from app.models.connection import Connection, DbType, TestStatus
@@ -83,7 +82,7 @@ def _get_conn_row(conn_id: str) -> Connection:
     try:
         row = db.get(Connection, uuid.UUID(conn_id))
         # Accedemos a los campos que necesitamos mientras la sesión está abierta.
-        _ = row.encrypted_password, row.last_test_status, row.last_tested_at
+        _ = row.last_test_status, row.last_tested_at
         return row
     finally:
         db.close()
@@ -101,53 +100,46 @@ def test_create_returns_masked_password(client):
     assert resp.json()["password"] == "********"
 
 
-def test_update_without_password_does_not_touch_encrypted(client):
+def test_connection_has_no_password_column(client):
+    # El backend ya no custodia contraseñas de conexión (ver decisión de
+    # diseño) — no queda ninguna columna donde persistirlo.
     data = _create(client)
-    original_enc = _get_conn_row(data["id"]).encrypted_password
-
-    resp = client.put(f"/api/connections/{data['id']}", json={"host": "newhost"})
-    assert resp.status_code == 200
-    assert resp.json()["host"] == "newhost"
-
-    assert _get_conn_row(data["id"]).encrypted_password == original_enc
+    assert not hasattr(_get_conn_row(data["id"]), "encrypted_password")
 
 
-def test_update_with_password_reencrypts(client):
+def test_update_ignores_password_field_it_no_longer_persists(client):
+    # ConnectionUpdate ya no declara "password" — un cliente que lo siga
+    # mandando (por costumbre, o un frontend viejo) no debe romper nada ni
+    # hacer que el valor aparezca en ningún lado de la respuesta.
     data = _create(client)
-    new_pass = "totalmente_nuevo"
-
-    resp = client.put(f"/api/connections/{data['id']}", json={"password": new_pass})
-    assert resp.status_code == 200
-
-    new_enc = _get_conn_row(data["id"]).encrypted_password
-    assert decrypt_password(new_enc) == new_pass
-
-
-def test_update_with_null_password_is_ignored(client):
-    data = _create(client)
-    original_enc = _get_conn_row(data["id"]).encrypted_password
 
     resp = client.put(
         f"/api/connections/{data['id']}",
-        json={"password": None, "host": "changed"},
+        json={"password": "algo_que_nunca_deberia_persistir", "host": "changed"},
     )
     assert resp.status_code == 200
+    assert resp.json()["host"] == "changed"
+    assert "algo_que_nunca_deberia_persistir" not in resp.text
+    assert resp.json()["password"] == "********"
 
-    row = _get_conn_row(data["id"])
-    assert row.encrypted_password == original_enc
-    assert row.host == "changed"
+
+def test_test_endpoint_requires_password_header(client):
+    data = _create(client)
+    resp = client.post(f"/api/connections/{data['id']}/test")
+    assert resp.status_code == 422  # falta el header X-DB-Password
 
 
 def test_test_endpoint_updates_status(client, monkeypatch):
     data = _create(client)
     conn_id = data["id"]
+    headers = {"X-DB-Password": "s3cr3t"}
 
     # ── éxito
     monkeypatch.setattr(
         "app.routers.connections.svc_test",
-        lambda _conn: ConnectionTestResult(success=True, message="OK"),
+        lambda _conn, _password: ConnectionTestResult(success=True, message="OK"),
     )
-    resp = client.post(f"/api/connections/{conn_id}/test")
+    resp = client.post(f"/api/connections/{conn_id}/test", headers=headers)
     assert resp.status_code == 200
     assert resp.json()["success"] is True
 
@@ -158,9 +150,9 @@ def test_test_endpoint_updates_status(client, monkeypatch):
     # ── fallo
     monkeypatch.setattr(
         "app.routers.connections.svc_test",
-        lambda _conn: ConnectionTestResult(success=False, message="Timeout"),
+        lambda _conn, _password: ConnectionTestResult(success=False, message="Timeout"),
     )
-    resp = client.post(f"/api/connections/{conn_id}/test")
+    resp = client.post(f"/api/connections/{conn_id}/test", headers=headers)
     assert resp.json()["success"] is False
     assert _get_conn_row(conn_id).last_test_status == TestStatus.failed
 
@@ -176,16 +168,17 @@ def test_create_assigns_owner_from_auth_sub_not_from_body(client):
 def test_cross_owner_access_returns_404_on_every_verb(client):
     _login_as("user-a")
     conn_id = _create(client)["id"]
+    headers = {"X-DB-Password": "whatever"}  # el 404 de ownership gana antes de intentar conectar
 
     _login_as("user-b")
     assert client.get(f"/api/connections/{conn_id}").status_code == 404
     assert client.put(f"/api/connections/{conn_id}", json={"host": "x"}).status_code == 404
-    assert client.post(f"/api/connections/{conn_id}/test").status_code == 404
-    assert client.get(f"/api/connections/{conn_id}/schema/tables").status_code == 404
-    assert client.get(f"/api/connections/{conn_id}/schema/tables/foo/columns").status_code == 404
-    assert client.get(f"/api/connections/{conn_id}/schema/tables/foo/profile").status_code == 404
+    assert client.post(f"/api/connections/{conn_id}/test", headers=headers).status_code == 404
+    assert client.get(f"/api/connections/{conn_id}/schema/tables", headers=headers).status_code == 404
+    assert client.get(f"/api/connections/{conn_id}/schema/tables/foo/columns", headers=headers).status_code == 404
+    assert client.get(f"/api/connections/{conn_id}/schema/tables/foo/profile", headers=headers).status_code == 404
     assert client.get(
-        f"/api/connections/{conn_id}/schema/table-data?schema=public&table=foo"
+        f"/api/connections/{conn_id}/schema/table-data?schema=public&table=foo", headers=headers
     ).status_code == 404
     assert client.delete(f"/api/connections/{conn_id}").status_code == 404
 

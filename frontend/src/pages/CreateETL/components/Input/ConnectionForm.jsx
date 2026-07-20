@@ -76,7 +76,7 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
       const conn = await createConnection(payload);
 
       setStatus("testing");
-      const testResult = await testConnection(conn.id);
+      const testResult = await testConnection(conn.id, form.password);
       if (!testResult.success) {
         setStatus("error");
         setError(testResult.message);
@@ -84,7 +84,11 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
       }
 
       setStatus("success");
-      onConnected?.(conn.id, { name: form.name, db_type: form.db_type });
+      // El password nunca se persiste — se lo pasamos al padre para que lo
+      // mantenga en memoria (nunca en sessionStorage/localStorage) mientras
+      // dure la sesión de armado del ETL, y lo reenvíe en cada operación que
+      // vuelva a necesitar conectar de verdad (explorar tablas, etc).
+      onConnected?.(conn.id, { name: form.name, db_type: form.db_type }, form.password);
     } catch (err) {
       setStatus("error");
       setError(err.message);

@@ -1,11 +1,7 @@
-import base64
-
 from pathlib import Path
-from typing import Annotated, Any, Optional
 
-from pydantic import Field, AliasChoices, field_validator
+from pydantic import Field, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic_settings.sources.base import NoDecode
 
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
@@ -39,12 +35,6 @@ class Settings(BaseSettings):
     # Dev local: sqlite:///./app.db (default). Prod: postgresql+psycopg://...
     database_url: str = "sqlite:///./app.db"
 
-    # ── Cifrado de credenciales ───────────────────────────────────────────────
-    # CSV de claves Fernet. La primera es la activa; las demás solo desencriptan.
-    # NoDecode evita que pydantic-settings JSON-decodifique el valor antes del validator.
-    # Generar: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-    credentials_encryption_keys: Annotated[list[str], NoDecode] = Field(default_factory=list)
-
     # ── Driver ODBC SQL Server ────────────────────────────────────────────────
     mssql_odbc_driver: str = "ODBC Driver 18 for SQL Server"
 
@@ -69,36 +59,6 @@ class Settings(BaseSettings):
     # antes de fallar. Un timeout explícito y más corto convierte un cuelgue en
     # un error claro y rápido en vez de un job trancado en "pending".
     llm_request_timeout_s: float = 240.0
-
-    @field_validator("credentials_encryption_keys", mode="before")
-    @classmethod
-    def _parse_keys(cls, v: Any) -> list[str]:
-        """Acepta CSV desde env var o lista directa (útil en tests)."""
-        if isinstance(v, str):
-            return [k.strip() for k in v.split(",") if k.strip()]
-        if isinstance(v, list):
-            return [str(k).strip() for k in v if str(k).strip()]
-        return v
-
-    @field_validator("credentials_encryption_keys", mode="after")
-    @classmethod
-    def _validate_keys(cls, v: list[str]) -> list[str]:
-        """Valida formato de claves Fernet si están configuradas; si no, permite lista vacía."""
-        if not v:
-            return v  # no configurado — el módulo de conexiones lo rechazará en runtime
-        for i, k in enumerate(v):
-            try:
-                key_bytes = base64.urlsafe_b64decode(k)
-            except Exception:
-                raise ValueError(
-                    f"La clave en posición {i} no es base64 URL-safe válido"
-                )
-            if len(key_bytes) != 32:
-                raise ValueError(
-                    f"La clave en posición {i} debe decodificar a exactamente 32 bytes "
-                    f"(obtenido: {len(key_bytes)})"
-                )
-        return v
 
     # ── Proveedor Gemini (compliance) ─────────────────────────────────────────
     # "google-ai-studio" (default, free, procesa en EE.UU.)

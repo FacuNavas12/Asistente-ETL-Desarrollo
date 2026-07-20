@@ -10,7 +10,6 @@ from sqlalchemy import (
     Enum as SAEnum,
     Integer,
     JSON,
-    LargeBinary,
     String,
     UniqueConstraint,
     Uuid,
@@ -47,7 +46,10 @@ class Connection(Base):
     port: Mapped[int] = mapped_column(Integer)
     database: Mapped[str] = mapped_column(String(255))
     username: Mapped[str] = mapped_column(String(255))
-    encrypted_password: Mapped[bytes] = mapped_column(LargeBinary)
+    # El backend deja de custodiar contraseñas de conexión (ver decisión de
+    # diseño): el password nunca se persiste, viaja por request en cada
+    # operación que conecta de verdad (test, exploración de esquema) y el
+    # .ktr lo deja como variable de Kettle en vez de embeberlo.
     ssl_mode: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     extra_options: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     # Claim "sub" del JWT del dueño (Auth0: "auth0|...", "google-oauth2|...")
