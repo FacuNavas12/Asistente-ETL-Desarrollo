@@ -342,69 +342,26 @@ async def generate_from_inference_sse(
 
 
 # ── Integración Superset ─────────────────────────────────────────────────────
-
-def _resolve_conn_dwh(etl_id: str, db: Session):
-    """
-    Devuelve siempre None: el backend ya no persiste passwords de conexión,
-    así que no hay forma de abrir una conexión real a conn_dwh en este punto
-    (no hay ninguna request en curso de la que tomar un password fresco —
-    esto corre en checks post-hoc, potencialmente mucho después de que el
-    usuario tipeó la contraseña). Los dos callers (superset_dwh_status,
-    superset_export) ya tratan conn is None como "no se puede confirmar
-    nada" sin romper el flujo. Esta función y sus callers se revisan a
-    fondo en el cambio de Superset a configuración manual.
-    """
-    return None
-
-
-def _expected_dwh_tables(etl) -> list[str]:
-    """Nombres de tabla DWH (no-staging) esperados según dwh_sample del resultado."""
-    from app.services.superset_client import STAGING_PREFIXES
-
-    dwh_sample = ((etl.result or {}).get("dwh_sample")) or {}
-    return [
-        name for name in dwh_sample.keys()
-        if not any(str(name).lower().startswith(p) for p in STAGING_PREFIXES)
-    ]
-
-
-@router.get("/api/v1/etl/{etl_id}/superset/dwh-status")
-def superset_dwh_status(etl_id: str, db: Session = Depends(get_db)):
-    """
-    Estado real (existencia + row count, sin filas) de las tablas DWH
-    esperadas para este ETL, consultando conn_dwh directamente. Gate on-click
-    antes de exportar a Superset: available=False si no hay conn_dwh
-    configurada (ETLs viejos, o el usuario nunca la completó) — en ese caso
-    el frontend no bloquea, simplemente no puede confirmar nada.
-    """
-    from app.models.etl import Etl
-    from app.services.db_connector import check_dwh_tables
-
-    etl = db.get(Etl, etl_id)
-    if etl is None:
-        raise HTTPException(status_code=404, detail="ETL no encontrado.")
-
-    conn = _resolve_conn_dwh(etl_id, db)
-    if conn is None:
-        return {"available": False, "hasData": False, "tables": []}
-
-    table_names = _expected_dwh_tables(etl)
-    if not table_names:
-        return {"available": False, "hasData": False, "tables": []}
-
-    tables = check_dwh_tables(conn, table_names)
-    has_data = any(t["rowCount"] > 0 for t in tables)
-    return {"available": True, "hasData": has_data, "tables": tables}
-
+# El backend ya no persiste passwords de conexión (ver decisión de diseño),
+# así que no hay forma de abrir una conexión real a conn_dwh para verificar
+# datos en vivo ni para auto-configurar la URI real en Superset — ambos
+# necesitaban decryptar un password que ya no existe. La conexión ETL_DWH en
+# Superset se configura a mano, una sola vez, en Superset → Configuración →
+# Conexiones a bases de datos (ver get_or_create_database, que ya crea la
+# entrada con una URI placeholder cuando no hay real_uri — ese fallback ya
+# existía y sigue siendo el camino permanente, no uno transitorio).
 
 @router.post("/api/v1/etl/{etl_id}/superset/export")
 async def superset_export(etl_id: str, db: Session = Depends(get_db)):
     """Arma el ZIP de dashboard de Superset para este ETL (backend, sin upload) y lo
     importa. Reemplaza al viejo POST /api/v1/superset/import — el frontend ya no
-    construye el ZIP, solo pide con el etl_id."""
+    construye el ZIP, solo pide con el etl_id.
+
+    Nunca intenta resolver ni alinear la conexión real del DWH — eso se
+    configura a mano en Superset. La importación siempre usa el placeholder/
+    URI ya configurada manualmente en Superset (ver get_or_create_database)."""
     from app.models.etl import Etl
-    from app.services.db_connector import check_dwh_tables
-    from app.services.superset_client import SupersetClient, SupersetError, build_superset_uri
+    from app.services.superset_client import SupersetClient, SupersetError
     from app.services.superset_export import build as build_export_zip
     from app.core.config import settings as _settings
 
@@ -417,28 +374,13 @@ async def superset_export(etl_id: str, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    real_table_status: dict[str, dict] | None = None
-    real_uri: str | None = None
-    conn = _resolve_conn_dwh(etl_id, db)
-    if conn is not None:
-        try:
-            real_uri = build_superset_uri(conn)
-        except Exception as exc:
-            logger.warning("No se pudo armar la URI real de conn_dwh: %s", exc)
-        table_names = _expected_dwh_tables(etl)
-        if table_names:
-            status_list = check_dwh_tables(conn, table_names)
-            real_table_status = {s["name"].lower(): s for s in status_list}
-
     client = SupersetClient(
         _settings.superset_url,
         _settings.superset_username,
         _settings.superset_password,
     )
     try:
-        url = await client.import_dashboard(
-            zip_bytes, dwh_sample=dwh_sample, real_table_status=real_table_status, real_uri=real_uri,
-        )
+        url = await client.import_dashboard(zip_bytes, dwh_sample=dwh_sample)
         return {"dashboard_url": url}
     except SupersetError as e:
         logger.error("Superset import error: %s", str(e))

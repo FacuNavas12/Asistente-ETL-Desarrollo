@@ -9,7 +9,8 @@ const ROLE_LABELS = {
   conn_dwh: "Destino (DWH)",
 };
 
-// Placeholder informativo — diseño final a definir.
+// Esta app no persiste passwords de conexión (ver decisión de diseño) —
+// el aviso de abajo es permanente, no un placeholder a completar después.
 export default function ConnectionView({ formData }) {
   const entries = Object.entries(formData?.connectionsMap ?? {})
     .filter(([, connId]) => Boolean(connId));
@@ -33,6 +34,18 @@ export default function ConnectionView({ formData }) {
             Este ETL no tiene conexiones a bases de datos asociadas.
           </p>
         )}
+        <p className="etl-section__text">
+          Esta app no guarda contraseñas de conexión — el .ktr descargado
+          trae host/usuario/base de datos reales, pero el password hay que
+          completarlo a mano en kettle.properties o en el conector de Spoon
+          antes de ejecutarlo.
+        </p>
+        <p className="etl-section__text">
+          Para exportar a Superset con datos reales, primero configurá la
+          conexión al Data Warehouse a mano en Superset (Configuración →
+          Conexiones a bases de datos) usando los datos de la conexión de
+          arriba — esta app tampoco la configura automáticamente ahí.
+        </p>
       </CollapsibleSection>
     </div>
   );

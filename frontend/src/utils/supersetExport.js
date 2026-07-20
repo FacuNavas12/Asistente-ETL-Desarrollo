@@ -1,38 +1,31 @@
 // Wrappers delgados: la construcción del ZIP de Superset (inferencia semántica,
 // selección de charts, YAMLs, empaquetado) vive ahora en el backend
 // (backend/app/services/superset_export/). Este archivo solo pide.
-
-/**
- * Estado real (existencia + row count, sin filas) de las tablas DWH esperadas
- * para este ETL, contra conn_dwh. available=false si el backend no puede
- * resolver conn_dwh (ETL viejo, o nunca se configuró) — nunca lanza, el
- * caller trata ese caso como "no se puede confirmar nada" y sigue de largo.
- */
-export async function checkDwhStatus(etlId) {
-  const apiBase = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
-  try {
-    const resp = await fetch(`${apiBase}/api/v1/etl/${etlId}/superset/dwh-status`);
-    if (!resp.ok) return { available: false, hasData: false, tables: [] };
-    return await resp.json();
-  } catch {
-    return { available: false, hasData: false, tables: [] };
-  }
-}
+//
+// El backend ya no persiste passwords de conexión (ver decisión de diseño),
+// así que no puede verificar en vivo si el DWH ya tiene datos reales ni
+// auto-configurar la conexión real en Superset — eso se hacía consultando
+// conn_dwh directamente, y ya no hay password con el que abrir esa conexión.
+// La conexión a la base de datos real en Superset se configura a mano, una
+// sola vez, en Superset → Configuración → Conexiones a bases de datos.
 
 /**
  * Pide al backend que arme el ZIP, lo importe en Superset y abre el dashboard
- * resultante. Chequeo on-click (no gatea el botón): si conn_dwh está configurada
- * y las tablas DWH todavía no tienen filas reales, confirma con el usuario antes
- * de abrir en modo demo — cancelar aborta sin pegarle al backend.
+ * resultante. Ya no hay chequeo automático de "¿hay datos reales?" — se le
+ * recuerda al usuario en un confirm antes de exportar, siempre (no solo
+ * cuando se detecta falta de datos, porque ya no se puede detectar nada).
+ * Cancelar aborta sin pegarle al backend.
  */
 export async function exportEtlToSuperset(etl) {
-  const status = await checkDwhStatus(etl.id);
-  if (status.available && !status.hasData) {
-    const proceed = window.confirm(
-      "Todavía no se encontraron datos reales en las tablas del DWH (¿corriste el job en Pentaho?).\n\n¿Abrir igual en modo demo, con datos de ejemplo?"
-    );
-    if (!proceed) return;
-  }
+  const proceed = window.confirm(
+    "Antes de exportar: la conexión a la base de datos real del Data Warehouse " +
+    "se configura a mano en Superset (Configuración → Conexiones a bases de datos) — " +
+    "esta app no la configura por vos.\n\n" +
+    "Si todavía no cargaste datos reales (corriendo el .ktr en Pentaho) o no conectaste " +
+    "la base real en Superset, el dashboard se abre igual pero con datos de ejemplo.\n\n" +
+    "¿Continuar con la exportación?"
+  );
+  if (!proceed) return;
 
   const apiBase = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
   const resp = await fetch(`${apiBase}/api/v1/etl/${etl.id}/superset/export`, {
