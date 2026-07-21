@@ -23,6 +23,9 @@ __pycache__/
 *.pyc
 venv/
 .venv/
+.venv-*/
+.pytest_cache/
+backend/.pytest_cache/
 
 # SQLite (bases locales de dev — nunca commitear datos reales, incluye credenciales cifradas)
 backend/app.db
