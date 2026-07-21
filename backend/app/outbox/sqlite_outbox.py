@@ -106,6 +106,14 @@ class SqliteOutbox:
             row = db.get(_OutboxRow, entry_id)
             return _row_to_entry(row) if row else None
 
+    def delete(self, entry_id: str) -> None:
+        with self._session() as db:
+            row = db.get(_OutboxRow, entry_id)
+            if row:
+                db.delete(row)
+                db.commit()
+        logger.info("outbox.deleted id=%s", entry_id)
+
     def list_non_synced(self) -> list[OutboxEntry]:
         with self._session() as db:
             rows = (

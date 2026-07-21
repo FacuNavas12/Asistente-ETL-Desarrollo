@@ -17,6 +17,13 @@ from app.schemas.etl import EtlCreate, EtlRead, EtlStatusUpdate, EtlUpdate
 
 # ── Converters ────────────────────────────────────────────────────────────────
 
+def _as_aware_utc(dt: datetime) -> datetime:
+    """SQLite ignora DateTime(timezone=True) y devuelve naive; Postgres no.
+    Normalizamos siempre a aware-UTC para poder comparar/ordenar contra los
+    timestamps del outbox (que sí vienen aware, parseados de ISO 8601)."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
 def _etl_to_read(etl: Etl, sync_status: SyncStatus = SyncStatus.synced) -> EtlRead:
     return EtlRead(
         id=etl.id,
@@ -25,8 +32,8 @@ def _etl_to_read(etl: Etl, sync_status: SyncStatus = SyncStatus.synced) -> EtlRe
         sync_status=sync_status,
         form_data=etl.form_data,
         result=etl.result,
-        created_at=etl.created_at,
-        updated_at=etl.updated_at,
+        created_at=_as_aware_utc(etl.created_at),
+        updated_at=_as_aware_utc(etl.updated_at),
     )
 
 
@@ -171,12 +178,22 @@ def set_etl_status(db: Session, id: str, payload: EtlStatusUpdate) -> EtlRead:
 
 
 def delete_etl(db: Session, id: str) -> None:
-    obj = _get_etl_orm(db, id)
-    etl_repo.delete(db, obj)
-
-
-def _get_etl_orm(db: Session, id: str) -> Etl:
+    """
+    Resuelve el ETL por la misma via que get_etl() (outbox + Supabase) antes
+    de borrar. Un ETL todavia pending solo existe en el outbox — sin este
+    chequeo, delete_etl() tiraba 404 sobre algo que list_etls() si mostraba,
+    y aunque se pudiera borrar de Supabase, la fila pending del outbox lo
+    reinsertaria en el proximo drain. Se borra la fila del outbox (si existe)
+    para que get_etl() no la resucite via su fallback de "outbox synced pero
+    ya no esta en Supabase".
+    """
+    entry = get_outbox().get_by_id(id)
     obj = etl_repo.get(db, id)
-    if obj is None:
+
+    if entry is None and obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ETL not found")
-    return obj
+
+    if entry is not None:
+        get_outbox().delete(id)
+    if obj is not None:
+        etl_repo.delete(db, obj)

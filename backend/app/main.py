@@ -85,11 +85,9 @@ async def _purge_expired_ktr_jobs(session_factory) -> None:
 async def lifespan(app: FastAPI):
     from asyncio import create_task
 
-    from app.core.database import create_tables, _get_session_factory
+    from app.core.database import _get_session_factory
     from app.outbox import get_outbox
     from app.outbox.runner import run_in_process
-
-    create_tables()
 
     # Entrypoint A — in-process drain loop.
     # To switch to an external process/cron (entrypoint B), remove this task
