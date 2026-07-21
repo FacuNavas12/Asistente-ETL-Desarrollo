@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
-from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Literal, Optional
 
 
 # ─── INPUT — Origen ───────────────────────────────────────────────────────────
@@ -196,12 +196,34 @@ class BuildFromRawRequest(BaseModel):
 
 # ─── GENERATE ASYNC + CONEXIONES EN PARALELO ─────────────────────────────────
 
+class InlineConnection(BaseModel):
+    """Metadata de conexión destino (staging/DWH) tal cual la completa el
+    usuario en el formulario — nunca se crea una fila Connection para esto
+    (no es una conexión reusable, es solo el destino de ESTE ETL) y NUNCA
+    lleva password: resolve_real_connections() la deja siempre como variable
+    Kettle, igual que para las conexiones por connection_id (ver
+    ktr_builder/connection.py)."""
+    db_type: Literal["postgresql", "sqlserver"]
+    host: str = Field(..., min_length=1, max_length=255)
+    port: int = Field(..., ge=1, le=65535)
+    database: str = Field(..., min_length=1, max_length=255)
+    username: str = Field(..., min_length=1, max_length=255)
+    ssl_mode: Optional[str] = None
+
+
 class ConnectionsMapRequest(BaseModel):
-    """IDs de Connection ya creados (vía POST /api/connections) por nombre lógico
-    de capa. Nunca credenciales — solo referencias a filas ya existentes."""
+    """conn_origen: id de una Connection ya creada (vía POST /api/connections)
+    — el origen sigue necesitando una fila real porque el explorador de
+    esquema conecta de verdad contra ella antes de este paso.
+
+    conn_staging/conn_dwh: metadata inline (InlineConnection) o None. None
+    significa "completar en Spoon" — resolve_real_connections() lo deja como
+    placeholder, igual que hoy para una conexión no resuelta. Nunca se
+    persiste como fila Connection: es solo la metadata de destino de ESTE
+    ETL, no una conexión reusable."""
     conn_origen: Optional[str] = None
-    conn_staging: Optional[str] = None
-    conn_dwh: Optional[str] = None
+    conn_staging: Optional[InlineConnection] = None
+    conn_dwh: Optional[InlineConnection] = None
 
 
 class GenerateAsyncResponse(BaseModel):

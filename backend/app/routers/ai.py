@@ -193,8 +193,13 @@ def _status_response(job: KtrBuildJob) -> KtrJobStatusResponse:
     # build_status == "failed": el modelo ya respondió (job.model_json quedó
     # poblado en generate_etl_async) pero build_ktr() falló en _try_build.
     # Devolvemos esa respuesta cruda para que el frontend no la pierda.
+    # También se puebla en "built" (no solo "failed") — el frontend lo persiste
+    # junto con el ETL guardado (formData.rawLlmData) porque KtrBuildJob tiene
+    # TTL de _JOB_TTL_MINUTES: sin esto, una vez expirado el job no queda
+    # forma de reconstruir el .ktr con una conexión destino distinta (ver
+    # POST /api/v1/etl/{etl_id}/connections, que lee justo ese raw data).
     raw_llm_data = None
-    if job.build_status.value == "failed" and job.model_json:
+    if job.build_status.value in ("failed", "built") and job.model_json:
         data_1 = job.model_json.get("raw_data_1")
         data_2 = job.model_json.get("raw_data_2")
         if data_1 is not None and data_2 is not None:

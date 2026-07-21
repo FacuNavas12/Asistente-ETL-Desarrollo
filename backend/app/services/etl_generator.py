@@ -728,7 +728,11 @@ def _try_build(job_id, db: Session) -> None:
     if job.model_status != ModelStatus.done:
         return  # el modelo todavía no respondió — nada que hacer todavía
 
-    if not job.connections_map:
+    if job.connections_map is None:
+        # None = el usuario todavía no terminó de decidir las conexiones
+        # destino (ni "Completar en Spoon" ni el formulario). Un dict vacío
+        # {} (todas las capas dejadas para Spoon) SÍ es una decisión final —
+        # a diferencia de antes, ya no bloquea el build.
         job.build_status = KtrBuildStatus.awaiting_connections
         db.commit()
         return

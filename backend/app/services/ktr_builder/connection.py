@@ -112,6 +112,14 @@ def resolve_real_connections(
     el UUID de la conexión de otro usuario resuelva algo de esa conexión ajena.
     owner=None (AUTH_REQUIRED=false) salta el chequeo.
 
+    conn_staging/conn_dwh pueden llegar como dict (metadata inline completada
+    a mano en el formulario de destino — ver InlineConnection en
+    etl_schemas.py) en vez de connection_id: esa capa nunca tuvo ni tendrá
+    una fila Connection propia (no es una conexión reusable, es el destino
+    de ESTE ETL puntual). Se resuelve igual que una conexión real, mismo
+    password_var, sin tocar la tabla Connection ni el chequeo de owner
+    (no hay owner que validar sobre un dict que el propio dueño del job mandó).
+
     Devuelve (real_connections, warnings). Toda conexión que no se pueda resolver
     genera un warning en vez de fallar — el .ktr sigue el build con placeholder.
     """
@@ -120,9 +128,35 @@ def resolve_real_connections(
     real: dict[str, dict] = {}
     warnings: list[str] = []
 
-    for logical_name, conn_id in (connections_map or {}).items():
-        if not conn_id:
+    for logical_name, value in (connections_map or {}).items():
+        if not value:
             continue
+
+        if isinstance(value, dict):
+            db_type_key = value.get("db_type")
+            kettle_meta = _DB_TYPE_TO_KETTLE.get(db_type_key)
+            if kettle_meta is None:
+                warnings.append(f"Conexión '{logical_name}': motor '{db_type_key}' sin mapeo Kettle — se usará placeholder.")
+                continue
+
+            real[logical_name] = {
+                "host":         value.get("host"),
+                "port":         value.get("port"),
+                "database":     value.get("database"),
+                "username":     value.get("username"),
+                "password_var": _password_var_name(logical_name),
+                "type":         kettle_meta["type"],
+                "access":       kettle_meta["access"],
+            }
+            if value.get("ssl_mode"):
+                warnings.append(
+                    f"Conexión '{logical_name}': ssl_mode='{value['ssl_mode']}' configurado en la app — "
+                    "verificar/configurar el modo SSL en la pestaña Options del conector "
+                    "en Spoon (Kettle no lo hereda automáticamente de este backend)."
+                )
+            continue
+
+        conn_id = value
         try:
             conn_uuid = uuid.UUID(str(conn_id))
         except (ValueError, TypeError, AttributeError):

@@ -1,39 +1,103 @@
+import { useState } from "react";
 import CollapsibleSection from "../components/CollapsibleSection";
+import { useEtl } from "@/context/EtlContext";
+import { rebuildEtlConnections } from "@/services/etlService";
+import DestinationConnectionForm, {
+  EMPTY_DESTINATION_CONNECTION,
+  isDestinationConnectionComplete,
+} from "@/pages/CreateETL/components/Input/DestinationConnectionForm";
 import "../etlDetail-global.css";
 import "./ConnectionView.css";
 
-// Nombres lógicos que usa el backend (ver ktr_builder/connection.py) para
-// resolver las conexiones reales al momento de generar el .ktr.
-const ROLE_LABELS = {
-  conn_origen: "Origen",
-  conn_dwh: "Destino (DWH)",
-};
+const _toDestinationValue = (raw) =>
+  raw && typeof raw === "object" ? { ...EMPTY_DESTINATION_CONNECTION, ...raw } : EMPTY_DESTINATION_CONNECTION;
 
-// Esta app no persiste passwords de conexión (ver decisión de diseño) —
-// el aviso de abajo es permanente, no un placeholder a completar después.
-export default function ConnectionView({ formData }) {
-  const entries = Object.entries(formData?.connectionsMap ?? {})
-    .filter(([, connId]) => Boolean(connId));
+const _toPayload = (value) => ({ ...value, port: Number(value.port) });
+
+// Mismo formulario/checkbox que DestinationConnections (armado del ETL) pero
+// disponible para un ETL YA generado: permite adaptar la conexión de
+// staging/DWH de un .ktr existente sin reabrir el wizard — el equivalente a
+// editar el conector en Spoon, pero desde acá (ver POST /api/etls/{id}/connections,
+// que reconstruye el .ktr desde el raw_data guardado sin volver a llamar al LLM).
+// Nunca pide password — esta app no conecta de verdad contra staging/DWH.
+export default function ConnectionView({ etl }) {
+  const { patchEtlLocal } = useEtl();
+  const connectionsMap = etl.formData?.connectionsMap ?? {};
+
+  const [stagingValue, setStagingValue] = useState(_toDestinationValue(connectionsMap.conn_staging));
+  const [dwhValue,     setDwhValue]     = useState(_toDestinationValue(connectionsMap.conn_dwh));
+  const [stagingSkip,  setStagingSkip]  = useState(!connectionsMap.conn_staging);
+  const [dwhSkip,       setDwhSkip]      = useState(!connectionsMap.conn_dwh);
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const canSave =
+    (stagingSkip || isDestinationConnectionComplete(stagingValue)) &&
+    (dwhSkip || isDestinationConnectionComplete(dwhValue));
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError("");
+    setSuccess(false);
+    const body = {
+      conn_origen: connectionsMap.conn_origen || undefined,
+      conn_staging: stagingSkip ? undefined : _toPayload(stagingValue),
+      conn_dwh: dwhSkip ? undefined : _toPayload(dwhValue),
+    };
+    try {
+      const newResult = await rebuildEtlConnections(etl.id, body);
+      patchEtlLocal(etl.id, {
+        result: newResult,
+        formData: { ...etl.formData, connectionsMap: body },
+      });
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message ?? "No se pudo actualizar la conexión.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="etl-detail__body">
-      <CollapsibleSection title="Conexiones utilizadas">
-        {entries.length > 0 ? (
-          <ul className="etl-connections-list">
-            {entries.map(([logicalName, connId]) => (
-              <li key={logicalName} className="etl-connection-item">
-                <span className="etl-connection-item__role">
-                  {ROLE_LABELS[logicalName] ?? logicalName}
-                </span>
-                <span className="etl-connection-item__id">{connId}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="etl-section__text">
-            Este ETL no tiene conexiones a bases de datos asociadas.
-          </p>
+      <CollapsibleSection title="Conexión de origen">
+        <p className="etl-section__text">
+          {connectionsMap.conn_origen
+            ? `Conexión configurada (id ${connectionsMap.conn_origen}) — se edita desde la lista de conexiones guardadas, no desde acá.`
+            : "Este ETL no usa una conexión de base de datos como origen."}
+        </p>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Conexión de Staging">
+        <label className="etl-connection-skip">
+          <input type="checkbox" checked={stagingSkip} onChange={e => setStagingSkip(e.target.checked)} />
+          Completar en Spoon (dejar host/usuario/base sin completar acá)
+        </label>
+        {!stagingSkip && (
+          <DestinationConnectionForm value={stagingValue} onChange={setStagingValue} />
         )}
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Conexión de DWH">
+        <label className="etl-connection-skip">
+          <input type="checkbox" checked={dwhSkip} onChange={e => setDwhSkip(e.target.checked)} />
+          Completar en Spoon (dejar host/usuario/base sin completar acá)
+        </label>
+        {!dwhSkip && (
+          <DestinationConnectionForm value={dwhValue} onChange={setDwhValue} />
+        )}
+      </CollapsibleSection>
+
+      <div className="etl-connection-save">
+        <button className="staging-add-btn" onClick={handleSave} disabled={!canSave || saving}>
+          {saving ? "Guardando..." : "Guardar y regenerar .ktr"}
+        </button>
+        {success && <p className="etl-connection-save__ok">✓ .ktr actualizado con la nueva conexión.</p>}
+        {error && <p className="conn-status-error">{error}</p>}
+      </div>
+
+      <CollapsibleSection title="Notas">
         <p className="etl-section__text">
           Esta app no guarda contraseñas de conexión — el .ktr descargado
           trae host/usuario/base de datos reales, pero el password hay que

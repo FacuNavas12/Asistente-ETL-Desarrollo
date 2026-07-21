@@ -1,50 +1,65 @@
 import { useState } from "react";
-import ConnectionForm from "../Input/ConnectionForm";
+import DestinationConnectionForm, {
+  EMPTY_DESTINATION_CONNECTION,
+  isDestinationConnectionComplete,
+} from "../Input/DestinationConnectionForm";
 import "./destinationConnections.css";
 
+const _toPayload = (value) => ({ ...value, port: Number(value.port) });
+
 // Se completa en paralelo con la llamada al modelo (ver CreateETL.jsx
-// handleConfirm). onConnectionReady(nombre_lógico, connId) se llama cada vez
-// que una conexión termina de crearse y testearse — el padre acumula el mapa
-// completo y lo reenvía entero a POST /{job_id}/connections en cada cambio,
-// porque ese endpoint reemplaza el mapa completo (no hace merge).
-export default function DestinationConnections({ onConnectionReady }) {
-  const [stagingConnId, setStagingConnId] = useState(null);
-  const [dwhConnId, setDwhConnId]         = useState(null);
-  const [sameForBoth, setSameForBoth]     = useState(false);
+// handleConfirm) pero NO manda nada al backend hasta que el usuario confirma
+// con "Generar" — ni el modelo ni esta pantalla individualmente disparan el
+// build (ver gate en _try_build). Cada capa (staging/DWH) es independiente:
+// "Completar en Spoon" la deja como placeholder (host/port/base/usuario
+// como variable ${VAR} en el .ktr, igual que hoy para una conexión sin
+// resolver) — nunca se pide password acá, esta app no conecta de verdad
+// contra staging/DWH.
+export default function DestinationConnections({ onFinalize }) {
+  const [stagingValue, setStagingValue] = useState(EMPTY_DESTINATION_CONNECTION);
+  const [dwhValue,     setDwhValue]     = useState(EMPTY_DESTINATION_CONNECTION);
+  const [stagingSkip,  setStagingSkip]  = useState(false);
+  const [dwhSkip,       setDwhSkip]      = useState(false);
+  const [sameForBoth,  setSameForBoth]  = useState(false);
+  const [submitted,    setSubmitted]    = useState(false);
 
-  const handleStaging = (connId) => {
-    setStagingConnId(connId);
-    onConnectionReady("conn_staging", connId);
-    if (sameForBoth) {
-      setDwhConnId(connId);
-      onConnectionReady("conn_dwh", connId);
-    }
+  const stagingReady = stagingSkip || isDestinationConnectionComplete(stagingValue);
+  const dwhReady = sameForBoth || dwhSkip || isDestinationConnectionComplete(dwhValue);
+  const canSubmit = stagingReady && dwhReady && !submitted;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onFinalize({
+      conn_staging: stagingSkip ? undefined : _toPayload(stagingValue),
+      conn_dwh: sameForBoth
+        ? (stagingSkip ? undefined : _toPayload(stagingValue))
+        : (dwhSkip ? undefined : _toPayload(dwhValue)),
+    });
+    setSubmitted(true);
   };
 
-  const handleDwh = (connId) => {
-    setDwhConnId(connId);
-    onConnectionReady("conn_dwh", connId);
-  };
-
-  const handleSameForBothChange = (checked) => {
-    setSameForBoth(checked);
-    if (checked && stagingConnId) {
-      setDwhConnId(stagingConnId);
-      onConnectionReady("conn_dwh", stagingConnId);
-    } else if (!checked) {
-      setDwhConnId(null);
-      onConnectionReady("conn_dwh", null);
-    }
-  };
+  if (submitted) {
+    return (
+      <div className="dest-connections">
+        <p className="dest-connections__done">✓ Conexiones destino confirmadas — generando .ktr...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="dest-connections">
       <section className="dest-connections__section">
         <h3>Conexión de Staging</h3>
-        {stagingConnId ? (
-          <p className="dest-connections__done">✓ Conexión configurada</p>
-        ) : (
-          <ConnectionForm onConnected={handleStaging} submitLabel="Conectado" />
+        <label className="dest-connections__same">
+          <input
+            type="checkbox"
+            checked={stagingSkip}
+            onChange={e => setStagingSkip(e.target.checked)}
+          />
+          Completar en Spoon (dejar host/usuario/base sin completar acá)
+        </label>
+        {!stagingSkip && (
+          <DestinationConnectionForm value={stagingValue} onChange={setStagingValue} />
         )}
       </section>
 
@@ -52,7 +67,7 @@ export default function DestinationConnections({ onConnectionReady }) {
         <input
           type="checkbox"
           checked={sameForBoth}
-          onChange={e => handleSameForBothChange(e.target.checked)}
+          onChange={e => setSameForBoth(e.target.checked)}
         />
         Usar la misma conexión para el DWH
       </label>
@@ -60,13 +75,23 @@ export default function DestinationConnections({ onConnectionReady }) {
       {!sameForBoth && (
         <section className="dest-connections__section">
           <h3>Conexión de DWH</h3>
-          {dwhConnId ? (
-            <p className="dest-connections__done">✓ Conexión configurada</p>
-          ) : (
-            <ConnectionForm onConnected={handleDwh} submitLabel="Conectado" />
+          <label className="dest-connections__same">
+            <input
+              type="checkbox"
+              checked={dwhSkip}
+              onChange={e => setDwhSkip(e.target.checked)}
+            />
+            Completar en Spoon (dejar host/usuario/base sin completar acá)
+          </label>
+          {!dwhSkip && (
+            <DestinationConnectionForm value={dwhValue} onChange={setDwhValue} />
           )}
         </section>
       )}
+
+      <button className="staging-add-btn" onClick={handleSubmit} disabled={!canSubmit}>
+        Generar
+      </button>
     </div>
   );
 }

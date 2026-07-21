@@ -25,3 +25,27 @@
   font-family: 'JetBrains Mono', monospace;
   color: var(--text-3);
 }
+
+.etl-connection-skip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
+.etl-connection-save {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 8px;
+}
+
+.etl-connection-save__ok {
+  color: #38b000;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}

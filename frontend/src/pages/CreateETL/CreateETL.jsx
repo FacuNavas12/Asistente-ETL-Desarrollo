@@ -313,7 +313,7 @@ export default function CreateETL() {
   };
 
   // ── Persiste el ETL generado y navega a su detalle ────────────────────────
-  const _finishEtl = async (apiResult) => {
+  const _finishEtl = async (apiResult, rawLlmDataUsed) => {
     const id = await addEtl({
       etlName,
       descripcionObjetivo,
@@ -325,6 +325,11 @@ export default function CreateETL() {
       // acá para que el ETL guardado pueda resolver conn_dwh más adelante
       // (ej. validación de estado del DWH antes de exportar a Superset).
       connectionsMap: connectionsMapRef.current,
+      // ktr_1/ktr_2 crudos (pre-XML) — el KtrBuildJob que los tenía expira a
+      // los 30 min. Sin esto, la pestaña "Conexión" de EtlDetail no podría
+      // reconstruir el .ktr con una conexión destino distinta más adelante
+      // (ver POST /api/etls/{id}/connections).
+      rawLlmData: rawLlmDataUsed ?? null,
     }, apiResult, etlName);
     setRawLlmData(null);
     const dest = `/etl/${id}`;
@@ -362,7 +367,7 @@ export default function CreateETL() {
         if (status.model_status === "done") setEtlPhase("building");
 
         if (status.build_status === "built") {
-          await _finishEtl(status.result);
+          await _finishEtl(status.result, status.raw_llm_data);
           return;
         }
         if (status.build_status === "failed") {
@@ -386,22 +391,25 @@ export default function CreateETL() {
     tick();
   };
 
-  // Se llama cada vez que una conexión destino (staging/DWH) termina de crearse
-  // y testearse en DestinationConnections. Reenvía el mapa COMPLETO acumulado —
-  // el endpoint reemplaza el mapa entero, no hace merge — sin importar si el
-  // modelo ya terminó o no (la barrera del lado del servidor maneja el orden).
-  const handleConnectionReady = (logicalName, connId) => {
-    connectionsMapRef.current = { ...connectionsMapRef.current, [logicalName]: connId };
-    if (!jobId) return;
-    submitJobConnections(jobId, connectionsMapRef.current).catch(err => {
-      notifySystem(`Error al registrar la conexión: ${err.message}`);
+  // Se llama una sola vez, cuando el usuario confirma el formulario de
+  // conexiones destino en DestinationConnections (botón "Generar" — cada
+  // capa ya decidida como metadata completa o "Completar en Spoon"). Es la
+  // única llamada a /connections de todo el flujo: antes de esto
+  // connections_map es None y _try_build() nunca arma el .ktr, sin importar
+  // si el modelo ya terminó (ver gate en _try_build, backend).
+  const handleFinalizeConnections = (destMap) => {
+    const fullMap = { ...connectionsMapRef.current, ...destMap };
+    connectionsMapRef.current = fullMap;
+    submitJobConnections(jobId, fullMap).catch(err => {
+      notifySystem(`Error al registrar las conexiones: ${err.message}`);
     });
   };
 
   // ── DESDE REVISIÓN: confirmar y generar ETL ──────────────────────────────
   // Dispara el modelo en background (generate-async) y arranca el formulario
   // de conexiones destino en paralelo — no se espera al modelo para empezar
-  // a pedirlas. build_ktr() en el backend actúa de barrera entre ambos.
+  // a pedirlas. build_ktr() en el backend no arma nada hasta que el usuario
+  // confirma el formulario (ver handleFinalizeConnections).
   const handleConfirm = async () => {
     setEtlPhase("waiting");
     setKtrLogs([]);
@@ -419,10 +427,6 @@ export default function CreateETL() {
         reglasNegocio,
       });
       setJobId(job_id);
-
-      if (connectionsMapRef.current.conn_origen) {
-        submitJobConnections(job_id, connectionsMapRef.current).catch(() => {});
-      }
 
       _pollJobStatus(job_id);
     } catch (err) {
@@ -442,7 +446,7 @@ export default function CreateETL() {
 
     try {
       const apiResult = await buildFromRaw(rawLlmData);
-      await _finishEtl(apiResult);
+      await _finishEtl(apiResult, rawLlmData);
     } catch (err) {
       if (err.rawLlmData) setRawLlmData(err.rawLlmData);
       setStep(STEP.REVIEW);
@@ -580,7 +584,7 @@ export default function CreateETL() {
         {step === STEP.PROCESSING && jobId && (
           <div className="etl-processing etl-processing--split">
             <div className="etl-processing__connections">
-              <DestinationConnections onConnectionReady={handleConnectionReady} />
+              <DestinationConnections onFinalize={handleFinalizeConnections} />
             </div>
             <div className="etl-processing__checks">
               <EtlChecks phase={etlPhase} ktrLogs={ktrLogs} />

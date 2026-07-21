@@ -184,7 +184,7 @@ export default function EtlDetail() {
 
         {/* ── Pestaña: Conexión ─────────────────────────────────────────── */}
         {pageTab === "conexion" && (
-          <ConnectionView formData={etl.formData} />
+          <ConnectionView etl={etl} />
         )}
 
         {/* ── Pestaña: Linaje ───────────────────────────────────────────── */}

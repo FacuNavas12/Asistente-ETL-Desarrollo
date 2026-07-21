@@ -126,6 +126,14 @@ export function EtlProvider({ children }) {
     return { id: record.id, syncStatus: record.syncStatus };
   };
 
+  /** Actualiza la copia en memoria de un ETL ya persistido, sin volver a pegarle
+   *  al backend — para reflejar una mutación que otro endpoint ya guardó (ej.
+   *  POST /api/etls/{id}/connections en ConnectionView, que devuelve el
+   *  ETLGenerateResponse nuevo pero no el EtlRead completo). */
+  const patchEtlLocal = (id, patch) => {
+    setEtls(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
+  };
+
   /** Oculta el ETL solo en este navegador (localStorage). No borra nada en el backend. */
   const hideEtlLocally = (id) => {
     setHiddenIds(prev => {
@@ -161,7 +169,7 @@ export function EtlProvider({ children }) {
   return (
     <EtlContext.Provider value={{
       etls, visibleEtls, draft, saveDraft, clearDraft, addEtl, savePendingEtl, saveInProgressEtl,
-      hideEtlLocally, deleteEtlPermanently,
+      hideEtlLocally, deleteEtlPermanently, patchEtlLocal,
       clearAll,
     }}>
       {children}

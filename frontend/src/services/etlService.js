@@ -73,6 +73,18 @@ export async function getJobStatus(jobId) {
   return apiFetch(`/api/v1/etl/${jobId}/status`);
 }
 
+// Re-adapta la conexión destino (staging/DWH) de un ETL ya generado y
+// persistido — reconstruye el .ktr desde el raw_data guardado (form_data.rawLlmData)
+// sin volver a llamar al LLM. Mismo shape de body que submitJobConnections
+// (conn_staging/conn_dwh como InlineConnection o ausentes = "Completar en Spoon").
+export async function rebuildEtlConnections(etlId, connections) {
+  return apiFetch(`/api/etls/${etlId}/connections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(connections),
+  });
+}
+
 export async function buildFromRaw(raw_llm_data) {
   return apiFetch("/api/v1/etl/build-from-raw", {
     method: "POST",
