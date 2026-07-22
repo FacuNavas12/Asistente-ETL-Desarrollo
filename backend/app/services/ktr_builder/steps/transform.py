@@ -21,6 +21,9 @@ def _step_SelectValues(el: Element, cfg: dict) -> None:
     if not select_fields and not cast_fields and not remove_fields:
         logger.warning("SelectValues: config sin campos en select/fields/cast/remove. cfg=%s", cfg)
 
+    # Esquema real de Kettle (SelectValuesMeta.getXML()): select/remove/meta
+    # van los TRES anidados dentro de <fields>, no como hermanos de <fields>
+    # a nivel <step> -- Spoon ignora (o corrompe) remove/meta puestos afuera.
     fe = SubElement(el, "fields")
     for f in select_fields:
         if isinstance(f, str):
@@ -30,28 +33,27 @@ def _step_SelectValues(el: Element, cfg: dict) -> None:
         _sub(field, "rename",    f.get("rename") or f.get("name", ""))
         _sub(field, "length",    str(f.get("length", -1)))
         _sub(field, "precision", str(f.get("precision", -1)))
-    # PDI requiere este tag al final de <fields>
+    # PDI requiere este tag después de los <field> de select
     _sub(fe, "select_unspecified", "N")
 
-    re_el = SubElement(el, "remove")
     for r in remove_fields:
-        _sub(re_el, "field", r if isinstance(r, str) else r.get("name", ""))
+        re_el = SubElement(fe, "remove")
+        _sub(re_el, "name", r if isinstance(r, str) else r.get("name", ""))
 
-    meta = SubElement(el, "meta")
     for f in cast_fields:
         # El LLM puede usar "name" o "field" como clave del nombre de columna
         col_name = f.get("name") or f.get("field", "")
-        field = SubElement(meta, "field")
-        _sub(field, "name",                col_name)
-        _sub(field, "rename")
-        _sub(field, "type",                f.get("type", "String"))
-        _sub(field, "length",              "-1")
-        _sub(field, "precision",           "-1")
-        _sub(field, "conversion_mask")
-        _sub(field, "date_format_lenient", "false")
-        _sub(field, "encoding")
-        _sub(field, "dec_symbol")
-        _sub(field, "group_symbol")
+        meta = SubElement(fe, "meta")
+        _sub(meta, "name",                col_name)
+        _sub(meta, "rename")
+        _sub(meta, "type",                f.get("type", "String"))
+        _sub(meta, "length",              "-1")
+        _sub(meta, "precision",           "-1")
+        _sub(meta, "conversion_mask")
+        _sub(meta, "date_format_lenient", "false")
+        _sub(meta, "encoding")
+        _sub(meta, "dec_symbol")
+        _sub(meta, "group_symbol")
 
 
 def _step_FilterRows(el: Element, cfg: dict) -> None:

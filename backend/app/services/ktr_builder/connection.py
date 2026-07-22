@@ -214,6 +214,15 @@ def resolve_real_connections(
 # ventar por atributos faltantes.
 _GENERIC_DRIVER_CLASS = "org.postgresql.Driver"
 
+# Sin estos dos atributos, Postgres corre con soporte boolean/timestamp
+# apagado (default de Kettle: N) -- silencioso hasta que un step compara un
+# boolean nativo o un timestamp y Kettle lo trata como otra cosa. Confirmado
+# contra export real de Spoon (los códigos de atributo son los que Spoon
+# efectivamente escribe). Se aplican a POSTGRESQL real y a GENERIC (el
+# fallback de este builder siempre apunta a org.postgresql.Driver -- ver
+# _GENERIC_DRIVER_CLASS), no a MSSQLNATIVE.
+_POSTGRES_LIKE_TYPES = {"POSTGRESQL", "GENERIC"}
+
 
 def _add_attribute(attributes: Element, code: str, value: str) -> None:
     attr = SubElement(attributes, "attribute")
@@ -282,11 +291,15 @@ def _build_connection(trans: Element, conn: dict, real: dict | None = None) -> l
     _sub(c, "data_tablespace")
     _sub(c, "index_tablespace")
     attributes = SubElement(c, "attributes")
-    if str(conn_type).strip().upper() == "GENERIC":
+    conn_type_upper = str(conn_type).strip().upper()
+    if conn_type_upper == "GENERIC":
         var = _generic_var(name)
         custom_url = f"jdbc:postgresql://${{{var}_HOST}}:${{{var}_PORT}}/${{{var}_DATABASE}}"
         _add_attribute(attributes, "CUSTOM_DRIVER_CLASS", _GENERIC_DRIVER_CLASS)
         _add_attribute(attributes, "CUSTOM_URL", custom_url)
+    if conn_type_upper in _POSTGRES_LIKE_TYPES:
+        _add_attribute(attributes, "SUPPORTS_BOOLEAN_DATA_TYPE", "Y")
+        _add_attribute(attributes, "SUPPORTS_TIMESTAMP_DATA_TYPE", "Y")
     return undeclared_params
 
 
