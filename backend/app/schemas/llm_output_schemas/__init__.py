@@ -15,6 +15,7 @@ from app.schemas.llm_output_schemas.validator_output import VALIDATOR_OUTPUT_SCH
 from app.schemas.llm_output_schemas.document_output import DOCUMENT_OUTPUT_SCHEMA
 from app.schemas.llm_output_schemas.job_plan_output import JOB_PLAN_OUTPUT_SCHEMA
 from app.schemas.llm_output_schemas.job_explain_output import JOB_EXPLAIN_OUTPUT_SCHEMA
+from app.schemas.llm_output_schemas.ddl_validation_output import DDL_VALIDATION_OUTPUT_SCHEMA
 
 __all__ = [
     "ETL_OUTPUT_SCHEMA",
@@ -23,4 +24,5 @@ __all__ = [
     "DOCUMENT_OUTPUT_SCHEMA",
     "JOB_PLAN_OUTPUT_SCHEMA",
     "JOB_EXPLAIN_OUTPUT_SCHEMA",
+    "DDL_VALIDATION_OUTPUT_SCHEMA",
 ]

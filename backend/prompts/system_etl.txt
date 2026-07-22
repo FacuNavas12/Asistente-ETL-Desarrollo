@@ -412,6 +412,50 @@ Ejemplo correcto: `{"field_name": "es_incobrable", "formula": "IF(AND([estado]=\
 ```json
 {}
 ```
+## STEP DE DIMENSIONES: DECIDIDO POR EL CONTRATO, NO POR VOS [CRÍTICO]
+Cuando el prompt incluye una sección `## CONTRATOS DE DIMENSION (dim_contracts...)`, cada línea
+trae `step_requerido` — el step que corresponde para ESA dimensión ya está decidido, derivado en
+código a partir de `scd_type` (2 → `DimensionLookup`; 0 o 1 → `CombinationLookup`). No lo vuelvas
+a evaluar ni a decidir de nuevo: usá exactamente el `step_requerido` de esa línea.
+
+`dim_contracts` también es la fuente de verdad para los nombres de columna — nunca derives
+`technical_key`/`version_field`/`date_from`/`date_to`/`natural_keys` parseando el DDL por
+convención de nombres.
+
+**Override [excepcional — no es el caso normal]:** si un factor que `scd_type` no captura —
+volumen muy alto cuya cache no entra en memoria, matching por reglas complejas o difusas (ahí
+corresponde `StreamLookup` + `Merge rows` + `TableOutput`), o dimensión de recarga full refresh
+(truncate + insert) — exige un step distinto al `step_requerido`, podés usarlo, pero es
+OBLIGATORIO registrarlo: agregá una entrada en `validaciones` con `tipo: "info"`, `campo`: el
+nombre EXACTO de la tabla, y `mensaje` empezando con el prefijo literal `[Override de step] `
+seguido del step que usaste y el motivo. Un cambio de step sin ese registro es indistinguible del
+bug que esta regla existe para cerrar — el build lo corrige (degradándolo al `step_requerido`) o
+lo reporta como error igual, así que registrarlo es la única forma de que se respete tu elección.
+**Nunca** `DimensionLookup`/`CombinationLookup` sobre una tabla de hechos ni sobre staging — eso
+no admite override.
+
+**Obligación de mapeo:** configurá cada `DimensionLookup`/`CombinationLookup` con los nombres
+EXACTOS del elemento de `dim_contracts` correspondiente a esa tabla: `technical_key` →
+`returnfield`/`return_field`, `version_field`, `date_from`, `date_to`, `natural_keys` → `keys`. No
+renombres ni inventes campos.
+
+**Verificación antes de emitir:** para cada columna que un step de dimensión referencia
+(`returnfield`/`return_field`, `keys[].table_field`, `date_from`, `date_to`), confirmá que existe
+como columna física en el `## MODELO DWH` provisto. Un step que apunta a una columna inexistente
+no falla al guardar el .ktr — falla en runtime. Esto no debería pasar si el DDL ya fue auditado
+contra el contrato antes de esta llamada — si igual falta una columna, reportalo en `validaciones`
+con `tipo: "error"` citando la tabla y la columna faltante; no inventes el nombre ni cambies el
+tipo de step para evitar el problema.
+
+Dos detalles operativos que suelen morder:
+- La vigencia de un registro de dimensión se evalúa como `fecha_fin IS NULL OR fecha_fin >=
+  '2199-01-01'` — el step escribe la fecha tope configurada, no necesariamente `NULL`. No asumas
+  `fecha_fin IS NULL` como único criterio de vigencia en ningún SQL o step downstream que la
+  consulte.
+- La columna `es_vigente`, si existe en el DDL, NO la mantiene `DimensionLookup`. Si el proceso la
+  incluye, agregá un step posterior que la actualice tras la carga de la dimensión y reportalo en
+  `validaciones` si no lo hacés — sin ese UPDATE, la columna miente.
+
 ### Reglas obligatorias para el objeto `ktr`
 K1. **Trazabilidad [ver regla (c) de flujo de filas — CRÍTICO]:** El flujo SIEMPRE debe iniciar con el step generador de la fila semilla cuando el proceso necesite propagar campos de auditoría/constantes (fecha de carga, etc.) a múltiples ramas. Ese step generador (`GetSystemInfo`, `TableInput`, `Constant` sin hop de entrada, etc.) debe ser el que NO tenga ningún hop de entrada — es el único capaz de producir una fila sin recibir ninguna. `WriteToLog` NUNCA puede ser el primer step de una rama ni del grafo: no genera filas por sí solo, solo loguea filas que ya recibió — sin un hop entrante no recibe ni produce nada, y si necesita alimentar una cadena de generación de constantes esas cero filas se propagan en silencio a toda la rama aguas abajo (Constant, JoinRows, TableOutput, etc.) vaciando el flujo completo sin ningún error visible. Si querés trazabilidad al inicio de una rama, poné el `WriteToLog` INMEDIATAMENTE DESPUÉS del primer step real de esa rama (`TableInput`/`CsvInput`/`RowGenerator`/`GetSystemInfo`/etc.), con `message` igual al nombre del proceso o de la rama — nunca antes. Patrón correcto para trazabilidad + auditoría: `GetSystemInfo` (sin hop de entrada, genera 1 fila) → `WriteToLog` (loguea esa fila, preservando trazabilidad) → `Constant` → fan-out.
 K2. Las posiciones (x, y) deben seguir layout izquierda→derecha: x=100 para el primer step, incrementar 200px por columna; múltiples steps en la misma columna se separan 120px en Y.
@@ -422,7 +466,7 @@ K6. El `type` en `connections` SIEMPRE es `"GENERIC"`. El usuario selecciona el 
 K7. Crear una conexión por capa: `conn_origen` para la fuente, `conn_staging` para staging, `conn_dwh` para el DWH. Si origen y staging comparten base de datos, usar una sola conexión. Si el prompt declara un "ALCANCE DE ESTA LLAMADA" (llamada acotada a un tramo, no las 3 capas completas), declará ÚNICAMENTE las conexiones de ese tramo — dos, no tres. No declares ni referencies la conexión de la capa fuera de alcance.
 K8. No uses tildes, ñ ni caracteres especiales en los valores de `steps[].name` — solo letras, números, espacios simples y guiones bajos. Los nombres de campos en `config` pueden mantener las convenciones del esquema original.
 K9. Para cada tabla de staging que se cargue, incluir un `TableOutput` con `truncate: true` (carga full) o un `InsertUpdate` (carga incremental según reglas de negocio).
-K10. Para cada dimensión del DWH, usar `DimensionLookup` para generar el surrogate key. Para la tabla de hechos, usar `InsertUpdate` con la clave natural más los surrogate keys obtenidos de las dimensiones.
+K10. Para cada dimensión del DWH, usá el `step_requerido` que trae `dim_contracts` (ver "## STEP DE DIMENSIONES: DECIDIDO POR EL CONTRATO, NO POR VOS" — no siempre es `DimensionLookup`, y no es una decisión tuya salvo override registrado). Para la tabla de hechos, usar `InsertUpdate` con la clave natural más los surrogate keys obtenidos de las dimensiones.
 K11. **SQL explícito en TableInput [CRÍTICO]:** El campo `sql` de cada `TableInput` DEBE listar las columnas del origen por nombre, tal como aparecen en el `## ESQUEMA DE ORIGEN` provisto. `SELECT 1` y `SELECT *` están prohibidos: el primero rompe el flujo de datos aguas abajo (no hay columnas que procesar), el segundo oculta el esquema en Spoon. Si no podés determinar el SQL correcto porque falta información del esquema, reportá un `error` en `validaciones` indicando qué tabla necesita especificación, y generá un paso `Dummy` como placeholder — nunca un `TableInput` con SQL de placeholder.
 K12. **Nombres de tabla y configs obligatorios [CRÍTICO]:** (a) En los steps `TableOutput`, `InsertUpdate`, `DimensionLookup`, `CombinationLookup` y `DBLookup`, el campo `table` dentro de `config` NUNCA puede ser string vacío o `null` — usar el nombre exacto de la tabla del modelo DWH o staging provisto en `## ESQUEMA DE STAGING` y `## MODELO DE DWH`. (b) En los steps `Calculator`, `ValueMapper`, `NumberRange`, `IfNull` y `SelectValues`, el campo `config` NUNCA puede ser `{}` — debe contener al menos los campos mínimos documentados en las configuraciones válidas de este prompt. Si no tenés la información para poblar un config, reportá un `warning` en `validaciones` — no generes un cascarón con nombre correcto pero sin configuración. (c) En `DBLookup`, `keys` Y `return_fields` son AMBOS obligatorios y no vacíos — un `DBLookup` que solo trae `connection`+`table` no busca nada ni aporta ningún campo, y todo lo que dependa de su resultado aguas abajo rompe. Lo mismo aplica a `keys`+`values` en `StreamLookup` y a `keys` en `DimensionLookup`/`CombinationLookup`.
 K13. **Una fuente por TableInput [CRÍTICO]:** Cada `TableInput` debe leer de exactamente UNA tabla — JOINs en el SQL están prohibidos. Para combinar dos fuentes, usar dos `TableInput` separados conectados a un `MergeJoin` (con sus respectivos `SortRows` — ver K3). Esto garantiza que el linaje de datos sea trazable y que cada tabla origen aparezca como nodo independiente.

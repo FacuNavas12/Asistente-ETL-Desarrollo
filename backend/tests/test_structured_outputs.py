@@ -199,6 +199,8 @@ class TestStructureInferrerUnit:
         return {
             "stg_ddl": "CREATE TABLE STG_VENTAS (id INTEGER, monto DECIMAL);",
             "dwh_ddl": "CREATE TABLE FACT_VENTAS (id_sk INTEGER, monto DECIMAL);",
+            "dim_contracts": [],
+            "assumptions": [],
             "stg_rationale": "staging rationale",
             "dwh_rationale": "dwh rationale",
             "iteration_count": 1,
@@ -287,6 +289,217 @@ class TestStructureInferrerIntegration:
         jsonschema.validate(resp.json_data, INFERENCE_OUTPUT_SCHEMA)
         assert "CREATE TABLE" in resp.json_data["stg_ddl"].upper()
         assert "CREATE TABLE" in resp.json_data["dwh_ddl"].upper()
+
+    # ─── Parte 4, bloque B: dim_contracts en el refinamiento ────────────────
+
+    def _refine_base_request(self, correction: str):
+        from app.schemas.etl_schemas import DimContract, RefineRequest
+
+        previous_contract = DimContract(
+            table="dim_cliente", scd_type=2, technical_key="sk_cliente",
+            version_field="version", date_from="fecha_inicio", date_to="fecha_fin",
+            natural_keys=["id_cliente_origen"], unknown_key_value=0,
+        )
+        previous_stg = "CREATE TABLE stg_ventas_clientes (id_cliente_origen INTEGER, nombre VARCHAR(255));"
+        previous_dwh = (
+            "CREATE TABLE dim_cliente (\n"
+            "  sk_cliente SERIAL PRIMARY KEY,\n"
+            "  id_cliente_origen INTEGER NOT NULL,\n"
+            "  nombre VARCHAR(255),\n"
+            "  version INTEGER NOT NULL DEFAULT 1,\n"
+            "  fecha_inicio TIMESTAMP NOT NULL,\n"
+            "  fecha_fin TIMESTAMP NULL,\n"
+            "  CONSTRAINT uq_dim_cliente_natural UNIQUE (id_cliente_origen, fecha_fin)\n"
+            ");"
+        )
+        return RefineRequest(
+            source_schema_json=json.dumps([{
+                "tableName": "ventas_clientes",
+                "columns": [
+                    {"name": "id_cliente_origen", "dataType": "integer"},
+                    {"name": "nombre", "dataType": "string"},
+                ],
+            }]),
+            process_goal="Migrar clientes a DWH con historial de cambios",
+            business_rules="Ninguna regla adicional.",
+            previous_stg=previous_stg,
+            previous_dwh=previous_dwh,
+            previous_dim_contracts=[previous_contract],
+            correction=correction,
+            correction_history=[],
+        )
+
+    def test_refine_untouched_dimension_preserves_dim_contracts(self):
+        """Corrección que no toca la dimensión -> dim_contracts vuelve idéntico."""
+        from app.services.structure_inferrer import refine_structures
+
+        llm = self._make_llm()
+        req = self._refine_base_request(
+            "Agregá un comentario SQL a la tabla de staging explicando el origen de los datos."
+        )
+        result = _run(refine_structures(req, llm))
+
+        assert not any(a.startswith("CONTRATO MODIFICADO") for a in result.assumptions), result.assumptions
+        cliente = next((c for c in result.dim_contracts if c.table == "dim_cliente"), None)
+        assert cliente is not None
+        assert cliente.scd_type == 2
+        assert cliente.technical_key == "sk_cliente"
+        assert cliente.unknown_key_value == 0
+
+    def test_refine_changing_scd_type_marks_contract_modified(self):
+        """Corrección que cambia el tipo de SCD de una dimensión existente ->
+        aparece marcado como CONTRATO MODIFICADO en assumptions."""
+        from app.services.structure_inferrer import refine_structures
+
+        llm = self._make_llm()
+        req = self._refine_base_request(
+            "La dimensión dim_cliente ya no necesita historial de cambios — sacale el SCD2, "
+            "que sea SCD1 (sobreescribir sin versionar)."
+        )
+        result = _run(refine_structures(req, llm))
+
+        assert any(a.startswith("CONTRATO MODIFICADO") and "dim_cliente" in a for a in result.assumptions), \
+            result.assumptions
+        cliente = next((c for c in result.dim_contracts if c.table == "dim_cliente"), None)
+        assert cliente is not None
+        assert cliente.scd_type != 2
+
+
+# ---------------------------------------------------------------------------
+# P1c — ddl_validation (unit)
+# ---------------------------------------------------------------------------
+
+class TestDdlValidationUnit:
+    def _minimal_ddl_validation_json(self) -> Dict[str, Any]:
+        return {
+            "dwh_ddl": "CREATE TABLE dim_cliente (sk_cliente SERIAL PRIMARY KEY);",
+            "sin_cambios": True,
+            "cambios_aplicados": [],
+            "conflictos": [],
+        }
+
+    def test_ddl_validation_schema_validates_minimal(self):
+        from app.schemas.llm_output_schemas import DDL_VALIDATION_OUTPUT_SCHEMA
+        _assert_schema(self._minimal_ddl_validation_json(), DDL_VALIDATION_OUTPUT_SCHEMA)
+
+    def test_ddl_validation_schema_rejects_extra_key(self):
+        import jsonschema
+        from app.schemas.llm_output_schemas import DDL_VALIDATION_OUTPUT_SCHEMA
+
+        bad = self._minimal_ddl_validation_json()
+        bad["unexpected"] = "x"
+        with pytest.raises(jsonschema.ValidationError):
+            _assert_schema(bad, DDL_VALIDATION_OUTPUT_SCHEMA)
+
+    def test_parse_response_uses_json_data(self):
+        from app.services.ddl_validation import _parse_response
+        from app.models.llm_base import LLMResponse
+
+        data = {
+            "dwh_ddl": "CREATE TABLE dim_x (sk_x SERIAL PRIMARY KEY);",
+            "sin_cambios": False,
+            "cambios_aplicados": ["dim_x: se agregó version — motivo: contrato Dimension lookup/update"],
+            "conflictos": [{"tipo": "error", "campo": "I6", "mensaje": "fecha_fin NOT NULL en dim_x"}],
+        }
+        resp = LLMResponse(
+            content="this-is-not-json-and-should-not-be-parsed",
+            json_data=data,
+            model="m", input_tokens=1, output_tokens=1, provider="p", stop_reason="end_turn",
+        )
+        result = _parse_response(resp)
+        assert result.sin_cambios is False
+        assert result.cambios_aplicados == data["cambios_aplicados"]
+        assert result.conflictos[0].campo == "I6"
+
+    def test_validate_and_correct_ddl_skips_llm_when_no_dim_contracts(self):
+        """Sin dimensiones no hay contrato que auditar — no debe gastar una llamada al modelo."""
+        from app.services.ddl_validation import validate_and_correct_ddl
+
+        llm = AsyncMock()
+        llm.complete = AsyncMock()
+        ddl = "CREATE TABLE dwh_pais (id INTEGER PRIMARY KEY);"
+
+        result = _run(validate_and_correct_ddl(ddl, [], llm))
+
+        llm.complete.assert_not_called()
+        assert result.sin_cambios is True
+        assert result.dwh_ddl == ddl
+        assert result.cambios_aplicados == []
+        assert result.conflictos == []
+
+
+@pytest.mark.integration
+class TestDdlValidationIntegration:
+    """Los 3 escenarios de aceptación de la Parte 3, contra el LLM real."""
+
+    def _make_llm(self):
+        _load_env()
+        from app.core.config import Settings
+        from app.models.llm_factory import build_llm
+        return build_llm(Settings(), role="main")
+
+    def _scd2_contract(self):
+        from app.schemas.etl_schemas import DimContract
+        return DimContract(
+            table="dim_cliente", scd_type=2, technical_key="sk_cliente",
+            version_field="version", date_from="fecha_inicio", date_to="fecha_fin",
+            natural_keys=["id_cliente_origen"], unknown_key_value=0,
+        )
+
+    def _scd2_complete_ddl(self) -> str:
+        return (
+            "CREATE TABLE dim_cliente (\n"
+            "  sk_cliente SERIAL PRIMARY KEY,\n"
+            "  id_cliente_origen INTEGER NOT NULL,\n"
+            "  nombre VARCHAR(255),\n"
+            "  version INTEGER NOT NULL DEFAULT 1,\n"
+            "  fecha_inicio TIMESTAMP NOT NULL,\n"
+            "  fecha_fin TIMESTAMP NULL,\n"
+            "  CONSTRAINT uq_dim_cliente_natural UNIQUE (id_cliente_origen, fecha_fin)\n"
+            ");\n"
+            "INSERT INTO dim_cliente (sk_cliente, id_cliente_origen, nombre, version, fecha_inicio, fecha_fin) "
+            "VALUES (0, -1, 'DESCONOCIDO', 1, TIMESTAMP '1900-01-01', NULL);"
+        )
+
+    def test_complete_scd2_ddl_returns_unchanged(self):
+        """Con una dimensión SCD2 ya completa, la llamada debe devolver sin_cambios.
+        Si agrega columnas, el superset de la inferencia no se está aplicando —
+        el problema está en la Parte 1, no acá."""
+        from app.services.ddl_validation import validate_and_correct_ddl
+
+        llm = self._make_llm()
+        result = _run(validate_and_correct_ddl(self._scd2_complete_ddl(), [self._scd2_contract()], llm))
+
+        assert result.sin_cambios is True, f"cambios inesperados: {result.cambios_aplicados}"
+        assert result.conflictos == []
+
+    def test_missing_version_column_gets_added(self):
+        """Caso inverso: se le quita a mano la columna version — confirmar que
+        la llamada la agrega, la registra en cambios_aplicados, y no toca nada más."""
+        from app.services.ddl_validation import validate_and_correct_ddl
+
+        llm = self._make_llm()
+        ddl_sin_version = self._scd2_complete_ddl().replace("  version INTEGER NOT NULL DEFAULT 1,\n", "")
+        result = _run(validate_and_correct_ddl(ddl_sin_version, [self._scd2_contract()], llm))
+
+        assert result.sin_cambios is False
+        assert "version" in result.dwh_ddl.lower()
+        assert len(result.cambios_aplicados) >= 1
+
+    def test_fecha_fin_not_null_reported_as_conflict_not_applied(self):
+        """Step forzado con fecha_fin NOT NULL: el DDL sale intacto en ese punto
+        y el caso aparece como conflicto citando I6 — nunca se corrige solo."""
+        from app.services.ddl_validation import validate_and_correct_ddl
+
+        llm = self._make_llm()
+        ddl_con_conflicto = self._scd2_complete_ddl().replace(
+            "fecha_fin TIMESTAMP NULL", "fecha_fin TIMESTAMP NOT NULL"
+        )
+        result = _run(validate_and_correct_ddl(ddl_con_conflicto, [self._scd2_contract()], llm))
+
+        assert len(result.conflictos) >= 1
+        assert any("I6" in c.mensaje for c in result.conflictos)
+        assert "fecha_fin TIMESTAMP NOT NULL" in result.dwh_ddl
 
 
 # ---------------------------------------------------------------------------

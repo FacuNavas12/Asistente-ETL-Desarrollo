@@ -83,6 +83,21 @@ REGLAS DE NEGOCIO:
 Devuelve ÚNICAMENTE el JSON con la estructura de respuesta indicada. Sin texto adicional."""
 
 
+def _format_previous_dim_contracts(dim_contracts: list) -> str:
+    """Parte 4 (bloque B): el contrato previo se muestra para que la
+    inferencia lo preserve por default — no para que lo derive de nuevo."""
+    if not dim_contracts:
+        return "(sin dimensiones en la iteración anterior)"
+    lines = []
+    for c in dim_contracts:
+        lines.append(
+            f"- {c.table}: scd_type={c.scd_type}, technical_key={c.technical_key}, "
+            f"version_field={c.version_field}, date_from={c.date_from}, date_to={c.date_to}, "
+            f"natural_keys={list(c.natural_keys)}, unknown_key_value={c.unknown_key_value}"
+        )
+    return "\n".join(lines)
+
+
 def _build_refine_prompt(req: RefineRequest, db: Optional[Session] = None) -> str:
     origen_safe = _safe_format_source(req.source_schema_json, db)
 
@@ -110,6 +125,10 @@ STG:
 DWH:
 {req.previous_dwh}
 
+CONTRATO DE DIMENSIONES ANTERIOR (dim_contracts — preservalo tal cual salvo que esta corrección
+cuestione específicamente esa dimensión; preservar es el default, no el resultado de una decisión):
+{_format_previous_dim_contracts(req.previous_dim_contracts)}
+
 CONTEXTO ORIGINAL:
 Estructura de origen: {origen_safe}
 Descripción del proceso: {req.process_goal}
@@ -120,6 +139,11 @@ HISTORIAL DE CORRECCIONES ANTERIORES:
 
 Aplicá la corrección solicitada y devolvé el JSON actualizado con las estructuras completas.
 Respetá todas las correcciones anteriores del historial.
+Si esta corrección cambia scd_type, technical_key, version_field, date_from, date_to, natural_keys
+o unknown_key_value de una dimensión que ya existía en el contrato anterior, es un cambio rompiente:
+declaralo en assumptions con el prefijo "CONTRATO MODIFICADO: <tabla> — <qué cambió>". Sin esa marca,
+el cambio es indistinguible de una preservación normal y los steps armados contra el contrato viejo
+no se regeneran cuando deberían.
 El campo iteration_count debe ser {len(req.correction_history) + 2}.
 Sin texto adicional."""
 
@@ -140,6 +164,8 @@ def _parse_response(resp: LLMResponse) -> InferResponse:
     return InferResponse(
         stg_ddl=data["stg_ddl"],
         dwh_ddl=data["dwh_ddl"],
+        dim_contracts=data.get("dim_contracts", []),
+        assumptions=data.get("assumptions", []),
         stg_rationale=data.get("stg_rationale", ""),
         dwh_rationale=data.get("dwh_rationale", ""),
         iteration_count=data.get("iteration_count", 1),

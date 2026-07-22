@@ -18,6 +18,11 @@ from app.services.ktr_builder.connection import (
     _resolve_connection,
     resolve_real_connections,
 )
+from app.services.ktr_builder.dimension_step_policy import (
+    OVERRIDE_STEP_PREFIX,
+    derive_dimension_step_type,
+    enforce_dimension_step_policy,
+)
 from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.registry import (
     KNOWN_PDI_STEP_TYPES,
@@ -35,4 +40,7 @@ __all__ = [
     "KNOWN_PDI_STEP_TYPES",
     "repair_ktr_steps",
     "repair_integrity_gaps",
+    "derive_dimension_step_type",
+    "enforce_dimension_step_policy",
+    "OVERRIDE_STEP_PREFIX",
 ]

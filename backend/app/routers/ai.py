@@ -143,8 +143,11 @@ async def build_from_raw(req: BuildFromRawRequest):
     por el frontend (descargada tras un fallo de build_ktr). No llama al LLM.
 
     Repair loop (repair_ktr_steps) desconectado a propósito acá — ver discusión
-    pendiente sobre si "Reutilizar respuesta" debe poder llamar al modelo."""
-    return await _handle(build_etl_from_raw, req.raw_llm_data)
+    pendiente sobre si "Reutilizar respuesta" debe poder llamar al modelo.
+
+    dim_contracts sí se usa siempre que venga (enforce_dimension_step_policy es
+    determinístico, no llama al modelo) — ver build_etl_from_raw()."""
+    return await _handle(build_etl_from_raw, req.raw_llm_data, None, req.dim_contracts)
 
 
 # ── Flujo async: modelo + conexiones destino en paralelo ─────────────────────

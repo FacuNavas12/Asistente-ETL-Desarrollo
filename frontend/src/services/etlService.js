@@ -14,6 +14,7 @@ export async function refineInference({
   business_rules,
   previous_stg,
   previous_dwh,
+  previous_dim_contracts,
   correction,
   correction_history,
 }) {
@@ -26,6 +27,7 @@ export async function refineInference({
       business_rules,
       previous_stg,
       previous_dwh,
+      previous_dim_contracts,
       correction,
       correction_history,
     }),
@@ -38,11 +40,12 @@ export async function generateFromInference({
   stg_definition,
   dwh_model,
   reglasNegocio,
+  dim_contracts,
 }) {
   return apiFetch("/api/v1/etl/generate-from-inference", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio }),
+    body: JSON.stringify({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio, dim_contracts }),
   });
 }
 
@@ -53,11 +56,11 @@ export async function generateFromInference({
 // COMPLETO acumulado hasta el momento (el endpoint reemplaza el mapa entero,
 // no hace merge). getJobStatus se polea hasta build_status "built"/"failed".
 
-export async function generateAsync({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio }) {
+export async function generateAsync({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio, dim_contracts }) {
   return apiFetch("/api/v1/etl/generate-async", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio }),
+    body: JSON.stringify({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio, dim_contracts }),
   });
 }
 
@@ -85,22 +88,22 @@ export async function rebuildEtlConnections(etlId, connections) {
   });
 }
 
-export async function buildFromRaw(raw_llm_data) {
+export async function buildFromRaw(raw_llm_data, dim_contracts = []) {
   return apiFetch("/api/v1/etl/build-from-raw", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ raw_llm_data }),
+    body: JSON.stringify({ raw_llm_data, dim_contracts }),
   });
 }
 
 export async function generateFromInferenceStream(
-  { descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio },
+  { descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio, dim_contracts },
   { onLlmDone, onKtrLog, onResult, onError } = {},
 ) {
   const res = await fetch(`${API}/api/v1/etl/generate-from-inference/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio }),
+    body: JSON.stringify({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio, dim_contracts }),
   });
 
   if (!res.ok) {

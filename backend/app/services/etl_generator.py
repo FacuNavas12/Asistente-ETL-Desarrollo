@@ -19,7 +19,15 @@ from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGene
 from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
 from app.services.adapters.ddl_adapter import parse_ddl
-from app.services.ktr_builder import build_ktr, repair_integrity_gaps, repair_ktr_steps
+from app.services.ddl_validation import validate_and_correct_ddl
+from app.services.ktr_builder import (
+    build_ktr,
+    derive_dimension_step_type,
+    enforce_dimension_step_policy,
+    repair_integrity_gaps,
+    repair_ktr_steps,
+    STEP_TYPE_ALIASES,
+)
 from app.services.ktr_builder.build import _sanitize
 from app.services.ktr_builder.fields_validate import FIELD_INTEGRITY_PREFIX
 from app.services.lineage_builder import build_lineage, stitch_lineage
@@ -153,6 +161,64 @@ def _staging_table_names_from_ddl(stg_ddl: str) -> list[str]:
         _log.warning("No se pudo parsear DDL de staging para extraer nombres de tabla: %s", exc)
         return []
     return [schema.source_name for schema in schemas]
+
+
+def _format_dim_contracts(dim_contracts: list) -> str:
+    """Texto embebido en el prompt STG→DWH: nombres EXACTOS que Dimension
+    lookup/update debe usar por dimensión — fuente de verdad que reemplaza la
+    deducción por parseo del DDL (bug original: columna deducida mal o
+    inexistente, step apunta a algo que no existe y PDI falla en runtime,
+    no al guardar el .ktr)."""
+    if not dim_contracts:
+        return (
+            "(vacío — modelo normalizado sin dimensiones, o el contrato no llegó. "
+            "Si dwh_model SÍ declara tablas dim_*, NO derives technical_key/version_field/"
+            "date_from/date_to por convención de nombres: reportá un `warning` en "
+            "`validaciones` señalando que falta el contrato para esa dimensión.)"
+        )
+    lines = []
+    for c in dim_contracts:
+        # step_requerido (Parte 4, bloque A): el step ya está decidido acá —
+        # deriva determinísticamente de scd_type, no es un juicio del modelo.
+        # Un override (volumen alto, matching difuso, full refresh) es válido
+        # pero tiene que registrarse en `validaciones` con el prefijo
+        # OVERRIDE_STEP_PREFIX y campo=<tabla> — ver system_etl.txt.
+        step_requerido = derive_dimension_step_type(c.scd_type)
+        line = (
+            f"- {c.table}: step_requerido={step_requerido}, technical_key={c.technical_key}, "
+            f"version_field={c.version_field}, date_from={c.date_from}, date_to={c.date_to}, "
+            f"natural_keys={list(c.natural_keys)}, unknown_key_value={c.unknown_key_value}, "
+            f"scd_type={c.scd_type}"
+        )
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _dim_contracts_anomaly_warning(dwh_ddl: str, dim_contracts: list) -> list[str]:
+    """Señal explícita cuando dwh_model declara tablas dim_* pero dim_contracts
+    llega vacío: sin esto, la fase de steps degrada en silencio al parseo por
+    convención de nombres (el bug que dim_contracts reemplaza) y una corrida
+    con el contrato perdido se ve idéntica a una corrida sana. model_type ya
+    no está disponible para detectar el caso (ver Parte 1) — la detección se
+    apoya en el propio DDL."""
+    if dim_contracts:
+        return []
+    if not dwh_ddl or not dwh_ddl.strip():
+        return []
+    try:
+        schemas = parse_ddl(dwh_ddl, dialect=None)
+    except Exception as exc:
+        _log.warning("No se pudo parsear dwh_model para chequeo de dim_contracts: %s", exc)
+        return []
+    dim_tables = [s.source_name for s in schemas if s.source_name.lower().startswith("dim_")]
+    if not dim_tables:
+        return []
+    return [
+        f"dim_contracts llegó vacío pero el DWH declara dimensiones ({', '.join(dim_tables)}) — "
+        "la fase de generación de steps va a deducir technical_key/version_field/date_from/"
+        "date_to por convención de nombres en vez del contrato explícito. Verificar por qué "
+        "no llegó (¿la inferencia lo omitió? ¿se perdió camino al request de generación?)."
+    ]
 
 
 def _build_job_plan(ktr1_filename: str, ktr2_filename: str, process_name: str) -> "JobPlan":
@@ -342,6 +408,7 @@ def _build_response_from_two_ktr_data(
     connection_warnings: list[str] | None = None,
     required_columns_by_table: dict[str, list[str]] | None = None,
     extra_warnings: list[str] | None = None,
+    extra_validaciones: list[Validacion] | None = None,
     strict_connections: bool = False,
 ) -> ETLGenerateResponse:
     """Construye la respuesta del flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH).
@@ -426,7 +493,10 @@ def _build_response_from_two_ktr_data(
 
     return ETLGenerateResponse(
         proceso_etl=proceso_etl_merged,
-        validaciones=[*data_1.get("validaciones", []), *data_2.get("validaciones", []), *integridad_validaciones],
+        validaciones=[
+            *data_1.get("validaciones", []), *data_2.get("validaciones", []),
+            *integridad_validaciones, *(extra_validaciones or []),
+        ],
         documentacion=data_1.get("documentacion", "") or data_2.get("documentacion", ""),
         advertencias_buenas_practicas=advertencias,
         dwh_sample={},
@@ -465,7 +535,11 @@ def _build_response(
     )
 
 
-async def build_etl_from_raw(raw_llm_data: dict, llm: BaseLLM | None = None) -> ETLGenerateResponse:
+async def build_etl_from_raw(
+    raw_llm_data: dict,
+    llm: BaseLLM | None = None,
+    dim_contracts: list | None = None,
+) -> ETLGenerateResponse:
     """Reconstruye el ETL a partir de una respuesta cruda del modelo guardada previamente
     (p. ej. tras un fallo de build_ktr).
 
@@ -486,7 +560,16 @@ async def build_etl_from_raw(raw_llm_data: dict, llm: BaseLLM | None = None) -> 
     repair_integrity_gaps() corre SIEMPRE (con o sin llm) — su fallback
     determinístico no llama al modelo, así que aplica igual en el llm=None
     histórico: cierra huecos de campo atribuibles a un Constant con config
-    vacío en vez de dejar que build_ktr aborte con el mismo error otra vez."""
+    vacío en vez de dejar que build_ktr aborte con el mismo error otra vez.
+
+    dim_contracts (opcional): a diferencia de repair_*, este camino NO corre
+    validate_and_correct_ddl() (audita el DDL contra el contrato — llama al
+    modelo, y el punto de "reutilizar respuesta" es evitar esa llamada) pero
+    SÍ corre enforce_dimension_step_policy() si dim_contracts llega — es
+    determinístico, no llama al modelo, y hoy era la única fase de las tres de
+    la serie dim_contracts que este camino se saltaba por completo. Sin
+    dim_contracts (llamadas viejas, o datos guardados antes de este parámetro)
+    se omite sin error — comportamiento histórico preservado."""
     metadata = MetadataResponse(
         modelo_usado="(respuesta reutilizada)",
         tokens_input=0,
@@ -502,6 +585,12 @@ async def build_etl_from_raw(raw_llm_data: dict, llm: BaseLLM | None = None) -> 
         raw_llm_data["ktr_1"]["ktr"], w3 = await repair_integrity_gaps(raw_llm_data["ktr_1"]["ktr"], llm, "")
         raw_llm_data["ktr_2"]["ktr"], w4 = await repair_integrity_gaps(raw_llm_data["ktr_2"]["ktr"], llm, "")
         extra_warnings = [*extra_warnings, *w3, *w4]
+        if dim_contracts:
+            step_policy_results = enforce_dimension_step_policy(
+                raw_llm_data["ktr_2"]["ktr"], dim_contracts, STEP_TYPE_ALIASES,
+                raw_llm_data["ktr_2"].get("validaciones", []),
+            )
+            raw_llm_data["ktr_2"].setdefault("validaciones", []).extend(step_policy_results)
         return _build_response_from_two_ktr_data(
             raw_llm_data["ktr_1"], raw_llm_data["ktr_2"], metadata, extra_warnings=extra_warnings,
         )
@@ -510,6 +599,12 @@ async def build_etl_from_raw(raw_llm_data: dict, llm: BaseLLM | None = None) -> 
     if raw_llm_data.get("ktr"):
         raw_llm_data["ktr"], integrity_warnings = await repair_integrity_gaps(raw_llm_data["ktr"], llm, "")
         extra_warnings = [*extra_warnings, *integrity_warnings]
+        if dim_contracts:
+            step_policy_results = enforce_dimension_step_policy(
+                raw_llm_data["ktr"], dim_contracts, STEP_TYPE_ALIASES,
+                raw_llm_data.get("validaciones", []),
+            )
+            raw_llm_data.setdefault("validaciones", []).extend(step_policy_results)
     return _build_response_from_data(raw_llm_data, metadata, extra_warnings=extra_warnings)
 
 
@@ -538,6 +633,7 @@ def _build_prompt_from_inference(
     origen_txt: str,
     mode: Literal["origen_stg", "stg_dwh"] | None = None,
     staging_tables: list[str] | None = None,
+    dwh_ddl: str | None = None,
 ) -> str:
     """
     mode=None (default): comportamiento actual sin cambios — prompt monolítico
@@ -548,10 +644,16 @@ def _build_prompt_from_inference(
     (extraídos una sola vez de req.stg_definition vía _staging_table_names_from_ddl,
     no dejados a criterio del modelo) — evita que KTR_2 lea de una tabla con
     nombre distinto a la que KTR_1 escribió.
+
+    dwh_ddl: DDL del DWH a usar en el prompt. None (default) usa req.dwh_model
+    tal cual llegó en el request. El caller pasa el DDL final que devuelve
+    ddl_validation.validate_and_correct_ddl() (Parte 3) — el .ktr se arma
+    contra ese, no contra el crudo de la inferencia.
     """
     objetivo = req.descripcionObjetivo.strip() or "No especificado."
     reglas   = req.reglasNegocio.strip() or "No se especificaron reglas de negocio adicionales."
     tablas_stg_txt = ", ".join(staging_tables) if staging_tables else "(ver DDL de staging abajo)"
+    dwh_ddl_txt = dwh_ddl if dwh_ddl is not None else req.dwh_model
 
     if mode is None:
         return f"""## OBJETIVO DEL PROCESO ETL
@@ -563,7 +665,7 @@ def _build_prompt_from_inference(
 {req.stg_definition}
 
 ## MODELO DWH (inferido y confirmado por el usuario)
-{req.dwh_model}
+{dwh_ddl_txt}
 
 ## REGLAS DE NEGOCIO
 {reglas}
@@ -634,7 +736,10 @@ Definición completa (inferida y confirmada por el usuario):
 {req.stg_definition}
 
 ## MODELO DWH (inferido y confirmado por el usuario)
-{req.dwh_model}
+{dwh_ddl_txt}
+
+## CONTRATOS DE DIMENSION (dim_contracts — fuente de verdad para Dimension lookup/update, NO derivar del DDL)
+{_format_dim_contracts(req.dim_contracts)}
 
 ## REGLAS DE NEGOCIO
 {reglas}
@@ -661,7 +766,14 @@ async def generate_etl_from_inference(
     """Genera el proceso ETL como 2 KTR + 1 .kjb: KTR_1 (origen→STG) y KTR_2
     (STG→DWH), con los mismos nombres de tabla STG fijados en ambas llamadas
     al modelo (_staging_table_names_from_ddl) para que KTR_2 lea exactamente
-    lo que KTR_1 escribió."""
+    lo que KTR_1 escribió.
+
+    Antes de armar los prompts, corre validate_and_correct_ddl() (Parte 3):
+    el .ktr se construye contra el DDL final que devuelve esa auditoría, no
+    contra req.dwh_model crudo — ver ddl_validation.py."""
+    ddl_result = await validate_and_correct_ddl(req.dwh_model, req.dim_contracts, llm)
+    dwh_ddl    = ddl_result.dwh_ddl
+
     ctx            = context_builder.build_model_context(req.origenTables, db)
     origen_txt     = context_builder.format_model_context_for_prompt(ctx)
     staging_tables = _staging_table_names_from_ddl(req.stg_definition)
@@ -670,7 +782,7 @@ async def generate_etl_from_inference(
     prompt_1 = _build_prompt_from_inference(req, origen_txt, mode="origen_stg", staging_tables=staging_tables)
     resp_1   = await llm.complete(prompt_1, system, schema=ETL_OUTPUT_SCHEMA)
 
-    prompt_2 = _build_prompt_from_inference(req, "", mode="stg_dwh", staging_tables=staging_tables)
+    prompt_2 = _build_prompt_from_inference(req, "", mode="stg_dwh", staging_tables=staging_tables, dwh_ddl=dwh_ddl)
     resp_2   = await llm.complete(prompt_2, system, schema=ETL_OUTPUT_SCHEMA)
 
     if on_llm_done is not None:
@@ -685,7 +797,7 @@ async def generate_etl_from_inference(
         )
         raise ValueError("LLM returned no structured data — cannot parse ETL response")
 
-    context_text = f"{req.stg_definition}\n\n{req.dwh_model}"
+    context_text = f"{req.stg_definition}\n\n{dwh_ddl}"
     data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
     data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
     data_1["ktr"], integrity_warnings_1 = await repair_integrity_gaps(data_1["ktr"], llm, context_text)
@@ -697,12 +809,21 @@ async def generate_etl_from_inference(
         tokens_output=(resp_1.output_tokens or 0) + (resp_2.output_tokens or 0),
         region_inferencia=resp_2.provider,
     )
-    required_columns_by_table = _required_columns_from_ddl(req.stg_definition, req.dwh_model)
-    type_warnings = _type_mismatch_warnings(req.stg_definition, req.dwh_model, data_2["ktr"])
+    required_columns_by_table = _required_columns_from_ddl(req.stg_definition, dwh_ddl)
+    type_warnings = _type_mismatch_warnings(req.stg_definition, dwh_ddl, data_2["ktr"])
+    dim_contract_warnings = _dim_contracts_anomaly_warning(dwh_ddl, req.dim_contracts)
+    ddl_change_warnings = [f"DDL (Parte 3): {c}" for c in ddl_result.cambios_aplicados]
+    step_policy_results = enforce_dimension_step_policy(
+        data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
+    )
     return _build_response_from_two_ktr_data(
         data_1, data_2, metadata,
         required_columns_by_table=required_columns_by_table,
-        extra_warnings=[*repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2, *type_warnings],
+        extra_warnings=[
+            *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
+            *type_warnings, *dim_contract_warnings, *ddl_change_warnings,
+        ],
+        extra_validaciones=[*ddl_result.conflictos, *[Validacion(**r) for r in step_policy_results]],
     )
 
 
@@ -749,6 +870,12 @@ def _try_build(job_id, db: Session) -> None:
             connection_warnings=conn_warnings,
             required_columns_by_table=job.model_json.get("required_columns_by_table"),
             extra_warnings=job.model_json.get("repair_warnings"),
+            extra_validaciones=[
+                Validacion(**c) for c in [
+                    *job.model_json.get("ddl_conflictos", []),
+                    *job.model_json.get("step_policy_conflictos", []),
+                ]
+            ],
             # Este es el único caller que ya intentó resolver conexiones reales
             # (resolve_real_connections arriba) — si algo queda placeholder acá
             # es un .ktr final roto, no un preview: abortar en vez de entregarlo.
@@ -789,15 +916,21 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
 
     db = session_factory()
     try:
-        ctx            = context_builder.build_model_context(req.origenTables, db)
-        origen_txt     = context_builder.format_model_context_for_prompt(ctx)
-        staging_tables = _staging_table_names_from_ddl(req.stg_definition)
-        system         = _load_system("system_etl.txt")
-
-        prompt_1 = _build_prompt_from_inference(req, origen_txt, mode="origen_stg", staging_tables=staging_tables)
-        prompt_2 = _build_prompt_from_inference(req, "", mode="stg_dwh", staging_tables=staging_tables)
-
         try:
+            # Parte 3: el .ktr se arma contra el DDL final que sale de esta
+            # auditoría, no contra req.dwh_model crudo — misma llamada que en
+            # generate_etl_from_inference.
+            ddl_result = await validate_and_correct_ddl(req.dwh_model, req.dim_contracts, llm)
+            dwh_ddl    = ddl_result.dwh_ddl
+
+            ctx            = context_builder.build_model_context(req.origenTables, db)
+            origen_txt     = context_builder.format_model_context_for_prompt(ctx)
+            staging_tables = _staging_table_names_from_ddl(req.stg_definition)
+            system         = _load_system("system_etl.txt")
+
+            prompt_1 = _build_prompt_from_inference(req, origen_txt, mode="origen_stg", staging_tables=staging_tables)
+            prompt_2 = _build_prompt_from_inference(req, "", mode="stg_dwh", staging_tables=staging_tables, dwh_ddl=dwh_ddl)
+
             resp_1 = await llm.complete(prompt_1, system, schema=ETL_OUTPUT_SCHEMA)
             resp_2 = await llm.complete(prompt_2, system, schema=ETL_OUTPUT_SCHEMA)
             data_1 = resp_1.json_data
@@ -805,7 +938,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             if data_1 is None or data_2 is None:
                 raise ValueError("El modelo no devolvió datos estructurados.")
 
-            context_text = f"{req.stg_definition}\n\n{req.dwh_model}"
+            context_text = f"{req.stg_definition}\n\n{dwh_ddl}"
             data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
             data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
             data_1["ktr"], integrity_warnings_1 = await repair_integrity_gaps(data_1["ktr"], llm, context_text)
@@ -829,7 +962,15 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             region_inferencia=resp_2.provider,
         )
 
-        type_warnings = _type_mismatch_warnings(req.stg_definition, req.dwh_model, data_2["ktr"])
+        type_warnings = _type_mismatch_warnings(req.stg_definition, dwh_ddl, data_2["ktr"])
+        dim_contract_warnings = _dim_contracts_anomaly_warning(dwh_ddl, req.dim_contracts)
+        ddl_change_warnings = [f"DDL (Parte 3): {c}" for c in ddl_result.cambios_aplicados]
+        # Muta data_2["ktr"] in-place cuando corrige un downgrade seguro — tiene
+        # que correr ANTES de persistir raw_data_2, si no _try_build() reconstruye
+        # el .ktr contra el step viejo (sin corregir).
+        step_policy_results = enforce_dimension_step_policy(
+            data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
+        )
 
         job = db.get(KtrBuildJob, job_id)
         if job is None:
@@ -839,8 +980,17 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             "raw_data_1": data_1,
             "raw_data_2": data_2,
             "metadata": metadata.model_dump(),
-            "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, req.dwh_model),
-            "repair_warnings": [*repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2, *type_warnings],
+            "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, dwh_ddl),
+            "repair_warnings": [
+                *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
+                *type_warnings, *dim_contract_warnings, *ddl_change_warnings,
+            ],
+            # Persistido para que _try_build() (que corre después, cuando el
+            # usuario confirma las conexiones) pueda incluirlos en la
+            # respuesta final sin volver a llamar a validate_and_correct_ddl /
+            # enforce_dimension_step_policy.
+            "ddl_conflictos": [c.model_dump() for c in ddl_result.conflictos],
+            "step_policy_conflictos": step_policy_results,
         }
         db.commit()
 

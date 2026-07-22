@@ -154,6 +154,21 @@ class InferRequest(BaseModel):
     business_rules: str
 
 
+class DimContract(BaseModel):
+    """Contrato Dimension lookup/update de una dimensión del DWH inferido —
+    consumido por la fase de generación de steps en vez de parsear el DDL."""
+    table: str
+    scd_type: int
+    technical_key: str
+    version_field: str
+    date_from: str
+    date_to: str
+    natural_keys: List[str]
+    unknown_key_value: int
+    attributes_scd1: List[str] = []
+    attributes_scd2: List[str] = []
+
+
 class RefineRequest(BaseModel):
     source_schema_json: str
     process_goal: str
@@ -162,11 +177,20 @@ class RefineRequest(BaseModel):
     previous_dwh: str               # DDL DWH de la iteración anterior
     correction: str                 # instrucción del usuario en lenguaje natural
     correction_history: List[Dict[str, Any]] = []   # [{correction, stg_ddl, dwh_ddl}, ...]
+    # Parte 4 (bloque B): sin esto, un refinamiento que cambia el DDL deja los
+    # dim_contracts previos desincronizados sin que nada lo detecte. Default []
+    # para no romper llamadas viejas — ver _build_refine_prompt() en
+    # structure_inferrer.py, que instruye preservar por default y marcar
+    # "CONTRATO MODIFICADO" en assumptions cuando el feedback cambia una
+    # dimensión ya existente.
+    previous_dim_contracts: List[DimContract] = []
 
 
 class InferResponse(BaseModel):
     stg_ddl: str
     dwh_ddl: str
+    dim_contracts: List[DimContract] = []
+    assumptions: List[str] = []
     stg_rationale: str
     dwh_rationale: str
     iteration_count: int = 1
@@ -182,6 +206,24 @@ class ETLFromInferenceRequest(BaseModel):
     stg_definition: str             # DDL STG confirmado por el usuario
     dwh_model: str                  # DDL DWH confirmado por el usuario
     reglasNegocio: str
+    # Contrato por dimensión devuelto por /infer-structures — consumido por la
+    # fase de generación de steps (KTR STG→DWH) para configurar Dimension
+    # lookup/update sin adivinar por parseo del DDL. Default [] para no romper
+    # llamadas viejas; ver _dim_contracts_anomaly_warning() en etl_generator.py
+    # para la señal explícita cuando esto llega vacío pero dwh_model sí declara dim_*.
+    dim_contracts: List[DimContract] = []
+
+
+class DdlValidationResponse(BaseModel):
+    """Salida de ddl_validation.validate_and_correct_ddl() (Parte 3) — audita
+    dwh_ddl contra dim_contracts y las invariantes I2-I9, agrega lo que falte
+    (nunca elimina/renombra/reduce) y reporta lo que no puede resolver solo.
+    conflictos reusa Validacion en vez de un shape propio."""
+    dwh_ddl: str
+    sin_cambios: bool
+    cambios_aplicados: List[str] = []
+    conflictos: List[Validacion] = []
+    metadata: MetadataResponse
 
 
 class BuildFromRawRequest(BaseModel):
@@ -190,8 +232,16 @@ class BuildFromRawRequest(BaseModel):
 
     raw_llm_data trae dict plano (flujo legacy monolítico, claves proceso_etl/ktr
     en el nivel top) o {"ktr_1": {...}, "ktr_2": {...}} (flujo de 2 KTR) — ver
-    build_etl_from_raw() en etl_generator.py, que detecta el shape."""
+    build_etl_from_raw() en etl_generator.py, que detecta el shape.
+
+    dim_contracts: el contrato de la inferencia (ver DimContract) no viaja
+    dentro de raw_llm_data — es un campo del request de generación (ETLFromInferenceRequest),
+    no de la salida del modelo que arma el KTR. Sin pasarlo acá aparte, este
+    endpoint no tiene forma de correr enforce_dimension_step_policy() sobre el
+    KTR reconstruido. Opcional (default vacío) por compatibilidad con datos
+    guardados antes de este campo — en ese caso no se corre el enforcement."""
     raw_llm_data: Dict[str, Any]
+    dim_contracts: List[DimContract] = []
 
 
 # ─── GENERATE ASYNC + CONEXIONES EN PARALELO ─────────────────────────────────

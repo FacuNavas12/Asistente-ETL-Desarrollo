@@ -292,19 +292,27 @@ export default function CreateETL() {
     setIsRefining(true);
     try {
       const data = await refineInference({
-        source_schema_json: serializeOrigen(),
-        process_goal:        descripcionObjetivo,
-        business_rules:      reglasNegocio,
-        previous_stg:        inferResult.stg_ddl,
-        previous_dwh:        inferResult.dwh_ddl,
+        source_schema_json:      serializeOrigen(),
+        process_goal:            descripcionObjetivo,
+        business_rules:          reglasNegocio,
+        previous_stg:            inferResult.stg_ddl,
+        previous_dwh:            inferResult.dwh_ddl,
+        previous_dim_contracts:  inferResult.dim_contracts ?? [],
         correction,
-        correction_history:  inferHistory,
+        correction_history:      inferHistory,
       });
       setInferHistory(prev => [
         ...prev,
         { correction, stg_ddl: inferResult.stg_ddl, dwh_ddl: inferResult.dwh_ddl },
       ]);
       setInferResult(data);
+      // Parte 4 (bloque B): un refinamiento que modifica el contrato de una
+      // dimensión existente invalida cualquier respuesta cruda guardada de un
+      // intento anterior — reutilizarla (botón "Reutilizar respuesta") armaría
+      // el .ktr con steps pensados para el contrato viejo. Forzar regeneración.
+      if (data.assumptions?.some(a => a.startsWith("CONTRATO MODIFICADO"))) {
+        setRawLlmData(null);
+      }
     } catch (err) {
       notifySystem(`Error al aplicar corrección: ${err.message}`);
     } finally {
@@ -425,6 +433,7 @@ export default function CreateETL() {
         stg_definition: inferResult.stg_ddl,
         dwh_model:      inferResult.dwh_ddl,
         reglasNegocio,
+        dim_contracts:  inferResult.dim_contracts ?? [],
       });
       setJobId(job_id);
 
@@ -445,7 +454,7 @@ export default function CreateETL() {
     setStep(STEP.PROCESSING);
 
     try {
-      const apiResult = await buildFromRaw(rawLlmData);
+      const apiResult = await buildFromRaw(rawLlmData, inferResult?.dim_contracts ?? []);
       await _finishEtl(apiResult, rawLlmData);
     } catch (err) {
       if (err.rawLlmData) setRawLlmData(err.rawLlmData);
