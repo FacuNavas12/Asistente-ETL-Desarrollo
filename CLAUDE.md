@@ -30,7 +30,7 @@ cd frontend && npm install     # sincronizar node_modules
 **Backend** (FastAPI):
 ```bash
 cd backend
-.venv\Scripts\activate          # Windows venv
+venv\Scripts\activate            # Windows venv
 uvicorn app.main:app --reload   # → http://localhost:8000
 ```
 
@@ -216,9 +216,9 @@ Los 4 endpoints de `/api/connections/{id}/schema/*` y `POST /api/connections/{id
 El backend no persiste passwords de bases de datos de origen/staging/DWH — decisión de diseño, no limitación técnica. `Connection` (DB propia del backend) solo guarda host/puerto/base/usuario/tipo/ssl_mode.
 
 - **Crear/test/explorar esquema:** el frontend mantiene el password en memoria de componente durante la sesión de armado del ETL (`ConnectionForm.jsx` → `InputConnection.jsx` → `TableCatalogConnection.jsx`), nunca en `sessionStorage`/`localStorage`. Lo reenvía en cada llamada que conecta de verdad, vía header `X-DB-Password` (test, schema explorer) o en el body (`POST /api/connections`).
-- **Generación del `.ktr`:** `resolve_real_connections()` (`ktr_builder/connection.py`) arma host/port/database/username/tipo reales a partir de `Connection`, pero el password SIEMPRE queda como variable de Kettle (`${ORIGEN_DB_PASSWORD}` / `${STAGING_DB_PASSWORD}` / `${DWH_DB_PASSWORD}`), declarada en `<parameters>` con default vacío y documentada en una plantilla `kettle.properties` adjunta. Nunca se resuelve, ni se ofusca con `kettle_crypto`, ni se codifica de ninguna forma — el `.ktr` no tiene forma de contenerlo. El usuario lo completa a mano en Spoon/`kettle.properties` antes de ejecutar.
+- **Generación del `.ktr`:** `resolve_real_connections()` (`ktr_builder/connection.py`) arma host/port/database/username/tipo reales a partir de `Connection`, pero el password SIEMPRE queda como variable de Kettle (`${ORIGEN_DB_PASSWORD}` / `${STAGING_DB_PASSWORD}` / `${DWH_DB_PASSWORD}`), declarada en `<parameters>` con default vacío y documentada en una plantilla `kettle.properties` adjunta. Nunca se resuelve, ni se codifica de ninguna forma — el `.ktr` no tiene forma de contenerlo. El usuario lo completa a mano en Spoon/`kettle.properties` antes de ejecutar.
 - **Superset:** la conexión real al DWH se configura a mano, una sola vez, en Superset → Configuración → Conexiones a bases de datos. No hay auto-provisioning con URI real (`get_or_create_database` crea/usa un placeholder si no hay una configurada).
-- `kettle_crypto.py` (ofuscación reversible del formato Kettle, no cifrado real) se mantiene como utilidad — no protege nada por sí sola, es fidelidad de formato para Spoon.
+- **`kettle_crypto.py` (ofuscación reversible del formato Kettle, removido):** existió como utilidad de fidelidad de formato para Spoon, pero el password nunca formó parte de lo que el backend recibe/persiste/escribe con contenido real — sale siempre vacío o como `${VAR}` (ver punto anterior). Sin nada propio que ofuscar, implementar el algoritmo de Kettle en el backend no tenía función; se sacó el módulo. Si en el futuro hace falta leer un `.ktr` ajeno con passwords ofuscados reales, el algoritmo (XOR contra seed fijo) queda en el historial de git.
 
 Antes de esta decisión de diseño, las contraseñas se guardaban cifradas (Fernet, `core/crypto.py` — ya no existe) en `Connection.encrypted_password`. Si algo en el código nuevo necesita "la contraseña de una conexión guardada", es una señal de que se está reintroduciendo el patrón viejo — no hacerlo sin discutirlo primero.
 
@@ -266,14 +266,14 @@ Partes a fundir si DESARROLLO.md se abandona: arquitectura del flujo ETL complet
 
 **Versión de Python acordada por el equipo:** [A DEFINIR — sugerencia: 3.12]
 
-**Entorno virtual:** cada desarrollador crea su propio `.venv` local:
+**Entorno virtual:** cada desarrollador crea su propio `venv` local (el repo real usa `venv/`, no `.venv/`; ambos nombres están en `.gitignore`):
 ```bash
 cd backend
-python -m venv .venv
-.venv\Scripts\activate   # Windows
-# source .venv/bin/activate  # Mac/Linux
+python -m venv venv
+venv\Scripts\activate     # Windows
+# source venv/bin/activate  # Mac/Linux
 ```
-El directorio `.venv/` **nunca se commitea** — es específico del sistema operativo y del path de cada máquina.
+El directorio `venv/` **nunca se commitea** — es específico del sistema operativo y del path de cada máquina.
 
 **Dependencias — fuente de verdad: `requirements.txt`**
 

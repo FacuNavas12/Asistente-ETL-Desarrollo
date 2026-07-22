@@ -19,7 +19,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
-from app.core.kettle_crypto import encode as kettle_encode
 from app.models.connection import Connection, DbType
 from app.services.ktr_builder import (
     _DB_TYPE_TO_KETTLE,
@@ -218,9 +217,14 @@ def test_password_never_appears_in_ktr_in_any_form_even_if_present_in_real_dict(
     clave "password" con un valor real al dict `real` (_build_connection hoy
     solo lee real["password_var"], nunca "password"), el valor no debe
     terminar en el XML bajo ninguna representación — ni en claro, ni ofuscado
-    con kettle_crypto, ni en base64.
+    en formato Kettle, ni en base64.
+
+    El valor ofuscado esperado está hardcodeado (no vía kettle_crypto, que ya
+    no forma parte del backend): la ofuscación de Kettle es determinística —
+    XOR contra un seed fijo — así que el string no cambia.
     """
     known_password = "sup3r_s3cr3t_p4ssw0rd!"
+    known_password_kettle_obfuscated = "Encrypted 73757033725dcdabccba59d3ad94ff0abd678e80ab9b"
     trans = Element("transformation")
     real = {
         "host": "prodhost", "port": 5432, "database": "proddb",
@@ -231,8 +235,20 @@ def test_password_never_appears_in_ktr_in_any_form_even_if_present_in_real_dict(
     _build_connection(trans, {"name": "conn_dwh"}, real=real)
     xml = tostring(trans, encoding="unicode")
 
+    # Pin: known_password_kettle_obfuscated solo es válido para ESTE
+    # known_password exacto — si alguien cambia el de arriba sin regenerar
+    # el de abajo, el assert de ofuscación de más abajo sigue "pasando" pero
+    # deja de probar lo que dice probar (compara contra un string que ya no
+    # es la ofuscación real de nada). Este assert lo revienta ruidoso en vez
+    # de dejarlo vacuously true.
+    assert known_password == "sup3r_s3cr3t_p4ssw0rd!", (
+        "known_password cambió sin regenerar known_password_kettle_obfuscated — "
+        "recalcular con el algoritmo XOR/seed fijo de Kettle (ver git log de "
+        "app/core/kettle_crypto.py, removido de prod pero el algoritmo vive ahí) "
+        "antes de tocar este test"
+    )
     assert known_password not in xml
-    assert kettle_encode(known_password) not in xml
+    assert known_password_kettle_obfuscated not in xml
     assert base64.b64encode(known_password.encode()).decode() not in xml
     assert "${DWH_DB_PASSWORD}" in xml
 

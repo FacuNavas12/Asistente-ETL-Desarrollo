@@ -1,14 +1,14 @@
 """
 Golden-file test: fixture .ktr fiel a un export de Spoon 9.x (tests/fixtures/
-connections_sample.ktr) con dos conexiones (postgres + sqlserver) y passwords
-ofuscados reales. Confirma que kettle_crypto.decode() revierte exactamente lo
-que Spoon escribió, y documenta la estructura/campos que _build_connection()
-en ktr_builder.py debe reproducir para que el .ktr abra sin reconfiguración.
+connections_sample.ktr) con dos conexiones (postgres + sqlserver). Documenta
+la estructura/campos que _build_connection() en ktr_builder.py debe reproducir
+para que el .ktr abra sin reconfiguración. El fixture trae passwords ofuscados
+reales (formato Spoon) pero esta suite no los valida — el backend nunca lee ni
+escribe ese campo con contenido real (ver decisión de no-custodia de
+credenciales), así que no hay comportamiento propio que verificar ahí.
 """
 from pathlib import Path
 from xml.etree import ElementTree as ET
-
-from app.core.kettle_crypto import decode
 
 FIXTURE = Path(__file__).parent / "fixtures" / "connections_sample.ktr"
 
@@ -21,16 +21,6 @@ def _load_connections() -> dict[str, ET.Element]:
 def test_fixture_has_both_connections():
     conns = _load_connections()
     assert set(conns) == {"pg_test", "mssql_test"}
-
-
-def test_pg_password_decodes_to_plaintext():
-    conns = _load_connections()
-    assert decode(conns["pg_test"].findtext("password")) == "pg_test_pw"
-
-
-def test_mssql_password_decodes_to_plaintext():
-    conns = _load_connections()
-    assert decode(conns["mssql_test"].findtext("password")) == "mssql_test_pw"
 
 
 def test_pg_connection_fields():
