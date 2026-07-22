@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Refactor de fragmentación en curso
+
+El sistema hoy fuerza todo ETL a 2 KTR fijos (Origen→STG, STG→DWH) + 1 KJB. Ese forzado está identificado como la causa raíz de una clase de errores (carreras lectura/escritura, dimensiones no cargadas, doble escritor) y se está desacoplando: la fase lógica queda, pero el backend decide de forma determinista cuántos archivos físicos la materializan.
+
+- **`docs/refactor/02-decisiones.md`** — fuente de verdad. Manda sobre cualquier análisis o plan que lo contradiga.
+- **`docs/refactor/00-objetivo.md`** — qué habilita el refactor y el estado final deseado.
+- **`docs/refactor/01-hallazgos.md`** — problemas estructurales detectados, con `archivo:línea` y estado.
+- **`docs/refactor/03-plan.md`** — fases derivadas, con dependencias.
+- **`docs/arquitectura-objetivo.md`** — doctrina de capas (Track A, migración aparte, hoy pospuesta) para cuando el backend se reorganice en `api/schemas/services/domain/ports/infrastructure/core`. No aplicada todavía — nada del código actual respeta esta estructura de carpetas.
+
+**Toda sesión que tome una decisión sobre este refactor cierra actualizando `docs/refactor/02-decisiones.md` en el mismo turno** — no dejarla implícita en el código ni en el historial de chat.
+
 ## Dev Commands
 
 **Frontend** (React 19 + Vite):
