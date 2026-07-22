@@ -7,6 +7,7 @@ import ResultView from "@/pages/EtlDetail/Result/ResultView";
 import ConnectionView from "@/pages/EtlDetail/Connection/ConnectionView";
 import { computeLineage } from "@/api/lineage";
 import { exportEtlToSuperset } from "@/utils/supersetExport";
+import { downloadKtrZipFromEtl } from "@/utils/etlCardActions";
 import "./etlDetail-global.css";
 
 export default function EtlDetail() {
@@ -68,30 +69,14 @@ export default function EtlDetail() {
   const lineage   = lineageData ?? etl.result?.lineage ?? null;
 
   const {
-    ktr_xml = "", ktr_filename = "",
-    ktr2_xml = "", ktr2_filename = "",
-    kjb_xml = "", kjb_filename = "",
+    ktr_xml = "",
+    ktr2_xml = "",
+    kjb_xml = "",
   } = etl.result ?? {};
   const hasTwoKtrFlow = Boolean(ktr2_xml && kjb_xml);
 
-  const downloadBlob = (content, mime, filename) => {
-    const blob = new Blob([content], { type: mime });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleDownloadKtr = () => {
-    downloadBlob(ktr_xml, "application/xml", ktr_filename || `${etl.name}.ktr`);
-    // Flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH orquestados en secuencia).
-    // Vacíos en el flujo monolítico legacy (build-from-raw) — solo baja el único .ktr.
-    if (hasTwoKtrFlow) {
-      downloadBlob(ktr2_xml, "application/xml", ktr2_filename || `${etl.name}_2.ktr`);
-      downloadBlob(kjb_xml, "application/xml", kjb_filename || `${etl.name}_job.kjb`);
-    }
+    downloadKtrZipFromEtl(etl);
   };
 
   // Mostrar el botón siempre que haya KTR — si dwh_sample está vacío, el backend
@@ -122,6 +107,7 @@ export default function EtlDetail() {
             {etl.status === "done" && (
               <button 
                 className="ktr-download-btn"
+                title="Reutilizar este ETL como base para uno nuevo"
                 onClick={() => navigate("/etl-create", {
                   state: { initialFormData: { ...etl.formData, etlName: etl.name } },
                 })}
@@ -130,13 +116,21 @@ export default function EtlDetail() {
               </button>
             )}
             {ktr_xml ? (
-              <button className="ktr-download-btn" onClick={handleDownloadKtr}>
+              <button
+                className="ktr-download-btn"
+                onClick={handleDownloadKtr}
+                title={hasTwoKtrFlow
+                  ? "Zip con KTR_1 (origen→STG), KTR_2 (STG→DWH) y el .kjb orquestador"
+                  : "Zip con el .ktr para Pentaho PDI"}
+              >
                 {hasTwoKtrFlow
-                  ? "Descargar KTR_1 + KTR_2 + .kjb para Pentaho PDI"
-                  : "Descargar .ktr para Pentaho PDI"}
+                  ? "Descargar Proceso Completo"
+                  : "Descargar Transformación"}
               </button>
             ) : (
-              <span className="ktr-unavailable">No se pudo generar el .ktr</span>
+              <span className="ktr-unavailable" title="El proceso no generó .ktr — revisar resultado">
+                No se pudo generar el .ktr
+              </span>
             )}
              {/* 
             {canExportSuperset && (

@@ -47,6 +47,23 @@ export function downloadKtrFromEtl(etl) {
   if (kjb)  triggerDownload(kjb.content, kjb.filename, "application/xml");
 }
 
+/** Download del/de los .ktr + .kjb (si hay) en un único .zip — usado desde EtlDetail. */
+export async function downloadKtrZipFromEtl(etl) {
+  const ktr = buildKtrExport(etl);
+  if (!ktr) return;
+
+  const zip = new JSZip();
+  zip.file(ktr.filename, ktr.content);
+
+  const ktr2 = buildKtr2Export(etl);
+  const kjb  = buildKjbExport(etl);
+  if (ktr2) zip.file(ktr2.filename, ktr2.content);
+  if (kjb)  zip.file(kjb.filename, kjb.content);
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  triggerDownload(blob, `${safeFilename(etl.name)}_ktr.zip`, "application/zip");
+}
+
 /**
  * Download the model-generated output as JSON.
  * Includes: proceso_etl, validaciones, documentacion, advertencias_buenas_practicas.
