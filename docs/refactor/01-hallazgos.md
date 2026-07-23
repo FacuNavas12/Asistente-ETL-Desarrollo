@@ -18,6 +18,12 @@ Todas las líneas de código citadas fueron re-verificadas contra el repo en est
 
 **Estado: desinflado (2026-07-22).** No es un hallazgo — es el diseño esperado hoy (Origen→STG / STG→DWH / kjb), y coincide con D1 al 100%: nadie está sorprendido de que sea 2. El `archivo:línea` exacto no hace falta localizarlo por adelantado — va a emerger solo cuando se toquen los archivos generadores durante Track F1/F2, porque la arquitectura del corte deja evidente dónde estaba el número fijo. Única razón para mirarlo temprano, y es barata: confirmar con un grep si el "2" aparece en más de un lugar (afecta el tamaño de Track F1). No es una fase en sí misma.
 
+**Localizado en Track F1 (2026-07-22):** el "2" está hardcodeado en al menos 3 puntos, no 1:
+- `backend/app/services/etl_generator.py:782-786` — dos llamadas al LLM, `mode="origen_stg"` / `mode="stg_dwh"` (cada `mode` recorta el prompt para producir exactamente un KTR).
+- `backend/app/services/etl_generator.py:931-935` — la misma pareja de llamadas duplicada en un segundo codepath (flujo de reintento/regeneración) — divergencia sin dueño único, mismo patrón que H3/H4 pero para la orquestación de generación, no para el parseo de config. No es un hallazgo nuevo a resolver acá, queda anotado por si F2/F3 lo pisa sin verlo.
+- `_build_job_plan` (`etl_generator.py:224-246`) arma `execution_order` con exactamente 2 `JobEntry` fijos (`etl_generator.py:240-244`).
+Ningún punto de corte existe todavía — el "2" no es una variable, es la forma del código. Confirma que Track F2 no "ajusta un número", tiene que reemplazar la estructura de 2 llamadas + 2 builds por N.
+
 ---
 
 ## H2 — `config` del LLM llega como string con JSON escapado adentro
@@ -88,7 +94,7 @@ Nota de corrección respecto al material de origen: el hallazgo de la sesión "L
 
 **Sesión de origen:** LLM y flujo. Corresponde a la Categoría 1 (R10) del prompt de Fase 4 de Arquitectura — prompt no ejecutado todavía.
 
-**Estado:** abierto.
+**Estado: resuelto (2026-07-22) — ver D15 en `02-decisiones.md`.** Riesgo documentado y notificado, no prerrequisito bloqueante de F2. F1.5 no lo cubre (mantiene alcance H4+H11+H6); F2 diseña el corte apoyándose en `build_lineage()` tal como está, con el acoplamiento R10 todavía presente, y debe emitir aviso accionable cuando no pueda garantizar el orden inferido.
 
 ---
 
@@ -119,6 +125,11 @@ El mismo patrón está en las 4 copias listadas en H3 (`validate.py:14-17`, `dim
 
 **Sesión de origen:** ninguna — surge de verificar contra el repo la pregunta 3 de la Fase 1 del prompt de fragmentación ("¿`build_kjb_xml` soporta `JobEntryJob` o solo `JobEntryTrans`? ¿Qué haría falta para anidar jobs?"). Esa pregunta estaba planteada como "a investigar"; esta sesión confirma el hecho base (ausencia total) sin resolver el "qué haría falta" — eso sigue siendo trabajo de esa Fase 1.
 
+**"Qué haría falta" — respondido en Track F1 (2026-07-22):**
+- `backend/app/services/job_analyzer.py:359-388` — `_trans_entry()` hardcodea `<type>TRANS</type>` (línea 363); es la única función que emite `<entry>`, llamada desde el loop de `build_kjb_xml` (`job_analyzer.py:272-274`).
+- `backend/app/schemas/job_schemas.py:42-46` — `JobEntry` no tiene discriminador de tipo (`transformation_name`/`filename`/`rationale`/`order`, nada más): hoy no hay forma de decirle a `build_kjb_xml` "esta entrada es un `.kjb`, no un `.ktr`".
+- Falta: (a) discriminador en `JobEntry` (o un modelo paralelo) para distinguir entrada TRANS de entrada JOB; (b) una función `_job_entry()` nueva junto a `_trans_entry()`, con el set de tags de `JobEntryJob` de Kettle (`job_object_id`, `filename`, `pass_export`, etc. — no es swapear el string `<type>`, es una forma de XML distinta); (c) branch en el loop de entries (`job_analyzer.py:272-274`) que despache por tipo de entrada; (d) un call site nuevo que arme el `JobPlan` de `job_master.kjb` apuntando a los `.kjb` de fase (mismo patrón que `_build_job_plan`, `etl_generator.py:224`, pero un nivel arriba).
+
 **Estado:** abierto. Prerrequisito no resuelto de D1 — sin `JobEntryJob`, la jerarquía de 3 niveles del objetivo no se puede materializar tal como está descrita.
 
 ---
@@ -135,6 +146,8 @@ El mismo patrón está en las 4 copias listadas en H3 (`validate.py:14-17`, `dim
 **Sesión de origen:** Fragmentación (handoff, sección "ACTUALIZACIÓN").
 
 **Estado:** decidido — restricción de diseño ya fijada para cuando se implemente el motor de corte (Fase 3 del prompt de fragmentación, no iniciada).
+
+**Corrección (2026-07-22, ver D15 en `02-decisiones.md`):** no las tres por igual. V1 y V3 son la señal que guía dónde separar — viven en el algoritmo de corte (F2), no extienden este catálogo. Solo **V2** (todo lookup tiene productor) es un chequeo de integridad post-construcción — ese es el que efectivamente extiende `ktr_xml_validator.py`/`error_catalog_checks.py`, con el patrón anota-y-notifica de D15, no el `raise` que usan hoy.
 
 ---
 
@@ -238,6 +251,33 @@ La base sí genera `sk_producto` sola, vía secuencia con `DEFAULT` (no `IDENTIT
 
 **Estado:** abierto, ya no "rotura genérica urgente" sino caso puntual a confirmar. `err1.ktr`/`err2.ktr` (`C:\Users\05147\OneDrive\Escritorio\Test_Asistente_ETL\Simplificado\Sol\02\Errores\`, ver D7) contienen `InsertUpdate` + `sk_producto` — candidatos directos para confirmar si el mapeo problemático ocurre de verdad. Análisis de contenido de esos archivos queda para Track F1/F4, no para esta sesión.
 
+**Contenido analizado en Track F2 (2026-07-22):** `Cargar Fact Venta` (`InsertUpdate` sobre `fact_venta`) mapea `sk_producto`/`sk_tiempo` con `rename` a `fk_producto`/`fk_tiempo` (no a `sk_producto` de una tabla dimensión) — **no aplica el gap de H16 tal como estaba planteado**, el `InsertUpdate` de estos fixtures no toca ninguna columna `sk_*` de una dimensión, solo la FK dentro de `fact_venta`. H16 queda sin caso confirmado en este corpus; sigue abierto como riesgo genérico, no instanciado acá.
+
+**Caso hermano confirmado por log real (2026-07-22, R8 de `bitacora_etl_ventas.md`, L3-E01/L6):** dirección opuesta a H16 pero misma causa raíz. `_step_InsertUpdate` (`ktr_builder/steps/output.py:43-63`) es un pass-through fiel de `cfg["keys"]`/`cfg["fields"]` — no agrega ni quita nada. H16 es el caso "una columna técnica aparece en `fields` cuando NO debería" (se filtra el `DEFAULT` de la BD). R8 es el caso inverso confirmado por log real contra Postgres: al cargar una dimensión con clave natural + surrogate `SERIAL` vía `Insert/Update`, si la clave natural va **solo** en `keys` (para el `WHERE` del upsert) y no también en `fields` (con `update:false`), Kettle 9.4 nunca la incluye en la lista de columnas del `INSERT` — la deja tomar el default de la tabla, que para una columna sin `DEFAULT` propio es `NULL`, y viola el `NOT NULL` de la clave natural en la primera fila (`ERROR: null value in column "id_producto"`, confirmado en Lectura 3 de la bitácora). Fix mínimo verificado por log: agregar la clave también como `<value>` con `update=N`. **Regla unificada para ambos casos:** la corrección de un `InsertUpdate` de dimensión (loader) no vive en el builder (que ya es correcto — pass-through fiel) — vive en quien arma el `config` (hoy el LLM vía `system_etl.txt`; si D16 amplía `dim_contracts` a derivar `Insert/Update`, vive ahí). Ruteo: F4 (mientras el config lo arma el LLM) — si D16 se resuelve por el camino 1 (ampliar `dim_contracts`), pasa a ser un requisito del emisor determinístico nuevo, no una regla de prompt.
+
+---
+
+## H21 — Análisis de contenido `err1.ktr`/`err2.ktr`: confirma E4/E5 (doble escritor/carrera sobre `dim_producto`) y E6 (`dim_tiempo` sin productor)
+
+**Qué:** los dos fixtures (`err1.ktr`, `err2.ktr` — casi idénticos, `err2` solo agrega `<meta>` completos en el `SelectValues`) son un único `.ktr` de STG→DWH (`ktr_staging_to_dwh_ventas`) con dos problemas estructurales reales, ambos de los que motivan el refactor (`00-objetivo.md`):
+
+1. **`dim_producto` — doble escritor + carrera (E4/E5).** Dos steps `DimensionLookup` distintos tocan `dim_producto`, ambos R+W (H19, `<update>Y</update>` en los dos):
+   - `Cargar Dim Producto` — rama muerta: `Leer Staging Productos → Cargar Dim Producto`, sin hop de salida. Es el "productor" real de la dimensión.
+   - `Lookup Dim Producto` — en la rama de hechos: `... → Calcular Importe → Lookup Dim Producto → Lookup Dim Tiempo → Cargar Fact Venta`. Busca el `sk_producto` para la FK, pero al ser `DimensionLookup` con `update=Y` (no `CombinationLookup` ni `DBLookup`) también inserta/actualiza si no matchea.
+   - **Sin hop entre las dos ramas.** PDI corre ambas en paralelo (cada step es un thread propio); no hay garantía de que `Cargar Dim Producto` haya commiteado antes de que `Lookup Dim Producto` lea/escriba la misma fila. Confirma exactamente el mecanismo de E4 y E5 descrito en `00-objetivo.md`.
+
+2. **`dim_tiempo` — consultada, nunca cargada (E6).** `Lookup Dim Tiempo` (`DBLookup`, R puro, H19) busca contra `dim_tiempo`. Ningún step en el archivo la escribe — no hay `DimensionLookup`/`CombinationLookup`/`TableOutput`/`InsertUpdate` sobre `dim_tiempo` en ningún lado. Es un `V2` (lookup sin productor) real, no hipotético.
+
+**Consecuencia para el diseño del corte (F2):** el caso real NO es "tabla escrita y leída por el mismo step" (que sería inofensivo, ver H19 sobre `DimensionLookup`/`CombinationLookup`) — es tabla escrita y leída por **dos steps distintos sin hop entre ellos**, ya en componentes conexos separados del grafo de hops. El corte natural en este ejemplo es: `{Leer Staging Productos, Cargar Dim Producto}` → un KTR; el resto (`{Leer Staging Ventas, Filtrar Ventas Anuladas, Descartar Anuladas, Castear Campos Ventas, Calcular Importe, Lookup Dim Producto, Lookup Dim Tiempo, Cargar Fact Venta}`) → otro KTR, ordenados por KJB con el primero antes que el segundo (dims antes que hechos). `dim_tiempo` no dispara corte — dispara notificación (D15).
+
+**Sesión de origen:** Track F2 (2026-07-22), análisis de contenido pedido por D7/03-plan.md como insumo obligatorio del diseño del corte.
+
+**Estado:** entregable — caso de prueba concreto para F2/F3 (D7: "cada caso histórico de falla es también un caso de prueba: debe producir la partición correcta").
+
+**¿C1-bis es un fantasma? — reconciliado (2026-07-22) con `bitacora_etl_ventas.md`.** El `extracto_corte_F2.md` de la bitácora plantea la misma pregunta sobre su propio caso de `dim_producto`: el doble escritor ¿era un conflicto estructural real, o un artefacto de que el step del lado del hecho estaba mal elegido (`DimensionLookup(update=Y)` en vez de un lookup de solo lectura)? **Respuesta, verificada contra código, no contra intuición: no es un fantasma, todavía.** Ver **H22** — hoy no existe ningún tipo de step derivable por `dim_contracts` que sea de solo lectura, así que un lookup del lado del hecho sigue siendo R+W por construcción incluso después de que `enforce_dimension_step_policy` "corrija" su tipo. C1-bis sigue siendo la señal correcta de disparar sobre este patrón — lo que cambia es la ubicación del fix real (ver D16, `02-decisiones.md`): no es un ajuste al algoritmo de corte, es una dependencia externa que el corte no controla.
+
+**C1 necesita una excepción — self-lookup / insert-new-only (nuevo, de `bitacora_etl_ventas.md`, sección 3 del extracto).** El patrón `Leer → DBLookup/StreamLookup (existe?) → FilterRows (no existe) → Table Output` lee y escribe la MISMA tabla dentro de una sola KTR, a propósito y de forma segura (Lectura 3 de la bitácora, reforzado con `UNIQUE` sobre la clave natural — L2-E05/R7). C1 tal cual ("cortar si hay W y R por steps distintos") dispara sobre este patrón y sobre-corta. **Regla de excepción para el algoritmo de F2 (ver reporte F2 abajo):** dentro de un componente de hop ya conexo, si el/los step(s) que leen T son estrictamente aguas arriba (hay camino de hops) del/los step(s) que escriben T, y no al revés, es el idioma "chequear-antes-de-insertar" — no dispara corte. Si la relación es la inversa (se escribe y más adelante se vuelve a leer esperando ver la propia escritura) o no hay relación de hops entre ambos, sigue el trato original (C1 dispara, o "mismo componente sin hop determinable" queda como caso no soportado en la primera vuelta de F3 — ver reporte F2).
+
 ---
 
 ## H17 — 12 tests en rojo: no son gate hasta triage
@@ -260,6 +300,95 @@ La base sí genera `sk_producto` sola, vía secuencia con `DEFAULT` (no `IDENTIT
 
 ---
 
+## H19 — Matriz tipo_step → {R,W} sobre tabla (Track F1, entregable Q2)
+
+**Qué:** ningún módulo hoy modela "qué tabla toca cada step y en qué modo" como dato de primera clase (ver H4) — la pregunta 2 de la Fase 1 del handoff pide construirla. Resultado, verificado contra los builders (`backend/app/services/ktr_builder/steps/lookups.py`, `output.py`) y el catálogo (`backend/prompts/system_etl.txt`):
+
+| Tipo | Modo | Evidencia |
+|---|---|---|
+| `TableInput` | R | lee tablas arbitrarias del `FROM`/`JOIN` del SQL — extracción hoy solo en `lineage_builder._TABLE_RE` (lineage_builder.py:29-34), no en `contracts.py` |
+| `TableOutput` | W | `table` directo, `steps/output.py` |
+| `InsertUpdate` | W | ídem |
+| `Update` | W | ídem |
+| `Delete` | W | ídem |
+| `DimensionLookup` | **R+W siempre** | `_step_DimensionLookup` (`ktr_builder/steps/lookups.py:47`) hardcodea `<update>Y</update>` sin condición — todo `DimensionLookup` que emite este backend hace lookup (R) e insert/update de SCD (W) sobre la misma tabla. No es un caso a detectar, es el único caso que existe |
+| `CombinationLookup` | **R+W siempre** | semántica nativa de Kettle ("Lookup/Update"): inserta la combinación si no existe. El builder (`lookups.py:117-131`) no tiene ningún flag `update` porque no hace falta — el step no tiene modo "solo lectura" |
+| `DBLookup` | R | sin bloque de insert/update en el builder (`lookups.py:84-99`); el catálogo lo declara explícito ("SIN generar surrogate key ni manejar SCD", `system_etl.txt:271`) |
+| `StreamLookup` | — (no toca tabla) | busca contra OTRO stream en memoria, no BD (`lookups.py:134+`) — fuera de la matriz R/W por diseño, no un gap |
+| `ExecSQL` | **no clasificable estáticamente** | SQL arbitrario (`system_etl.txt:316-319`), puede ser R o W según el texto. Ni `contracts.py` ni `lineage_builder.py` lo tocan hoy. El motor de corte tiene que fallar fuerte (D5) ante un `ExecSQL`, no asumir modo |
+
+**Sesión de origen:** Track F1 (2026-07-22), respondiendo la pregunta 2 del handoff de Fragmentación.
+
+**Estado:** entregable, no problema — insumo directo para F2 (regla C1: toda tabla W y R en la misma etapa marca corte). El caso doble-modo de `DimensionLookup` citado en el prompt del handoff está confirmado como real y como el ÚNICO modo, no una posibilidad condicional.
+
+---
+
+## H20 — Punto de inserción del corte: entre `repair_integrity_gaps` y `build_ktr`
+
+**Qué:** la pregunta 5 de la Fase 1 (¿se puede construir la matriz R/W sin re-parsear el XML final?) tiene respuesta: sí. `build_lineage(ktr_data)` (`backend/app/services/lineage_builder.py:87-132`) ya opera sobre el dict pre-XML (`steps[].config`, la misma forma que `data_1["ktr"]`/`data_2["ktr"]`), sin tocar XML — precedente directo (mismo dato citado en D6, evidencia #3). El fallback por XML (`_parse_ktr_xml`, `lineage_builder.py:216-250`) solo existe para el flujo `CreateJob`, que analiza `.ktr` de autoría externa sin dict propio — no aplica al flujo de generación, donde el dict ya está en memoria.
+
+**Consecuencia — dónde insertar el corte:** después de `repair_integrity_gaps` y antes de `build_ktr()` (hoy en `etl_generator.py:801-804` → `:438-460`), mismo punto del pipeline que ya usan las otras mutaciones determinísticas post-LLM (`repair_ktr_steps`, `repair_integrity_gaps`, `enforce_dimension_step_policy` — ver D6 evidencia #4). El corte necesita el dict ya reparado/íntegro (para no fragmentar sobre datos que todavía van a cambiar) pero antes de que se congele en XML.
+
+**Nota — Q4 no tiene precedente de orden por FK:** `_build_job_plan` (`etl_generator.py:224-246`) no ordena nada — arma una lista fija de 2 `JobEntry` porque el orden STG-antes-que-DWH nunca fue ambiguo con solo 2 archivos (docstring explícito, `etl_generator.py:225-229`). Bajo fragmentación (N>1 por etapa), el ordenamiento por grafo de FK que pide `00-objetivo.md` ("dimensiones antes que hechos") es lógica nueva — no existe ningún código hoy que ordene componentes por dependencia, ni en `_build_job_plan` ni en otro lado.
+
+**Sesión de origen:** Track F1 (2026-07-22), preguntas 4 y 5 del handoff.
+
+**Estado:** entregable — responde la recomendación pedida como cierre de F1 ("dónde insertar el corte").
+
+---
+
+## H22 — `dim_contracts`/`dimension_step_policy` no deriva ningún step de solo lectura (prerrequisito real de F3, no fantasma)
+
+**Qué:** `derive_dimension_step_type` (`dimension_step_policy.py:41-50`) solo devuelve `DimensionLookup` (scd_type==2) o `CombinationLookup` (cualquier otro caso). Ambos son R+W siempre (H19). `enforce_dimension_step_policy` tampoco distingue, entre los steps que matchean una tabla de `dim_contracts`, cuál es el loader y cuál es un lookup del lado del hecho — corrige el tipo de cualquiera de los dos igual. Consecuencia: un lookup de FK del lado del hecho, aunque tenga el tipo "correcto" según SCD, sigue siendo estructuralmente R+W.
+
+**Evidencia:** `dimension_step_policy.py:41-50` (vocabulario de `derive_dimension_step_type`), `dimension_step_policy.py:104-165` (`enforce_dimension_step_policy` no distingue rol de step, solo tabla+tipo), H19 (R+W siempre de `DimensionLookup`/`CombinationLookup`), confirmado por orden de pipeline: `enforce_dimension_step_policy` corre antes de H20 (`etl_generator.py:800-818`) — el orden está bien, la cobertura no.
+
+**Sesión de origen:** Track F2 (2026-07-22), disparado por `extracto_corte_F2.md` (`bitacora_etl_ventas.md`), pregunta "¿C1-bis es un fantasma?".
+
+**Estado:** abierto — **ver D16 en `02-decisiones.md`**, decisión de scope: F3 tiene un prerrequisito externo a Track F (ampliar `dim_contracts` para derivar `Insert/Update`/`Table Output` para el loader y forzar `StreamLookup` para el lookup del lado del hecho), o arranca con el riesgo documentado (D15). No lo resuelve esta sesión.
+
+---
+
+## H23 — Entorno: `DBLookup` falla la introspección de metadata contra el pooler de Supabase
+
+**Qué:** en el entorno real usado para las pruebas (Postgres vía pooler de Supabase, `aws-0-us-east-1.pooler.supabase.com`), `DBLookup` falla con `KettleStepException: Field [id_producto] couldn't be found in the table!` en `DatabaseLookup.determineFieldsTypesQueryingDb` — la columna existe (confirmado por el `NOT NULL` de una lectura anterior de la misma bitácora), es la introspección de metadata del step la que no resuelve contra el pooler, no un problema de esquema real. `Insert/Update` (que también introspecciona) funcionó sin problema en el mismo entorno — no es "todo step con introspección falla", es específico de `DBLookup`.
+
+**Evidencia:** `bitacora_etl_ventas.md`, Lectura 4 (`L4-E01`, log real) y Lectura 6 (`R9`, refinado y confirmado por una segunda solución independiente que nunca usó `DBLookup`). Sustituto que funcionó en el mismo entorno: `StreamLookup` (lee la dimensión con un `TableInput` propio, matchea en memoria, sin tocar introspección de metadata del step de lookup).
+
+**Consecuencia doble:**
+1. **Prompt (`system_etl.txt`):** el catálogo debería advertir contra `DBLookup` para este tipo de entorno (Postgres vía pooler) y preferir `StreamLookup`, en vez de dejar que el modelo lo elija libremente y falle en runtime — información que hoy solo vive en una bitácora de sesión, no en la fuente que el LLM realmente lee.
+2. **Corte (H19/H22):** un lookup del lado del hecho implementado como `StreamLookup` no toca ninguna tabla en la matriz R/W (H19 ya lo excluye) — adoptar `StreamLookup` para ese rol no es solo un fix de entorno, es también el camino que estructuralmente nunca dispara C1/C1-bis, sin necesidad de que el motor de corte haga nada especial.
+
+**Sesión de origen:** Track F2 (2026-07-22), `bitacora_etl_ventas.md` (R9, L4-E01, L6).
+
+**Estado:** nuevo, sin dueño de track todavía — no es un bug de código del backend (el backend no eligió `DBLookup`, el LLM lo hizo dentro de lo que el catálogo permite). Candidato a regla nueva en `system_etl.txt`, fuera del alcance de los 6 puntos originales de F4 — ver tabla de ruteo abajo y nota sobre F4 en `03-plan.md`.
+
+---
+
+## Intake — `bitacora_etl_ventas.md` (R1-R12): clasificación y ruteo
+
+Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (2026-07-22) — evita que cada regla nueva de un test se acumule como un H-number suelto. Ver la sección "Intake de hallazgos de tests" en `03-plan.md` para el mecanismo completo; acá solo la aplicación concreta a R1-R12.
+
+| Regla | Tag | Resumen | Rutea a | Nota |
+|---|---|---|---|---|
+| R1 | G-step | Step de loader por forma de tabla (simple→Insert/Update, SCD2→DimensionLookup) | Eje `dim_contracts` (D11), no Track F | Gap confirmado — **H22**, decisión **D16** |
+| R2 | G-step | Lookup del lado del hecho siempre de solo lectura | Eje `dim_contracts` (D11), no Track F | Mismo gap — **H22**/**D16** |
+| R3 | S | Corte por tabla + KJB secuencial, dims antes que hechos | F2/F3 | Confirma el diseño de F2 (2 derivaciones independientes en verde) |
+| R4 | D-dialecto | Default de `COALESCE` debe tipar igual que la columna del DDL | F4 (contenido) + D12/C.1 (dialecto) | — |
+| R5 | D-integridad | (a) Toda dim referenciada tiene loader antes del hecho | Ya cubierto — **V2** (F2/F3, no nuevo trabajo) | Confirmado por `dim_tiempo` en H21 |
+| R5 | D-integridad | (b) Prever miembro desconocido o ruteo de huérfanos | F4, bloqueado por decisión de negocio | Ver **C.6** en `02-decisiones.md` |
+| R6 | D-dialecto | Alinear tipos de clave en lookups contra el DDL | F4 (contenido) + D12/C.1 | — |
+| R7 | D-ddl-constraint | Emitir/recomendar constraints (`UNIQUE`) que el upsert asume | Nuevo — sin dueño hasta decisión de producto | Ver **C.5** en `02-decisiones.md` |
+| R8 | G-step | Clave natural debe ir también como `value` (`update=N`) en `Insert/Update` de dimensión | F4 (mientras el LLM arma el config) → eje `dim_contracts` si D16 amplía el vocabulario | Extiende **H16** |
+| R9 | Env | `DBLookup` falla introspección contra pooler de Supabase → preferir `StreamLookup` | Nuevo hallazgo de entorno — candidato a regla en `system_etl.txt` | **H23** |
+| R10 | D-dialecto | `dim_tiempo` como calendario contiguo vía `generate_series` | F4 (contenido) + D12/C.1 | Segunda ocurrencia real de construcción dialecto-dependiente — nota en D12 |
+| R11 | D-integridad | Validar claves resueltas, rutear huérfanos antes del insert del hecho | F4, bloqueado por decisión de negocio | Ver **C.6** en `02-decisiones.md` |
+| R12 | D-dialecto | Dedup de staging vía `DISTINCT ON (...) ORDER BY ... DESC` + flag de auditoría | F4 (contenido) + D12/C.1 | Tercera ocurrencia real — nota en D12 (junto a R10) |
+
+**Excepción de corte (self-lookup/insert-new-only, sección 3 del `extracto_corte_F2.md`):** no es una regla R con número propio en la bitácora, pero es una tercera conclusión de corte junto a R3 y la reconciliación de C1-bis — documentada en **H21** (arriba) y en el reporte de F2 (`03-plan.md`).
+
+---
+
 ## Resumen de estado
 
 | # | Hallazgo | Estado |
@@ -268,7 +397,7 @@ La base sí genera `sk_producto` sola, vía secuencia con `DEFAULT` (no `IDENTIT
 | H2 | `config` como string doble-encodeado | Abierto, alcance no decidido |
 | H3 | 5 parseos duplicados de `config` | Abierto, plan de dedup listo |
 | H4 | Alias de tabla divergentes (`lineage_builder` vs `contracts`) | Abierto |
-| H5 | Acoplamiento temporal `build_lineage`/`stitch_lineage` | Abierto |
+| H5 | Acoplamiento temporal `build_lineage`/`stitch_lineage` | **Resuelto** — D15, riesgo documentado + notificado, no bloqueante |
 | H6 | Fallo silencioso en `_parse_config` | Abierto, choca con D5 |
 | H7 | Sin soporte de `JobEntryJob` (jobs anidados) | Abierto, prerrequisito de D1 |
 | H8 | Infraestructura de validación existente a reusar | Decidido |
@@ -282,3 +411,8 @@ La base sí genera `sk_producto` sola, vía secuencia con `DEFAULT` (no `IDENTIT
 | H16 | `sk_producto` puede no generarse (`DimensionLookup`→`InsertUpdate`) | Abierto, acotado — DB confirma secuencia, riesgo es de contenido del step generado |
 | H17 | 12 tests en rojo sin triage | Abierto, no bloqueante, acción: leer y clasificar |
 | H18 | Auditoría retroactiva de cambios no declarados | Abierto, alcance sin acotar |
+| H19 | Matriz tipo_step → {R,W} sobre tabla (Track F1 Q2) | Entregable — insumo de F2 |
+| H20 | Punto de inserción del corte + gap de orden por FK (Track F1 Q4/Q5) | Entregable — insumo de F2 |
+| H21 | Análisis de contenido `err1.ktr`/`err2.ktr`: confirma E4/E5 (`dim_producto`) y E6 (`dim_tiempo`); C1-bis reconciliado (no es fantasma); excepción self-lookup a C1 | Entregable — caso de prueba real de F2/F3 |
+| H22 | `dim_contracts` no deriva ningún step de solo lectura — prerrequisito externo real de F3 | Abierto — ver D16 |
+| H23 | Entorno: `DBLookup` falla introspección contra pooler de Supabase, preferir `StreamLookup` | Nuevo, sin dueño de track — candidato a `system_etl.txt` |

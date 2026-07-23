@@ -152,23 +152,88 @@ El SQL generado depende del motor que declara el usuario, y hasta ahora eso no e
 
 *Fuera de alcance de esta decisión:* el soporte real multi-motor (Postgres / SQL Server según la base final elegida) no tiene plan todavía. Requiere sesión y sub-plan propios — ver "Abiertos" más abajo.
 
+**Segunda y tercera ocurrencia confirmada (2026-07-22, `bitacora_etl_ventas.md`):** `DISTINCT ON` (R12, dedup de staging por `DISTINCT ON (clave_negocio) ORDER BY stg_fecha_carga DESC`) y `generate_series` (R10, calendario contiguo de `dim_tiempo`) — ambas construcciones exclusivas de Postgres, ambas usadas y confirmadas en verde en la solución de contraste de la bitácora. Ya no es un patrón hipotético citado de sesiones anteriores — es un caso real, empírico, generado por un LLM sin que el prompt se lo pidiera explícitamente. Refuerza la necesidad del punto de notificación obligatorio que esta decisión ya fija. Ruteo: F4 (contenido generado) — ver `03-plan.md`.
+
 ### D13 — Definición de terminado, obligatoria para toda fase del plan
 
 Ninguna fase de `03-plan.md` (Track A o Track F) se da por cerrada sin estas tres cosas:
 
 1. **Dos tests:** uno que haga cumplir específicamente lo que esa fase trabajó, y uno que verifique que el contrato que esa fase *expone* se sostiene (lo que la fase siguiente va a consumir) — escrito como contrato expuesto, no como "conexión con la fase siguiente", para no desactualizarse si el orden de fases cambia.
-2. **El registro de deltas de esa fase** (D9), emitido como *warnings del propio pase* en el mismo punto del pipeline donde ya viven `repair_ktr_steps`, `repair_integrity_gaps` y `enforce_dimension_step_policy` — automático en cada corrida, no un documento que depende de que alguien lo escriba y lo lea. Tiene que cubrir **las dos fuentes de cambio**: lo que el backend genera determinísticamente y lo que produce una sesión de generación con el LLM. Los tests no lo reemplazan — un test afirma lo que a alguien se le ocurrió afirmar; el registro expone lo que viajó sin que nadie lo pidiera (ver "SCD tipo 2" en `01-hallazgos.md`, H9 — así se perdió esa vez).
+2. **El registro de deltas de esa fase** (D9), emitido como *warnings del propio pase* en el mismo punto del pipeline donde ya viven `repair_ktr_steps`, `repair_integrity_gaps` y `enforce_dimension_step_policy` — automático en cada corrida, no un documento que depende de que alguien lo escriba y lo lea. Tiene que cubrir **las dos fuentes de cambio**: lo que el backend genera determinísticamente y lo que produce una sesión de generación con el LLM. Los tests no lo reemplazan — un test afirma lo que a alguien se le ocurrió afirmar; el registro expone lo que viajó sin que nadie lo pidiera (ver "SCD tipo 2" en `01-hallazgos.md`, H9 — así se perdió esa vez). **Mismo canal que usa D15** para notificar al usuario final cuando el backend emite con un problema marcado en vez de abortar — no es solo un registro interno de la sesión de refactor.
 3. **`CLAUDE.md` y un archivo de progreso actualizados:** qué cambió a nivel de convenciones/arquitectura/decisiones vigentes, y qué fase se cerró, qué queda, qué se decidió en el camino. Objetivo: el plan es retomable por cualquiera, no solo por quien lo arrancó.
 
 *Por qué:* sin esto, el tramo "rojo" de la migración no tiene final definido fase por fase — siempre se corre un cambio más antes de reconectar.
 
----
+### D14 — F2/F3 no dependen del borde tipado grande; dependían circularmente de sí mismas
+
+`03-plan.md` hacía depender F2 de "borde tipado + STEP_CONTRACTS centralizado" en su columna "Depende de", mientras la columna "Hallazgos que toca" de esa misma fila listaba H4 y H11 — los hallazgos que esa centralización requiere resolver. Mismo patrón en F3: "Depende de" pedía H7 resuelto, y "Hallazgos que toca" incluía H7. Las dos fases dependían de algo que ellas mismas producían — sin punto de entrada válido.
+
+**Lo que el motor de corte necesita en concreto, sin preguntas abiertas:**
+- H4 — alias de tabla resuelto vía `contracts.STEP_CONTRACTS.key_aliases`, no la copia divergente de `lineage_builder` (ni el `or` inline de `dimension_step_policy.py:107`).
+- H11 — `DBLookup` cubierto en la matriz R/W (hoy invisible para el linaje).
+- H6 — el parseo de `config` falla fuerte (D5) en vez de degradar a `{}`. Relevante para el corte porque una config rota leída como `{}` produce un corte silenciosamente equivocado.
+
+Los tres tienen dirección ya decidida (D5, D8) y no dependen de ningún spike ni de ninguna pregunta listada en "Deliberadamente no decidido". Relación con `parse_cfg` (H3): H6 se resuelve solo en el momento en que F5 deduplica los 4 copies para importar la función canónica (`contracts.parse_cfg`) — el fail-fast se arregla una vez, ahí, y cubre los cinco puntos de uso a la vez.
+
+**Lo que el motor de corte NO necesita:** el borde tipado grande tal como lo describe `00-objetivo.md` (cambio de schema `string → object`, H2; border único con tipo validado). Esa sigue siendo una pregunta de arquitectura de entrada completa, abierta, sin fecha porque depende de Track A (pospuesto) y de un spike empírico. El corte puede construirse sobre el `dict` que ya devuelve `parse_cfg` hoy, siempre que tenga los tres puntos de arriba resueltos primero.
+
+**Consecuencia — desdoblamiento de fases (ver `03-plan.md`):** H4+H11+H6 pasan a una fase previa chica (F1.5), separada de F2. H7 pasa a una fase previa propia (F2.5), separada de F3. Ninguna fase queda dependiendo de sí misma.
+
+*Por qué:* mismo principio que D8 — el conocimiento de dominio tiene una sola casa, y esa casa se construye antes de que el consumidor (el corte) la dé por hecha, no como parte del mismo paso que la consume.
+
+### D15 — Fail-fast en detección, no fail-hard en emisión: el backend emite mejor esfuerzo y notifica
+
+Ajuste de alcance sobre D5, motivado por el modelo de producto: el sistema es un acelerador para profesionales de Spoon, no un generador que garantiza corrección por sí solo. Un `.ktr` emitido con un problema señalado es menos costo para el usuario que un backend que se niega a generar — el costo de la alternativa estricta (tocar backend, regenerar steps, mecanismos de descarga de steps armados solo para mitigar ese costo) ya se pagó una vez.
+
+**D5 se parte en dos mitades — no se revierte, se acota:**
+
+- **Fail-fast en detección/parseo — sigue igual, sin cambios.** Un `except: return {}` que traga un error de parseo (H6) sigue prohibido: un error tragado no se puede notificar después. Esta mitad de D5 no se toca.
+- **Fail-hard en emisión — se retira.** El backend ya no se niega a emitir un `.ktr`/`.kjb` porque un chequeo de integridad (V2 — ver corrección abajo sobre qué rol juega cada validador — o cualquier check de `error_catalog_checks.py`) encontró un problema en un input malformado o patológico. Emite el mejor esfuerzo posible y marca el archivo.
+
+**Mecanismo de notificación — reutiliza D13, no uno nuevo.** Todo error detectado se documenta en el registro de deltas de D13 (los `warnings` que ya recorren el pipeline en el mismo punto que `repair_ktr_steps`/`repair_integrity_gaps`/`enforce_dimension_step_policy`, y que ya vuelven al caller como tercer elemento de la tupla de `build_ktr`). D13 ya declaraba ese canal como automático y ligado a la corrida — esta decisión fija que además es el canal que llega al usuario final, no solo un registro para quien audita la sesión de refactor.
+
+**Requisito de forma — accionable, no genérico.** Cada notificación dice: qué archivo, qué se infirió (ej. "orden asumido: STG antes que DWH, no verificado contra grafo de FK"), y qué revisar antes de correr en Spoon. Un warning genérico ("hubo un problema") no cumple esta decisión.
+
+**Consecuencia concreta sobre código ya escrito, no solo sobre diseño futuro:**
+- `ktr_xml_validator.py:100-117` (`validate_ktr_xml`, `raise KtrXmlValidationError`) está wireado siempre en `build.py:401` y hoy aborta la emisión — es exactamente el comportamiento que esta decisión retira. Pasa a alcance de **F3** (que ya toca este archivo, ver `03-plan.md`): convertir el `raise` en un finding anotado + notificación accionable por el canal de D13.
+- `error_catalog_checks.py` (V4-V13) verificado sin callers en el backend — no está wireado a nada todavía, no hereda el problema, pero cuando se conecte nace directo con el patrón "anota, no aborta".
+- `00-objetivo.md` describía los validadores V1/V2/V3 como gate que "aborta... nunca emite un artefacto incoherente" — corregido en ese archivo para reflejar esta decisión.
+
+**H5 (linaje acoplado por orden de ejecución, `01-hallazgos.md`) — resuelto bajo esta decisión.** Opción elegida: riesgo documentado y notificado, no prerrequisito bloqueante. F1.5 mantiene su alcance original (H4 + H11 + H6, sin H5). F2 diseña el corte apoyándose en `build_lineage()` tal como está — con el acoplamiento R10 (`arquitectura-objetivo.md`) todavía presente — siempre que emita el aviso accionable cuando no pueda garantizar el orden inferido.
+
+**Corrección (2026-07-22) — el corte no es una compuerta que falla, es separación constructiva.** La redacción original de este punto preguntaba "qué hace F2 cuando el corte no puede satisfacer V1/V2/V3 limpio" — presuponía un estado de fallo que un ETL válido no produce. Un ETL válido es un DAG; separarlo en KTR ordenados por un KJB, siguiendo la señal estructural, produce un resultado válido por construcción. No existe "no se pudo cortar" para un input válido.
+
+Consecuencia sobre el rol de cada validador — **V1 y V3 no son gates, son las reglas que guían dónde separar:**
+- **V1** (ninguna tabla W y R en el mismo KTR) y **V3** (un solo escritor por tabla por KTR) son señal estructural de corte (consistente con C.2 y D6-bis): tabla escrita y leída por steps distintos, o doble escritor, marcan frontera. Separar exactamente ahí satisface V1/V3 por construcción — no se validan después, se usan para decidir el corte.
+- **V2** (todo lookup tiene productor en el job) es distinto: no dice dónde separar, dice si el ETL está completo. Un lookup sin productor es un dato faltante — error a notificar bajo esta misma D15, no una señal de fragmentación.
+
+Lo que sí sigue bajo D15 (generar-y-notificar, no bloquear): el caso genuinamente patológico — ciclo real en el grafo, `config` malformado que ni H6 pudo salvar, lookup sin productor (V2). Ninguno de esos es una rama del algoritmo de corte; son el mismo mejor-esfuerzo que D15 ya cubre para cualquier otro fallo de generación. F2 no diseña un plan B para el corte — diseña la separación constructiva. Detalle de las reglas concretas en `03-plan.md`, fila de F2.
+
+*Por qué separado de D5 en vez de reescribirla:* mismo criterio que D6/D6-bis — D5 sigue siendo la doctrina general (ante la duda, fallar visible). D15 fija dónde se traza la línea entre "fallar" (detección, sigue firme) y "bloquear" (emisión, se retira), que D5 dejaba ambigua y que `00-objetivo.md` había resuelto para el lado que esta decisión ahora corrige.
+
+### D16 — El corte tiene una dependencia externa real (eje `dim_contracts`), no una que Track F resuelva
+
+Disparada por el análisis de `bitacora_etl_ventas.md`/`extracto_corte_F2.md` (2026-07-22): el `extracto` preguntó si C1-bis (doble escritor sobre `dim_producto` en `err1.ktr`/`err2.ktr`, H21) era un **fantasma** — un artefacto de que el step estaba mal elegido, no un problema estructural real. Verificado contra el código (no contra memoria):
+
+- `enforce_dimension_step_policy` (`dimension_step_policy.py:41-50`, `derive_dimension_step_type`) **sí** corre antes del punto de inserción del corte (H20) — orden confirmado: `repair_ktr_steps → repair_integrity_gaps → enforce_dimension_step_policy → [corte] → build_ktr` (`etl_generator.py:800-818`). El orden no es el problema.
+- Pero su vocabulario de salida es binario y no cubre el caso real: deriva únicamente `DimensionLookup` (scd_type==2) o `CombinationLookup` (cualquier otro caso) — **nunca** `Insert/Update`, `Table Output` ni `StreamLookup`. La bitácora (R1, confirmado por log en `L2-E01`/`L3-E01`) prueba que para una dimensión simple (sin `version`/fechas) el step correcto es `Insert/Update` (o el patrón `Table Output` insert-new-only), no `CombinationLookup` — combinación nunca ejercitada ni por la bitácora ni por el repo.
+- Más grave: **ninguno de los dos tipos derivables hoy es de solo lectura.** `DimensionLookup` y `CombinationLookup` son R+W siempre (H19: el builder hardcodea `update=Y` / la semántica del step no tiene modo solo-lectura). `enforce_dimension_step_policy` tampoco distingue "este step carga la dimensión" de "este step solo busca la FK para el hecho" — corrige el *tipo* de cualquier step que matchee una tabla de `dim_contracts`, sin importar su rol. Consecuencia: aunque el tipo derivado sea "correcto" según SCD, el step usado como lookup del lado del hecho sigue siendo R+W por construcción — exactamente el patrón que dispara C1/C1-bis en `err1.ktr`/`err2.ktr` (H21) y que la bitácora reprodujo de forma independiente en `dim_producto` (L1-G1/L2-E01).
+
+**Conclusión: C1-bis no es un fantasma — es una señal real que se va a seguir disparando sobre ETLs legítimos** hasta que exista un tipo de step genuinamente de solo lectura para el lookup del lado del hecho. La bitácora ya lo resolvió empíricamente dos veces por caminos independientes: R2 (lookup de dimensión en el hecho siempre de solo lectura) + R9, refinado por log (`DBLookup` falla la introspección de metadata contra el pooler de Supabase — `getTableFields`, ver H23 en `01-hallazgos.md`; el sustituto que funcionó es `StreamLookup`, que además no toca tabla en la matriz R/W — H19 — así que un lookup de hecho implementado como `StreamLookup` nunca dispara el corte, por diseño, no por parche).
+
+**Ubicación de la corrección — eje `dim_contracts`, NO el motor de corte (D6-bis, D11):** esto no es fragmentación — es selección de step por forma de tabla/rol, mismo eje que ya decide SCD1 vs SCD2 (`dimension_step_policy.py`, serie `dim_contracts`, D11). Track F no lo implementa; Track F **depende** de que se implemente. Es la misma relación de dependencia externa que D14 ya nombró para el borde tipado grande (H2) — con una diferencia importante: el borde tipado grande **no** bloqueaba a Track F (D14). Esto **sí** lo hace, aunque viva en otro eje.
+
+**Consecuencia sobre el plan:** F3 (implementación del corte) tiene un prerrequisito externo a Track F, no solo F1.5/F2.5 (D14). Dos caminos, a decidir por el usuario antes de F3, no algo que esta sesión resuelva unilateralmente:
+1. Ampliar el vocabulario de `derive_dimension_step_type` (agregar `Insert/Update`/`Table Output` para el loader cuando la forma de la tabla lo pide, y forzar `StreamLookup` — no `DimensionLookup`/`CombinationLookup`/`DBLookup` — para cualquier step que solo busca la FK del lado del hecho) **antes** de que F3 arranque.
+2. F3 arranca igual, con el riesgo documentado y notificado (D15): el corte puede sobre-disparar C1-bis sobre ETLs donde el "doble escritor" es en realidad un lookup mal tipado, no un conflicto real — y el usuario revisa esos casos a mano hasta que el camino 1 se resuelva.
+
+*Por qué D16 y no una fila más en `03-plan.md`:* cambia qué puede prometer F3 sin trabajo externo, igual que D14 — nivel de decisión de scope, no de tarea.
 
 ## Deliberadamente no decidido
 
 Distinguir esto de lo cerrado evita que alguien lo dé por resuelto:
 
-- **Si el borde tipado de entrada va, y en qué fase.** Lo resuelve arquitectura. La pregunta concreta: ¿es habilitador de la fragmentación o una optimización paralela?
+- **Si el borde tipado de entrada *grande* (H2, schema `string → object`, tipo validado por construcción) va, y en qué fase.** Lo resuelve arquitectura. La pregunta concreta: ¿es habilitador de la fragmentación o una optimización paralela? **Parcialmente resuelto por D14:** para el alcance chico que el corte necesita (H4, H11, H6), no es habilitador — ya está separado en F1.5/F2.5 y no bloquea. Para el alcance grande (H2), la pregunta sigue abierta.
 - **El cambio `string → object` en el schema del LLM.** Depende de un spike empírico contra Gemini y Anthropic, no de un criterio.
 - **Qué hace el producto ante un raw incompleto en `build-from-raw`.** Hoy el repair loop está desconectado a propósito, con discusión pendiente. Bloquea cuán estricto puede ser ese punto de entrada.
 - **El alcance exacto de las reglas de fragmentación.** Depende de D7: primero los casos, después las reglas. D7 ya confirma que los casos existen (ver Verificaciones pendientes) — falta la entrega concreta de su ubicación antes de poder escribir las reglas.
@@ -192,7 +257,9 @@ Postgres queda como default decidido (D12), pero el soporte multi-motor no tiene
 
 ### C.2 — Contrastar las reglas de fragmentación existentes contra D6-bis
 
-El material de fragmentación (`handoff_fragmentacion_y_errores.md`) ya trae reglas de cuándo fragmentar, escritas antes de D6-bis. Hay que releerlas y separar las que responden a corrección estructural de las que responden a legibilidad o umbrales de tamaño — esas segundas se eliminan. Barato, y **bloquea Track F2** (diseño del corte): si no se hace antes, el pase nace contradiciendo la doctrina.
+**Resuelto 2026-07-22.** Releídas las reglas de "cuándo fragmentar" en `handoff_fragmentacion_y_errores.md` (sección Fase 2 del prompt, líneas 51-62): C1 (toda tabla que aparece W y R en la misma etapa marca corte), la agrupación en componentes conexos, el ordenamiento por grafo de FK, y los validadores V1/V2/V3 (ninguna tabla W+R en el mismo ktr / todo lookup tiene productor / un solo escritor por tabla). Las cuatro son señal estructural — ninguna depende de cantidad de steps, longitud de archivo, ni legibilidad. **No hay ningún umbral tipo "partir si >N steps" en el material** — no se encontró nada que eliminar.
+
+*Conclusión:* el handoff ya cumplía D6-bis antes de que D6-bis se escribiera formalmente — coincidencia, no verificación previa (el handoff es anterior). Track F2 puede diseñar sobre el criterio C1 + V1/V2/V3 tal como están, sin depurar nada primero. Desbloquea Track F2 en este eje — F2 sigue sin arrancar sin aprobación explícita (ver `03-plan.md`).
 
 ### C.3 — Verificaciones contra la base real (independiente del dialecto)
 
@@ -213,6 +280,20 @@ WHERE table_name = 'dim_producto' AND column_name = 'sk_producto';
 {"column_name": "sk_producto", "column_default": "nextval('dim_producto_sk_producto_seq'::regclass)", "is_identity": "NO"}
 ```
 Secuencia vía `DEFAULT`, no `IDENTITY`. **Esto solo protege si el `INSERT` omite la columna por completo.** Verificado contra el generador: `_step_InsertUpdate` (`backend/app/services/ktr_builder/steps/output.py:43-63`) arma la lista de `<value>` directamente desde `cfg["fields"]`, sin ningún filtro que excluya una clave técnica/surrogate — si el step que carga `dim_producto` emite un mapeo hacia `sk_producto` (aunque sea con un valor vacío), ese `INSERT` incluye la columna explícita y pisa el `DEFAULT`. La pregunta real no es "¿la base genera el sk?" (sí) sino "¿el step generado por el LLM alguna vez mapea algo a esa columna?" — eso depende del contenido de cada corrida, no es verificable en abstracto. `err1.ktr`/`err2.ktr` (ver D7, arriba) referencian `InsertUpdate` y `sk_producto` — candidatos para revisar esto en concreto cuando Track F1/F4 los analice. No es más "rotura esperando genérica"; es un caso puntual a confirmar contra esos dos archivos.
+
+### C.5 — ¿El backend recomienda/emite constraints DDL? (R7, `bitacora_etl_ventas.md`)
+
+L2-E05 (bitácora): `dim_producto` sin `UNIQUE(id_producto)` — el upsert por clave natural funciona igual, pero sin índice único admite duplicados en reprocesos concurrentes. Regla propuesta como R7: "emitir constraints de integridad que el upsert por clave natural asume."
+
+**No es una decisión que esta sesión pueda tomar sola — es superficie de producto nueva.** Hoy el backend **no emite DDL en ningún punto**: `dwh_ddl` es un input (el usuario lo provee), nunca un output. Antes de rutear R7 a cualquier track hay que decidir: ¿el backend alguna vez sugiere/emite `ALTER TABLE`, o se limita a advertir en el canal que ya existe? Camino barato disponible sin abrir superficie nueva: usar el canal de `advertencias_buenas_practicas` (ya existe, ya es advisory-only, D15 ya lo trata como "notifica, no bloquea") para señalar el constraint recomendado como texto, sin que el backend emita SQL DDL real. No aplicado — queda abierto hasta que el usuario confirme el camino.
+
+### C.6 — Política de default ante FK no resuelta (R5-b/R11, `bitacora_etl_ventas.md`)
+
+L2-E06 (bitácora, marcado ahí mismo como "a decidir"): una venta con `id_producto` ausente del maestro deja `fk_producto` NULL, y `fact_venta.fk_producto` es NOT NULL — el INSERT rompe. Dos políticas válidas, mutuamente excluyentes, ninguna obviamente "la correcta" sin decisión de negocio:
+1. **Miembro desconocido:** insertar una fila `sk=0` en la dimensión y usarla como default del lookup (fila nunca queda huérfana, pero "contamina" el hecho con un miembro sintético).
+2. **Ruteo de huérfanos (R11, validado en la bitácora vía Sol02):** `FilterRows` (`sk IS NOT NULL`) tras cada lookup, huérfanos van a un stream de descarte en vez de al INSERT — la venta no se carga hasta que el maestro la tenga.
+
+**No decidido acá.** Impacta directamente el diseño de F4 (qué patrón emitir para resolver FK del lado del hecho) — bloquea la implementación de R11, no su reconocimiento como hallazgo.
 
 ### C.4 — Auditoría retroactiva de cambios no declarados
 
