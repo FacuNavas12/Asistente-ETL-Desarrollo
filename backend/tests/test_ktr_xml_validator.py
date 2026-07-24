@@ -77,19 +77,21 @@ def test_generic_connection_with_both_attributes_passes():
 
 
 def test_get_system_info_without_fields_rejected():
+    # XML emite "SystemInfo" (ID real del plugin Kettle), no "GetSystemInfo"
+    # — _STEP_REQUIRED_CHILDREN (ktr_xml_validator.py) chequea por ese nombre.
     xml = _VALID_XML.replace(
         "<step><name>B</name><type>TableOutput</type></step>",
-        "<step><name>B</name><type>GetSystemInfo</type><fields/></step>",
+        "<step><name>B</name><type>SystemInfo</type><fields/></step>",
     )
     with pytest.raises(KtrXmlValidationError) as exc:
         validate_ktr_xml(xml)
-    assert "GetSystemInfo" in str(exc.value)
+    assert "SystemInfo" in str(exc.value)
 
 
 def test_get_system_info_with_fields_passes():
     xml = _VALID_XML.replace(
         "<step><name>B</name><type>TableOutput</type></step>",
-        "<step><name>B</name><type>GetSystemInfo</type>"
+        "<step><name>B</name><type>SystemInfo</type>"
         "<fields><field><name>fecha_carga</name><type>system date (fixed)</type></field></fields></step>",
     )
     validate_ktr_xml(xml)  # no debe levantar
@@ -113,7 +115,7 @@ def _base_ktr_data(step_overrides=None):
              "database": "PLACEHOLDER_DATABASE", "port": 0, "username": "PLACEHOLDER_USER"}
         ],
         "steps": [
-            {"name": "Leer", "type": "TableInput", "config": {"connection": "conn_dwh", "sql": "SELECT 1"}},
+            {"name": "Leer", "type": "TableInput", "config": {"connection": "conn_dwh", "sql": "SELECT id FROM origen"}},
             *(step_overrides or []),
             {"name": "Escribir", "type": "TableOutput", "config": {"connection": "conn_dwh", "table": "dim_x"}},
         ],

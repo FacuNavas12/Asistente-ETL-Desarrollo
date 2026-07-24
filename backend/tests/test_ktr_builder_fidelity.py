@@ -61,7 +61,9 @@ def test_systeminfo_not_degraded_to_dummy():
     )
     xml, _, _ = build_ktr(ktr)
     step = _find_step(xml, "Obtener Fecha de Carga")
-    assert step.findtext("type") == "GetSystemInfo"
+    # XML emite "SystemInfo" (ID real del plugin Kettle), no "GetSystemInfo"
+    # (nombre canónico interno/UI) — ver _XML_TYPE_OVERRIDES en build.py.
+    assert step.findtext("type") == "SystemInfo"
     field = step.find("fields/field")
     assert field.findtext("name") == "stg_fecha_carga"
     assert field.findtext("type") == "system date (fixed)"
