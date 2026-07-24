@@ -191,8 +191,11 @@ def enforce_dimension_step_policy(
                     # scd_type sin versionar (0/1): CombinationLookup no tiene
                     # modo solo-lectura, y forzar DimensionLookup+update=N acá
                     # arriesga referenciar date_from/date_to que la tabla no
-                    # declara (el contrato no las trae para scd_type != 2) —
-                    # reporta, no repara (residual, ver D16).
+                    # declara (el contrato no las trae para scd_type != 2). El
+                    # fix correcto (TableInput+StreamLookup, ver system_etl.txt
+                    # "LOOKUP DE FK DEL LADO DEL HECHO") requiere sintetizar un
+                    # step + hop nuevos — fuera de alcance de esta función, que
+                    # solo edita config de steps existentes. Reporta, no repara.
                     results.append({
                         "tipo": "error",
                         "campo": table,
@@ -200,7 +203,10 @@ def enforce_dimension_step_policy(
                             f"Step '{step.get('name')}' ({canonical}) actúa como lookup de FK del "
                             f"hecho (no como loader) sobre '{table}', pero el contrato deriva scd_type "
                             "sin versionar — no hay mecanismo de solo-lectura seguro sin date_from/"
-                            "date_to conocidas para esa tabla. Revisar a mano (D16, residual)."
+                            "date_to conocidas para esa tabla. Fix: reemplazar por TableInput (lee la "
+                            "dimensión ya cargada) + StreamLookup (match por clave natural) en la misma "
+                            "transformación — ver 'LOOKUP DE FK DEL LADO DEL HECHO' en system_etl.txt y "
+                            "D16 en 02-decisiones.md."
                         ),
                     })
                     continue

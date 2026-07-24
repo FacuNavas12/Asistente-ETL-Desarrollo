@@ -464,6 +464,27 @@ Dos detalles operativos que suelen morder:
   incluye, agregá un step posterior que la actualice tras la carga de la dimensión y reportalo en
   `validaciones` si no lo hacés — sin ese UPDATE, la columna miente.
 
+**LOOKUP DE FK DEL LADO DEL HECHO — CUÁNDO ESTE STEP NO PUEDE VOLVER A ESCRIBIR [D16]:** cuando un
+step busca la FK de una dimensión que YA fue cargada por otro step de este mismo proceso (no la
+está cargando él mismo), ese step de búsqueda tiene que quedar de solo lectura — nunca repitas
+`DimensionLookup`/`CombinationLookup` con escritura habilitada sobre una tabla que otro step ya
+carga (doble escritor + carrera, el motivo original de este refactor). Qué usar según el
+`scd_type` de esa dimensión en `dim_contracts`:
+- `scd_type == 2` (con historial): `DimensionLookup` con el flag de actualización en `N` (solo
+  lectura) — necesita el rango de fechas para resolver la versión vigente, y `DimensionLookup` es
+  el único step de este catálogo que sabe matchear por rango de fechas.
+- `scd_type` 0 o 1 (sin historial): NO uses `CombinationLookup` (no tiene modo de solo lectura —
+  siempre inserta si no matchea), ni `DimensionLookup` (sin `date_from`/`date_to` reales para esa
+  dimensión, referenciarlas rompe en runtime), ni `DBLookup` (falla contra el pooler de Supabase,
+  ver "PREFERENCIA DE ENTORNO" arriba). Agregá un `TableInput` propio EN ESTA MISMA transformación
+  que lea la dimensión ya cargada (`SELECT <natural_keys>, <technical_key> FROM <tabla>`),
+  conectado por hop a un `StreamLookup` que matchee por la clave natural. Es el mismo patrón que la
+  sección de `DBLookup` ya recomienda por motivo de entorno, pero acá aplica siempre, no solo
+  contra el pooler: si el loader real de esa dimensión vive en OTRA transformación `.ktr` (misma
+  etapa, corte separado), no hay stream en memoria que compartir entre archivos —
+  `StreamLookup` solo puede referenciar un step DENTRO del mismo archivo, por eso el `TableInput`
+  propio es obligatorio, no opcional.
+
 **PATRÓN MIEMBRO INFERIDO [D21 — solo si el prompt trae la sección "## DIMENSIONES CON MIEMBRO
 INFERIDO OBLIGATORIO"]:** esa sección lista dimensiones referenciadas por una FK `NOT NULL` desde
 una tabla de hechos — el lookup de esa FK del lado del hecho NUNCA puede devolver sin match
@@ -583,6 +604,7 @@ Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es N
 21. ¿Algún `InsertUpdate` carga una dimensión por clave natural (no una tabla de hechos) y esa clave natural aparece en `keys` pero NO en `fields`? [B16] → Si SÍ: agregala también a `fields` con `"update": false` (ver ejemplo de la regla B16) — si no, el INSERT la omite y viola su propio NOT NULL.
 22. ¿Emitiste alguna construcción SQL dialecto-dependiente (`DISTINCT ON`, `generate_series`, u otra específica de Postgres) sin declarar `tipo: "info"` en `validaciones`? [K19] → Si SÍ: agregá la entrada de `validaciones` faltante.
 23. Si el prompt trae "## DIMENSIONES CON MIEMBRO INFERIDO OBLIGATORIO" (D21): ¿cada dimensión listada tiene EXACTAMENTE un step que la escribe (anti-join + Union hacia el ÚNICO loader), y el/los lookup(s) de su FK del lado del hecho son de solo lectura (`StreamLookup`, o `DimensionLookup`/`CombinationLookup` sin escritura)? → Si NO: corregí — un segundo writer sobre esa tabla es exactamente el doble-escritor que este proyecto existe para eliminar (ver "PATRÓN MIEMBRO INFERIDO").
+24. ¿Algún step busca la FK de una dimensión con `scd_type` 0 o 1 (sin historial, según `dim_contracts`) usando `CombinationLookup`, `DimensionLookup` o `DBLookup` en vez de `TableInput`+`StreamLookup`? [D16] → Si SÍ: reemplazá por un `TableInput` (lee la dimensión ya cargada) conectado a un `StreamLookup` (match por clave natural), dentro de la MISMA transformación (ver "LOOKUP DE FK DEL LADO DEL HECHO").
 
 ## CAMPO dwh_sample — OBLIGATORIO
 

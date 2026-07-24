@@ -236,6 +236,10 @@ def test_enforce_dimension_step_policy_reports_not_repairs_fact_lookup_scd1():
     assert lookup["type"] == "DimensionLookup"  # sin tocar — no repara
     fact_lookup_errors = [r for r in results if r["tipo"] == "error" and "lookup de FK" in r["mensaje"]]
     assert len(fact_lookup_errors) == 1
+    # El mensaje apunta al fix concreto (TableInput+StreamLookup, ver system_etl.txt),
+    # no a "revisar a mano" genérico — residual cerrado del lado de guía, D16.
+    assert "TableInput" in fact_lookup_errors[0]["mensaje"]
+    assert "StreamLookup" in fact_lookup_errors[0]["mensaje"]
 
 
 def test_enforce_dimension_step_policy_respects_override_for_fact_lookup_role():

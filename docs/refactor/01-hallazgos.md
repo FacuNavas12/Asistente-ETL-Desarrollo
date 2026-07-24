@@ -352,7 +352,7 @@ Los 37 de `test_api.py` (requieren servidor local en `localhost:8000`) y el flak
 
 **Sesión de origen:** Track F2 (2026-07-22), disparado por `extracto_corte_F2.md` (`bitacora_etl_ventas.md`), pregunta "¿C1-bis es un fantasma?".
 
-**Estado:** abierto — **ver D16 en `02-decisiones.md`**, decisión de scope: F3 tiene un prerrequisito externo a Track F (ampliar `dim_contracts` para derivar `Insert/Update`/`Table Output` para el loader y forzar `StreamLookup` para el lookup del lado del hecho), o arranca con el riesgo documentado (D15). No lo resuelve esta sesión.
+**Estado:** cerrado — **ver D16 en `02-decisiones.md`**. `role_of_dimension_step()` + Paso 4 de `enforce_dimension_step_policy` (código 2026-07-24) distinguen loader vs. fact_lookup y fuerzan solo-lectura para `scd_type==2`; el caso `scd_type` 0/1 se cerró el mismo día vía guía de generación (`system_etl.txt` — `TableInput`+`StreamLookup`), con el backend como red de seguridad "reporta, no repara" si el LLM no lo sigue.
 
 ---
 
