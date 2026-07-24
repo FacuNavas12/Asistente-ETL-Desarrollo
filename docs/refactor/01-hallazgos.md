@@ -1,6 +1,6 @@
 # Hallazgos — Refactor de fragmentación
 
-**Última actualización:** 2026-07-22
+**Última actualización:** 2026-07-24
 
 Cada entrada: qué se encontró, evidencia (`archivo:línea`), de qué sesión salió, y estado. Estado se evalúa contra [`02-decisiones.md`](02-decisiones.md) — si una decisión ya cerró el hallazgo, dice cuál.
 
@@ -50,16 +50,16 @@ Confirmado además por el docstring del propio archivo (líneas 4-7), que docume
 
 **Evidencia (verificada, exacta):**
 - Canónica: `backend/app/services/ktr_builder/contracts.py:30` — `def parse_cfg(raw) -> dict`
+- ~~Copia: `backend/app/services/ktr_builder/dimension_step_policy.py:53`~~ **eliminada 2026-07-22** (ver H4/H11) — ahora importa `contracts.parse_cfg`.
 - Copia: `backend/app/services/ktr_builder/validate.py:12` — `def _parse_cfg(raw) -> dict`
-- Copia: `backend/app/services/ktr_builder/dimension_step_policy.py:53` — `def _parse_cfg(raw) -> dict`
 - Copia: `backend/app/services/ktr_default_validator.py:63` — `def _parse_cfg(raw) -> dict`
-- Copia (nombre distinto, mismo patrón): `backend/app/services/lineage_builder.py:41` — `def _parse_config(raw) -> dict`
+- Copia (nombre distinto, mismo patrón): `backend/app/services/lineage_builder.py:41` — `def _parse_config(raw) -> dict` (nota: la propia `lineage_builder.py` ya importa `contracts.normalize_config` desde 2026-07-22 para `_extract_table` — el import ya existe en el archivo, falta solo reemplazar esta función)
 
-Ya importan la canónica (no duplican): `backend/app/services/ktr_builder/fields_validate.py:22`, `backend/app/services/ktr_builder/repair.py:22`, `backend/app/services/ktr_builder/build.py:26`.
+Ya importan la canónica (no duplican): `backend/app/services/ktr_builder/fields_validate.py:22`, `backend/app/services/ktr_builder/repair.py:22`, `backend/app/services/ktr_builder/build.py:26`, `backend/app/services/ktr_builder/dimension_step_policy.py` (nuevo).
 
 **Sesión de origen:** LLM y flujo.
 
-**Estado:** abierto. Primer paso del orden de migración propuesto en esa sesión ("dedup de los 4 `_parse_cfg` copiados → import de `contracts.parse_cfg`") — marcado ahí como "cero riesgo", independiente de cualquier decisión pendiente.
+**Estado: resuelto 2026-07-24.** Las 3 copias restantes (`validate.py`, `ktr_default_validator.py`, `lineage_builder.py`) ahora importan `contracts.parse_cfg` (con alias local `_parse_cfg`/`_parse_config` para no tocar sus ~15 call-sites internos) — 0 duplicados propios. Además se encontró y corrigió una duplicación no contada en el conteo original: `backend/app/services/ktr_builder/build.py` tenía 3 reimplementaciones inline del mismo patrón (líneas ~189-194, ~219-224, ~330-334 pre-fix), separadas de su propio import de la canónica en la línea 26 — 2 de las 3 eran código muerto (el pass de normalización de la función, línea ~118, ya mutaba `step["config"]` a dict antes de que esas 2 corrieran) y se simplificaron; la 3ª (en el loop de emisión XML) se dejó como respaldo defensivo con catch explícito. Ver H6 para el mecanismo de fail-fast que esto habilita.
 
 ---
 
@@ -74,7 +74,7 @@ Ya importan la canónica (no duplican): `backend/app/services/ktr_builder/fields
 
 **Sesión de origen:** LLM y flujo, con eco en el prompt (no ejecutado) de Fase 4 de Arquitectura.
 
-**Estado:** abierto. Reclasificado por la propia sesión de origen: de "fragilidad, no bug activo" (porque hoy corre siempre después de la normalización, por orden de llamada) a **"bug de corrección esperando su turno"**, porque bajo fragmentación el linaje deja de ser cosmético (ver H5, H10 y `00-objetivo.md`).
+**Estado: resuelto (2026-07-22).** `lineage_builder._extract_table` (`lineage_builder.py:51-56`) ahora llama `contracts.normalize_config(canonical_type, config)` antes de leer `table` — misma fuente de alias que usa el builder XML, ya no una copia propia. `dimension_step_policy.py:96-99` ídem (reemplaza el `or` inline por `normalize_config`) y de paso elimina su copia local de `_parse_cfg` (importa `contracts.parse_cfg` — un duplicado menos de H3). Verificado: `venv/Scripts/python.exe -m pytest tests/test_dimension_step_policy.py tests/test_lineage_builder.py` → 26/26 en verde, sin regresión. Reclasificado por la propia sesión de origen: de "fragilidad, no bug activo" (porque hoy corre siempre después de la normalización, por orden de llamada) a **"bug de corrección esperando su turno"**, porque bajo fragmentación el linaje deja de ser cosmético (ver H5, H10 y `00-objetivo.md`) — ya cerrado antes de que hiciera falta.
 
 **Corrección verificada en esta sesión (2026-07-22, respondiendo pregunta del usuario):** el material de origen afirmaba "el eje dest-side no tiene dueño: `_TABLE_FIELD_KEYS` vive suelto en `dimension_step_policy.py`". Es **incorrecto** — `_TABLE_FIELD_KEYS` vive en `backend/app/services/ktr_default_validator.py:54`, no en `dimension_step_policy.py`. `dimension_step_policy.py` (nuevo en el commit `149b836`, serie `dim_contracts`) no define tabla de campos propia; sí resuelve alias de tabla con un `or` inline en `dimension_step_policy.py:107` (`cfg.get("table") or cfg.get("target_table") or cfg.get("table_name")`) en vez de usar `contracts.STEP_CONTRACTS.key_aliases` — una instancia nueva y chica del mismo patrón de H4, no listada hasta ahora. No bloquea nada: cae dentro del mismo PASO 1 (centralizar dominio) ya planeado.
 
@@ -113,7 +113,7 @@ El mismo patrón está en las 4 copias listadas en H3 (`validate.py:14-17`, `dim
 
 **Sesión de origen:** LLM y flujo, doctrina R11 (Arquitectura, `arquitectura-objetivo.md:70`, aún no commiteada al repo).
 
-**Estado:** abierto, y en conflicto directo con **D5** ("ante la duda entre tolerar y fallar, se falla"). No requiere ninguna decisión adicional para actuar — D5 ya la resuelve en la dirección de "hacerlo ruidoso".
+**Estado: resuelto 2026-07-24.** `contracts.parse_cfg` ahora lanza `ConfigParseError` (subclase de `ValueError`, distinguible de una excepción genérica) en vez de `return {}`. Un solo punto de captura nuevo, `contracts.normalize_step_configs(ktr_data) -> (ktr_data, warnings)`, corre UNA vez en cada uno de los 4 entry points del pipeline (`etl_generator.py`: `generate_etl`, `generate_etl_from_inference`, `generate_etl_async`, `build_etl_from_raw`) — antes de `repair_ktr_steps` — y reemplaza cada `step["config"]` string por su dict parseado, o por `{}` + un warning accionable si el JSON es inválido. A partir de ahí, todo consumidor downstream (fields_validate.py, repair.py, dimension_step_policy.py, lineage_builder.py, validate.py, ktr_default_validator.py, build.py) recibe siempre un dict — nunca vuelve a ver la excepción, sin necesidad de un `try/except` en cada uno de sus ~20 call-sites. `build_ktr` (build.py) mantiene además un catch propio de respaldo para cualquier caller que no pase por el pre-pass. D15 aplica: un config roto no aborta la generación (mejor esfuerzo), solo dispara el warning. Tests: `tests/test_config_parse_fail_fast.py`.
 
 ---
 
@@ -130,7 +130,7 @@ El mismo patrón está en las 4 copias listadas en H3 (`validate.py:14-17`, `dim
 - `backend/app/schemas/job_schemas.py:42-46` — `JobEntry` no tiene discriminador de tipo (`transformation_name`/`filename`/`rationale`/`order`, nada más): hoy no hay forma de decirle a `build_kjb_xml` "esta entrada es un `.kjb`, no un `.ktr`".
 - Falta: (a) discriminador en `JobEntry` (o un modelo paralelo) para distinguir entrada TRANS de entrada JOB; (b) una función `_job_entry()` nueva junto a `_trans_entry()`, con el set de tags de `JobEntryJob` de Kettle (`job_object_id`, `filename`, `pass_export`, etc. — no es swapear el string `<type>`, es una forma de XML distinta); (c) branch en el loop de entries (`job_analyzer.py:272-274`) que despache por tipo de entrada; (d) un call site nuevo que arme el `JobPlan` de `job_master.kjb` apuntando a los `.kjb` de fase (mismo patrón que `_build_job_plan`, `etl_generator.py:224`, pero un nivel arriba).
 
-**Estado:** abierto. Prerrequisito no resuelto de D1 — sin `JobEntryJob`, la jerarquía de 3 niveles del objetivo no se puede materializar tal como está descrita.
+**Estado: resuelto 2026-07-24.** `JobEntry.entry_type: Literal["trans", "job"] = "trans"` (`job_schemas.py`) — default preserva el comportamiento histórico de todo caller existente sin migración. `_job_entry()` nueva en `job_analyzer.py`, shape verificado contra `JobEntryJob.getXML()` real (pentaho-kettle, ver `kettle-jobentryjob-xml-spec.md` aportado por el usuario): `<type>JOB</type>` + `<specification_method>filename</specification_method>` (obligatorio — sin él, `checkObjectLocationSpecificationMethod()` puede resolver contra un repositorio conectado en vez del archivo en disco) + `<jobname>`/`<directory>`/`<job_object_id>` vacíos (solo aplican a métodos de repositorio). Branch en el loop de `build_kjb_xml` por `entry.entry_type`. Efecto colateral encontrado y corregido: `kjb_xml_validator._check_has_trans_entry` exigía al menos una entrada TRANS — un `job_master.kjb` que delega enteramente en jobs hijos (todas sus entries son JOB) es válido y esa regla lo hubiera rechazado; ampliada a TRANS-o-JOB. Tests: `tests/test_job_entry_job.py` (4 casos: default trans sin cambios, entry JOB con shape correcto, kjb solo-JOB pasa validación, kjb sin ninguna entrada real sigue rechazado).
 
 ---
 
@@ -186,7 +186,7 @@ El mismo patrón está en las 4 copias listadas en H3 (`validate.py:14-17`, `dim
 
 **Sesión de origen:** LLM y flujo (§6, §9 del hallazgo de borde de entrada).
 
-**Estado:** abierto. Reclasificado por la sesión de origen de "parche barato" a **prerrequisito**: bajo fragmentación, un step invisible para el linaje es una dependencia que no se ve y un orden de KJB que puede salir mal.
+**Estado: resuelto (2026-07-22).** `DBLookup` agregado a `_TABLE_FIELD_TYPES` (`lineage_builder.py:20-29`) — mismo cambio que cerró H4, ya que agregar el tipo al set y resolver su alias son la misma línea de código una vez centralizado en `contracts.normalize_config`. Verificado manualmente: `_extract_table("DBLookup", {"target_table": "dim_tiempo"})` → `"dim_tiempo"` (antes: `None`, invisible). Tests existentes en verde (26/26, ver H4). Reclasificado por la sesión de origen de "parche barato" a **prerrequisito**: bajo fragmentación, un step invisible para el linaje es una dependencia que no se ve y un orden de KJB que puede salir mal — ya cerrado antes de que hiciera falta.
 
 ---
 
@@ -286,7 +286,14 @@ La base sí genera `sk_producto` sola, vía secuencia con `DEFAULT` (no `IDENTIT
 
 **Sesión de origen:** Fragmentación (handoff), reclasificado en la respuesta del usuario a esta sesión.
 
-**Estado:** abierto, no bloqueante. Es plausible que sean tests viejos que esperan archivos/formatos ya desactualizados, en cuyo caso su rojo no informa nada. Acción concreta, no juicio a priori: leerlos y clasificarlos en *obsoletos* vs. *rotos de verdad* — solo los segundos sirven como foto de partida para D13 (definición de terminado por fase).
+**Verificado 2026-07-22 (Track F1.5, H4/H11):** confirmado con `git stash` + rerun contra el código previo a los fixes de H4/H11 — los mismos 12 tests fallan igual con o sin esos cambios (`test_ktr_build_job_api.py` ×6, `test_ktr_builder_fidelity.py::test_systeminfo_not_degraded_to_dummy`, `test_ktr_xml_validator.py` ×3, `test_structured_outputs.py::TestEtlGeneratorUnit` ×2). Preexistentes, confirmado, no reclasificados todavía como *obsoletos* vs *rotos de verdad* (sigue pendiente esa lectura). Adicional, no parte del conteo original de H17: los 37 tests de `test_api.py` fallan siempre en local por `ConnectionError` (no hay server en `localhost:8000` — necesitan `uvicorn` corriendo, ambiental, no señal de bug) y `test_structured_outputs.py::TestEtlGeneratorIntegration::test_etl_generate_adversarial_prompt` es flaky (pega a Gemini real, falla por `MAX_TOKENS` según la corrida) — ninguno de los dos es candidato a triage de H17, son ruido de entorno reconocido, no tests rojos por bug.
+
+**Estado: cerrado — triage completo (2026-07-24).** Leídos y clasificados los 12, uno por uno, contra el código committeado en HEAD (`git show HEAD:<archivo>`, sin tocar working tree — ningún cambio de esta sesión ni de F1.5/F2.5 sin commitear influyó el resultado):
+
+- **Obsoletos, corregidos en esta sesión (4 de los 12 rojos + 1 extra que ya pasaba por la razón equivocada):** `test_systeminfo_not_degraded_to_dummy`, `test_get_system_info_without_fields_rejected`, `test_build_ktr_generic_connection_without_real_data_gets_driver_attributes`, `test_build_response_uses_json_data` — todos por el mismo patrón, `<type>GetSystemInfo</type>` a mano en vez de `SystemInfo` (ID real del plugin Kettle, `_XML_TYPE_OVERRIDES` en `build.py`, ya así desde antes de esta sesión) o el literal `"SELECT 1"` como relleno de fixture, que `build.py` rechaza a propósito como placeholder no-query (H16). Sin ambigüedad: comportamiento cambiado a propósito, fixture no actualizada. De paso, `test_get_system_info_with_fields_passes` (no estaba en rojo) se corrigió igual — pasaba por una razón incorrecta (el chequeo de children nunca se disparaba para `<type>GetSystemInfo</type>`, no porque los fields estuvieran bien formados).
+- **Rotos de verdad (8, quedan abiertos):** los 6 de `test_ktr_build_job_api.py` (conexiones `conn_dwh`/`conn_staging`) — ver **H24** — más `test_build_ktr_get_system_info_without_fields_gets_default_field` — ver **H25** — más `test_etl_schema_validates_minimal` — ver **H26**.
+
+Los 37 de `test_api.py` (requieren servidor local en `localhost:8000`) y el flaky de `test_etl_generate_adversarial_prompt` (pega a Gemini real) siguen sin ser candidatos a H17 — ruido de entorno reconocido, no bug.
 
 ---
 
@@ -365,6 +372,42 @@ La base sí genera `sk_producto` sola, vía secuencia con `DEFAULT` (no `IDENTIT
 
 ---
 
+## H24 — `ConnectionsMapRequest.conn_dwh/conn_staging` más estricto que `resolve_real_connections()`, que documenta soportar ambas formas
+
+**Qué:** `ConnectionsMapRequest` (`etl_schemas.py:264-276`) tipa `conn_staging`/`conn_dwh` como `Optional[InlineConnection]` — solo acepta el dict de metadata inline. Pero `resolve_real_connections()` (`ktr_builder/connection.py:93-125`) tiene una rama explícita para `isinstance(value, dict)` (inline) Y una rama para string (`connection_id`, resuelto contra la tabla `Connection`) — su propio docstring dice: *"conn_staging/conn_dwh pueden llegar como dict... en vez de connection_id"*, frase que en sí misma documenta connection_id como forma válida también. El endpoint (`routers/ai.py:244`, `POST /api/v1/etl/{job_id}/connections`) valida el body contra `ConnectionsMapRequest` ANTES de que `resolve_real_connections()` vea nada — la rama string de la capa de servicio queda inalcanzable desde HTTP para `conn_dwh`/`conn_staging` (sigue viva para `conn_origen`, que es `Optional[str]`).
+
+**Evidencia:** `etl_schemas.py:274-276` (schema), `ktr_builder/connection.py:115-121` (docstring + rama string), `routers/ai.py:244-264` (endpoint, valida `ConnectionsMapRequest` primero). 6 tests rojos en `test_ktr_build_job_api.py` — todos mandan `{"conn_dwh": <connection_id string>}` (patrón reusado de un `Connection` ya creado vía `POST /api/connections`, igual que hace `conn_origen`) y reciben 422 antes de llegar a `resolve_real_connections()`.
+
+**Sesión de origen:** esta sesión (2026-07-24), triage de H17. Confirmado contra `git show HEAD` — ya así en el commit `5c4b15e`, no en trabajo sin commitear de ninguna sesión.
+
+**Estado:** abierto, sin dueño de track — no es F3 (fragmentación), toca el flujo de conexiones destino del flujo async de 2-KTR. Dos salidas posibles, no elegidas: (a) `ConnectionsMapRequest.conn_dwh/conn_staging` pasa a aceptar `Union[str, InlineConnection]` (restaura el caso "reusar una Connection guardada" para destino, que `resolve_real_connections` ya sabe resolver); (b) si esa forma se dejó de soportar a propósito (el diseño de "metadata inline, nunca se persiste" sugiere que sí), la rama string de `resolve_real_connections` para `conn_dwh`/`conn_staging` es la que sobra, y los 6 tests están probando un caso que el producto ya no ofrece — habría que borrarlos o reescribirlos contra `InlineConnection`. Decisión de producto, no de código.
+
+---
+
+## H25 — `_CRITICAL_FIELDS["GetSystemInfo"]` vuelve inalcanzable el fallback de field por defecto que `_step_GetSystemInfo` ya implementa
+
+**Qué:** `_CRITICAL_FIELDS["GetSystemInfo"] = ["fields"]` (`registry.py:240`) hace que `build_ktr()` aborte con `KtrBuilderError` (`build.py:196-219`, corre ANTES del loop que invoca los builders de step) apenas un step `GetSystemInfo` llega sin `fields`. Pero `_step_GetSystemInfo` (`ktr_builder/steps/control.py:33-45`) tiene lógica dedicada para ese caso exacto: *"GetSystemInfo: config sin 'fields', se agrega field por defecto 'fecha_carga'"* — nunca se ejecuta, porque el build ya abortó antes de llegar ahí. El propio módulo `ktr_xml_validator.py` documenta el fallback como comportamiento esperado del sistema (docstring: *"GetSystemInfo sin `<fields>` -> KtrXmlValidationError (y confirma que build_ktr() ahora agrega un field por defecto, evitando el error)"*) — la intención de diseño y el chequeo crítico se contradicen entre sí, ambos ya committeados.
+
+**Evidencia:** `registry.py:240` (`_CRITICAL_FIELDS`), `build.py:196-219` (orden: chequeo crítico antes que builders), `ktr_builder/steps/control.py:40-45` (fallback muerto), `ktr_xml_validator.py:1-8` (docstring que asume el fallback vivo). Test rojo: `test_ktr_xml_validator.py::test_build_ktr_get_system_info_without_fields_gets_default_field`.
+
+**Sesión de origen:** esta sesión (2026-07-24), triage de H17. Confirmado contra `git show HEAD` — ya así en `5c4b15e`.
+
+**Estado:** abierto, sin dueño de track — no es F3. Arreglo aparente simple (sacar `"fields"` de `_CRITICAL_FIELDS["GetSystemInfo"]`, dejar que `_step_GetSystemInfo` inyecte el default) pero es cambio de comportamiento de validación ya en producción — no se tocó sin decisión explícita.
+
+---
+
+## H26 — `ETL_OUTPUT_SCHEMA` no declara `documentacion` como property top-level; `ETLGenerateResponse`/`etl_generator.py` sí la esperan
+
+**Qué:** `ETL_OUTPUT_SCHEMA` (`llm_output_schemas/etl_output.py:16-25`) tiene `additionalProperties: False` en el nivel raíz y su `properties` NO incluye `documentacion` — un LLM bajo structured output real (Gemini/Anthropic con schema estricto) no puede devolver esa clave sin violar el schema. Pero `ETLGenerateResponse.documentacion` (`etl_schemas.py:122`) existe como campo de respuesta, y `etl_generator.py` (`_build_response_from_data`/`_build_response_from_two_ktr_data`) hace `data.get("documentacion", "")` — código que asume la clave puede venir poblada, pero bajo el schema actual nunca puede.
+
+**Evidencia:** `llm_output_schemas/etl_output.py:16-25` (schema sin `documentacion`), `etl_schemas.py:122` (campo de respuesta), `etl_generator.py` (lectura con default vacío). Test rojo: `test_structured_outputs.py::TestEtlGeneratorUnit::test_etl_schema_validates_minimal` (fixture incluye `documentacion`, `jsonschema.validate` la rechaza).
+
+**Sesión de origen:** esta sesión (2026-07-24), triage de H17. Confirmado contra `git show HEAD` — ya así en `5c4b15e`.
+
+**Estado:** abierto, ambiguo — a diferencia de H24/H25, acá no está claro cuál lado es el correcto sin una decisión de producto: (a) `documentacion` se sacó del contrato LLM a propósito en algún momento (¿reemplazada por otro mecanismo de generar documentación?) y el campo de respuesta + el `.get()` con default son restos sin limpiar — en ese caso el test está probando un contrato viejo; (b) es un olvido real al escribir el schema y `documentacion` debería declararse como property opcional — en ese caso `ETLGenerateResponse.documentacion` viene vacía siempre en producción hoy, silenciosamente. No se decide acá.
+
+---
+
 ## Intake — `bitacora_etl_ventas.md` (R1-R12): clasificación y ruteo
 
 Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (2026-07-22) — evita que cada regla nueva de un test se acumule como un H-number suelto. Ver la sección "Intake de hallazgos de tests" en `03-plan.md` para el mecanismo completo; acá solo la aplicación concreta a R1-R12.
@@ -395,24 +438,27 @@ Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (20
 |---|---|---|
 | H1 | Partición fija en 2 KTR | **Desinflado** — diseño esperado, coincide con D1, localización emerge sola |
 | H2 | `config` como string doble-encodeado | Abierto, alcance no decidido |
-| H3 | 5 parseos duplicados de `config` | Abierto, plan de dedup listo |
-| H4 | Alias de tabla divergentes (`lineage_builder` vs `contracts`) | Abierto |
+| H3 | 5 parseos duplicados de `config` | **Resuelto 2026-07-24** — `validate.py`, `ktr_default_validator.py`, `lineage_builder.py` importan `contracts.parse_cfg`, 0 copias propias restantes |
+| H4 | Alias de tabla divergentes (`lineage_builder` vs `contracts`) | **Resuelto 2026-07-22** — centralizado vía `contracts.normalize_config` |
 | H5 | Acoplamiento temporal `build_lineage`/`stitch_lineage` | **Resuelto** — D15, riesgo documentado + notificado, no bloqueante |
-| H6 | Fallo silencioso en `_parse_config` | Abierto, choca con D5 |
-| H7 | Sin soporte de `JobEntryJob` (jobs anidados) | Abierto, prerrequisito de D1 |
+| H6 | Fallo silencioso en `_parse_config` | **Resuelto 2026-07-24** (F1.5) — `parse_cfg` lanza `ConfigParseError`; `normalize_step_configs()` (pre-pass único, 4 entry points de `etl_generator.py`) lo atrapa una vez, marca el step y emite warning accionable — D15 mejor-esfuerzo, no aborta. `build_ktr` tiene catch propio de respaldo. Tests: `test_config_parse_fail_fast.py` |
+| H7 | Sin soporte de `JobEntryJob` (jobs anidados) | **Resuelto 2026-07-24** (F2.5) — `JobEntry.entry_type` (`"trans"`\|`"job"`), `_job_entry()` en `job_analyzer.py` (shape verificado contra `JobEntryJob.getXML()`), `kjb_xml_validator._check_has_trans_entry` amplíado a TRANS-o-JOB. Tests: `test_job_entry_job.py` |
 | H8 | Infraestructura de validación existente a reusar | Decidido |
 | H9 | E3/E14/key vacía vivos en output fresco | Abierto, no verificable sin ejecutar |
 | H10 | E1/V4, E2/V5 no ejercitados | Abierto, pendiente de ejercitar |
-| H11 | `DBLookup` fuera del linaje | Abierto, subió a prerrequisito |
+| H11 | `DBLookup` fuera del linaje | **Resuelto 2026-07-22** — agregado a `_TABLE_FIELD_TYPES` |
 | H12 | Docstring `etl_output.py` desactualizado | Abierto, cosmético |
 | H13 | Compatibilidad con ETLs guardados | Cerrado por D3 |
 | H14 | Colisión con `dim_contracts` (149b836) | Resuelto — D11: no choca, es precedente |
 | H15 | D6 pendiente de re-verificación en frío | **Resuelto** — D6/D6-bis, backend determinístico, solo corrección |
 | H16 | `sk_producto` puede no generarse (`DimensionLookup`→`InsertUpdate`) | Abierto, acotado — DB confirma secuencia, riesgo es de contenido del step generado |
-| H17 | 12 tests en rojo sin triage | Abierto, no bloqueante, acción: leer y clasificar |
+| H17 | 12 tests en rojo sin triage | **Cerrado 2026-07-24** — triage completo: 4 obsoletos corregidos (+1 que ya pasaba por razón incorrecta), 8 rotos de verdad quedan abiertos como H24/H25/H26 |
 | H18 | Auditoría retroactiva de cambios no declarados | Abierto, alcance sin acotar |
 | H19 | Matriz tipo_step → {R,W} sobre tabla (Track F1 Q2) | Entregable — insumo de F2 |
 | H20 | Punto de inserción del corte + gap de orden por FK (Track F1 Q4/Q5) | Entregable — insumo de F2 |
 | H21 | Análisis de contenido `err1.ktr`/`err2.ktr`: confirma E4/E5 (`dim_producto`) y E6 (`dim_tiempo`); C1-bis reconciliado (no es fantasma); excepción self-lookup a C1 | Entregable — caso de prueba real de F2/F3 |
-| H22 | `dim_contracts` no deriva ningún step de solo lectura — prerrequisito externo real de F3 | Abierto — ver D16 |
+| H22 | `dim_contracts` no deriva ningún step de solo lectura — prerrequisito externo real de F3 | **Parcialmente resuelto 2026-07-24** (D16 camino 1, código) — `role_of_dimension_step()` (BFS forward, ancla en escritor no-ambiguo) + `enforce_dimension_step_policy` Paso 4 fuerzan `DimensionLookup update=N` para el rol fact-lookup cuando `scd_type==2`. **Residual sin cerrar:** `scd_type` 0/1 (`CombinationLookup` esperado) no tiene mecanismo de solo-lectura seguro sin `date_from`/`date_to` conocidas — se reporta (tipo="error"), no se repara. Tests: `test_dimension_step_policy.py` |
 | H23 | Entorno: `DBLookup` falla introspección contra pooler de Supabase, preferir `StreamLookup` | Nuevo, sin dueño de track — candidato a `system_etl.txt` |
+| H24 | `ConnectionsMapRequest.conn_dwh/conn_staging` no acepta connection_id string, pese a que `resolve_real_connections()` sí lo soporta | Abierto, sin dueño de track — decisión de producto (extender schema vs. borrar la rama string del service) |
+| H25 | `_CRITICAL_FIELDS["GetSystemInfo"]` deja inalcanzable el fallback de field por defecto de `_step_GetSystemInfo` | Abierto, sin dueño de track — fix simple pero cambia validación ya en producción |
+| H26 | `ETL_OUTPUT_SCHEMA` no declara `documentacion`, pese a que `ETLGenerateResponse`/`etl_generator.py` la esperan | Abierto, ambiguo — feature perdida vs. resto de código sin limpiar |

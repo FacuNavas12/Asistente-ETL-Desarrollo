@@ -1,6 +1,6 @@
 # Decisiones — Refactor de fragmentación
 
-**Última actualización:** 2026-07-22
+**Última actualización:** 2026-07-24
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -173,7 +173,9 @@ Ninguna fase de `03-plan.md` (Track A o Track F) se da por cerrada sin estas tre
 - H11 — `DBLookup` cubierto en la matriz R/W (hoy invisible para el linaje).
 - H6 — el parseo de `config` falla fuerte (D5) en vez de degradar a `{}`. Relevante para el corte porque una config rota leída como `{}` produce un corte silenciosamente equivocado.
 
-Los tres tienen dirección ya decidida (D5, D8) y no dependen de ningún spike ni de ninguna pregunta listada en "Deliberadamente no decidido". Relación con `parse_cfg` (H3): H6 se resuelve solo en el momento en que F5 deduplica los 4 copies para importar la función canónica (`contracts.parse_cfg`) — el fail-fast se arregla una vez, ahí, y cubre los cinco puntos de uso a la vez.
+Los tres tienen dirección ya decidida (D5, D8) y no dependen de ningún spike ni de ninguna pregunta listada en "Deliberadamente no decidido".
+
+**Corrección 2026-07-22 — H6 lo cierra F1.5, no F5 (contradicción encontrada y resuelta entre este archivo y `03-plan.md`).** La redacción original decía que H6 "se resuelve solo cuando F5 deduplica los 4 copies", pero la fila de F1.5 en `03-plan.md` ya listaba a H6 como parte de su propio alcance — dos fases reclamando el mismo fix. Gana F1.5: dedup de `parse_cfg` (H3) y fail-fast (H6) son la misma pieza de trabajo (no tiene sentido arreglar el comportamiento de 4 copias por separado), y F1.5 es la fase que ya está tocando este archivo por H4/H11. F5 pierde ese ítem — ver su fila actualizada en `03-plan.md`. **H4 y H11 ya resueltos** en esta misma sesión (ver `01-hallazgos.md`) — como efecto colateral, la copia de `_parse_cfg` en `dimension_step_policy.py` ya desapareció (importa `contracts.parse_cfg`), así que el dedup restante de H3 pasó de 4 copias a 3 (`validate.py`, `ktr_default_validator.py`, `lineage_builder.py`). **H6 en sí (el fail-fast) sigue sin implementar** — pendiente de la pregunta abierta más abajo sobre si el fallback a `{}` puede llegar a ejecutarse de verdad y con qué severidad, antes de tocar el comportamiento.
 
 **Lo que el motor de corte NO necesita:** el borde tipado grande tal como lo describe `00-objetivo.md` (cambio de schema `string → object`, H2; border único con tipo validado). Esa sigue siendo una pregunta de arquitectura de entrada completa, abierta, sin fecha porque depende de Track A (pospuesto) y de un spike empírico. El corte puede construirse sobre el `dict` que ya devuelve `parse_cfg` hoy, siempre que tenga los tres puntos de arriba resueltos primero.
 
@@ -228,6 +230,53 @@ Disparada por el análisis de `bitacora_etl_ventas.md`/`extracto_corte_F2.md` (2
 2. F3 arranca igual, con el riesgo documentado y notificado (D15): el corte puede sobre-disparar C1-bis sobre ETLs donde el "doble escritor" es en realidad un lookup mal tipado, no un conflicto real — y el usuario revisa esos casos a mano hasta que el camino 1 se resuelva.
 
 *Por qué D16 y no una fila más en `03-plan.md`:* cambia qué puede prometer F3 sin trabajo externo, igual que D14 — nivel de decisión de scope, no de tarea.
+
+**Resuelto 2026-07-23 — camino 1, elegido por el usuario.** Ampliar `derive_dimension_step_type`/`enforce_dimension_step_policy` (`dimension_step_policy.py`) antes de que F3 arranque. **No implementado todavía — y no es un cambio chico de enum:**
+
+- Hoy `DIMENSION_STEP_TYPES = {"DimensionLookup", "CombinationLookup"}` (`dimension_step_policy.py:39`) y `derive_dimension_step_type` (`:42-51`) no tienen ningún concepto de **rol** — `enforce_dimension_step_policy` corrige el tipo de *cualquier* step que toque una tabla de `dim_contracts`, sea el step que carga la dimensión o el que solo busca la FK del lado del hecho (exactamente el gap que documenta H22). Agregar `Insert/Update`/`Table Output` al vocabulario del loader no alcanza solo: hace falta **detectar el rol** (loader vs. lookup-de-hecho) antes de poder aplicar una regla distinta a cada uno.
+- Señal disponible para esa detección: R2/R9 de la bitácora ya validan que el lookup del lado del hecho es siempre de solo lectura — un candidato es reusar el rol que `lineage_builder._classify_layer` ya deriva por step (in_deg/out_deg + tabla), o el mismo insumo de H19 (matriz R/W) que F2 construye para el corte. Confirmar cuál antes de escribir código — esto es una mini-decisión de diseño propia, del mismo tamaño que la que F2 necesitó, no una edición de una línea.
+- Una vez detectado el rol: loader puede derivar `DimensionLookup`/`CombinationLookup`/`Insert-Update` según `scd_type` + forma de tabla; lookup-de-hecho se fuerza a `StreamLookup` (nunca `DimensionLookup`/`CombinationLookup`/`DBLookup` — `DBLookup` además falla contra el pooler de Supabase, H23/R9).
+
+Sigue bloqueando F3 hasta que esto esté en código, no solo decidido.
+
+**Código aplicado 2026-07-24 (parcial, ver residual abajo).** `dimension_step_policy.py`:
+- `role_of_dimension_step(step_name, table, ktr_data, step_type_aliases)` — BFS hacia adelante sobre los hops habilitados, ancla el predicado "escritor" en `_UNAMBIGUOUS_WRITER_TYPES = {TableOutput, InsertUpdate, Update, Delete}` (nunca en DimensionLookup/CombinationLookup, cuyo status de escritura es exactamente lo que se está resolviendo para la misma tabla — evita el chicken-and-egg). Si alcanza un escritor de tabla DISTINTA de `table` → `"fact_lookup"`; si no (termina en la propia tabla, o en sinks sin tabla como WriteToLog/checkpoints) → `"loader"`.
+- `enforce_dimension_step_policy` (Paso 4): rol `fact_lookup` con `scd_type==2` → fuerza `DimensionLookup` + `cfg["update"]="N"` (warning). Respeta `OVERRIDE_STEP_PREFIX` igual que el resto de la función.
+- `lookups.py::_step_DimensionLookup` (Paso 5): dejó de hardcodear `<update>Y</update>` — ahora lee `cfg.get("update", "Y")`.
+
+**Residual sin cerrar — `scd_type` 0/1 (dimensión sin versionar):** el contrato deriva `CombinationLookup`, que no tiene modo de solo-lectura (a diferencia de `DimensionLookup`, no expone flag `update`). Forzar `DimensionLookup+update=N` sin `date_from`/`date_to` conocidas (el contrato no las declara para `scd_type != 2`) arriesga que el builder emita referencias a columnas de vigencia (`fecha_desde`/`fecha_hasta`, default hardcodeado en `_step_DimensionLookup`) que la tabla física puede no tener — mismo riesgo que la lógica de downgrade ya existente en este archivo evita para el rol loader. En vez de repetir ese riesgo del lado del lookup, este caso se **reporta** (`tipo="error"`, "reporta, no repara", mismo principio que el resto de la función) en vez de auto-corregirse. No bloquea F3 (D15: notificar, no bloquear) pero queda como caso conocido sin mecanismo seguro — camino abierto: verificar si Kettle soporta un `DimensionLookup` sin rango de fechas real (lookup por clave natural pura) antes de decidir si se puede cerrar, o si hace falta un tipo de step distinto para este caso específico.
+
+Tests: `tests/test_dimension_step_policy.py` (6 casos nuevos, incluida la reproducción de `err1.ktr`/`err2.ktr`).
+
+### D17 — F2 (diseño del corte) aprobado por el usuario
+
+**Aprobado 2026-07-23.** El diseño de F2 (`03-plan.md`, reporte del 2026-07-22: matriz R/W, disparadores C1/C1-bis, componentes conexos, excepción self-lookup, orden topológico, validado contra `err1.ktr`/`err2.ktr`) queda aprobado tal como está documentado. Desbloquea uno de los tres prerrequisitos de F3 (los otros dos: F2.5 en código, D16 camino 1 en código — ninguno de los dos escrito todavía).
+
+### D18 — H2 (config `string`→`object`) propuesto para adelantarse como fix de raíz de H6, no decidido — requiere spike antes de tocar `ETL_OUTPUT_SCHEMA`
+
+**Contexto (2026-07-23):** en vez de parchear H6 (fail-fast en `parse_cfg`) como venía planeado en F1.5, se propuso ir a la raíz — cambiar `config` de string a object en `ETL_OUTPUT_SCHEMA` para que el parseo deje de existir (no hay JSON que fallar al parsear si nunca fue string). Coherente con D2 (no protegemos el string actual porque "hoy funciona").
+
+**Por qué no se implementa todavía, aunque D2 lo permita en principio:**
+- `ETL_OUTPUT_SCHEMA` (`etl_output.py:1-13`) ya documenta por qué se descartó: un `config` object abierto sin `oneOf` por tipo de step "would either require a massive oneOf discriminator or would reject valid configs".
+- Verificado en código, no en teoría: `AnthropicLLM._sanitize_for_anthropic`/`_enforce_adp` (`anthropic_llm.py:36-57`) fuerza `additionalProperties:false` + `properties:{}` en cualquier nodo `object` sin properties declaradas — un `config` object abierto ya colapsa a `{}` siempre para Anthropic, hoy. No es un riesgo, es un hecho ya reproducible en el código tal como está.
+- Arreglarlo bien (no solo evitar el colapso) exige un `oneOf`/`anyOf` discriminado por los ~35 tipos de step que documenta `system_etl.txt:170-414`, cada uno con su propio schema cerrado. Si Gemini (`response_json_schema`) y Anthropic (`input_schema` de tool-use) soportan de forma confiable un discriminador de ese tamaño **no está verificado** — es exactamente el "spike empírico contra Gemini y Anthropic" que este mismo archivo ya tenía anotado en "Deliberadamente no decidido" para H2, antes de esta sesión.
+- Si el spike falla para alguno de los dos proveedores, el fallback existente es modo texto + `extract_first_json` (regex) — estrictamente peor que el string tipado actual, no mejor. Cambiar la raíz sin confirmar primero puede empeorar la confiabilidad de generación en producción, no solo fallar en desarrollo.
+
+**Estado: no decidido.** Camino recomendado, no ejecutado todavía: spike acotado (1-2 tipos de step, ej. `TableOutput`) contra Gemini y Anthropic reales antes de tocar el schema completo — confirmar que un object cerrado con properties explícitas no colapsa y valida bien, antes de escribir las ~35 variantes. Mientras el spike no corra, **F1.5 mantiene su alcance original**: fail-fast simple en `parse_cfg` + dedup de las 3 copias (H6), no bloqueado por esta propuesta.
+
+*Por qué D18 y no una edición directa de H2:* cambia si H2 se adelanta o se mantiene pospuesto — decisión de scope y de secuencia, no un dato nuevo sobre el hallazgo en sí.
+
+### D19 — F3 punto 1-3 (wiring del corte) cerrado a nivel de servicio; el flujo HTTP en vivo se queda en modo notificación hasta extender `ETLGenerateResponse`
+
+**Contexto (2026-07-24):** al arrancar F3 punto 1 (wiring de `compute_cut()` a `etl_generator.py`, ver `03-plan.md`), apareció un hueco no listado en la sección "Archivos a tocar" del reporte F2: `ETLGenerateResponse` (`backend/app/schemas/etl_schemas.py:119-136`) y el ZIP del frontend (commit `338bff2`) están cableados a exactamente 1 KTR por etapa + 1 `.kjb` (2 archivos + 1 job). Si `compute_cut()` devuelve `groups>1` en una etapa real — exactamente el patrón de `err1.ktr`/`err2.ktr` (H21), el caso que motivó todo el refactor — no hay dónde poner los archivos extra en la respuesta HTTP.
+
+**Decisión (confirmada por el usuario, alcance de sesión):** separar "capacidad de servicio" de "entrega por HTTP". Esta sesión implementó y probó a nivel de servicio (`etl_generator.py`/`lineage_builder.py`) la partición real: `split_ktr_by_cut()`, `_build_ktr_stage()` (llama `build_ktr()` una vez por grupo), `_build_job_plan()` generalizado a N por etapa (jerarquía de 3 niveles, F2.5/H7), `stitch_lineage_many()` generalizado a M archivos. Todo esto es código-listo y probado (`test_fragmentation_wiring.py`, 13 tests) pero el flujo HTTP en vivo (`_build_response_from_two_ktr_data`/`_build_response_from_data`) **no** invoca `_build_ktr_stage()` para partir de verdad — solo llama `compute_cut()` para sus notificaciones. Si detecta `groups>1`, entrega el `.ktr` sin partir + un `Validacion(tipo="error")` explícito señalando la tabla y los steps en conflicto, en vez de fallar en silencio o dropear archivos.
+
+**Por qué no se resolvió el hueco de `ETLGenerateResponse`/frontend en la misma sesión:** es un cambio de contrato público (schema de respuesta + consumidor del ZIP en el frontend), de otro orden de magnitud que "llamar `build_ktr()` una vez por grupo" — amerita su propio diseño (¿lista de KTRs? ¿mantener los 2 slots históricos + un array de "extras"?) y su propia sesión, no una decisión de paso mientras se wireaba el corte.
+
+**Efecto inmediato, sin esperar la extensión del schema:** todo pipeline de generación real ahora corre `compute_cut()` (antes no corría en absoluto) — un ETL que hoy dispara C1/C1-bis (carrera/doble-escritor, el bug de origen del refactor) sale con un `Validacion(tipo="error")` explícito en vez de silencioso. Es una mejora de diagnóstico entregada ya, independiente de cuándo se resuelva el hueco.
+
+**Estado: F3 sigue "EN CURSO"**, no cierra hasta que el hueco de arriba se resuelva (ver "NO hecho" en el estado de F3, `03-plan.md`) y corra un test de integración end-to-end contra el pipeline HTTP completo con un caso que dispare un corte real.
 
 ## Deliberadamente no decidido
 
