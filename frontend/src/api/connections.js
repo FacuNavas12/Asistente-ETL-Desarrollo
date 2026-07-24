@@ -27,6 +27,16 @@ function passwordHeader(password) {
   return { "X-DB-Password": password };
 }
 
+// Lista las conexiones guardadas del usuario (solo metadata: host/puerto/base/
+// usuario/tipo/ssl_mode — el password nunca viaja, llega como "********").
+// Permite reusar una conexión ya creada sin re-ingresar todos los datos a mano.
+export async function listConnections() {
+  const res = await fetch(`${BASE}/api/connections`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  return parseResponse(res);
+}
+
 export async function createConnection(payload) {
   const res = await fetch(`${BASE}/api/connections`, {
     method: "POST",

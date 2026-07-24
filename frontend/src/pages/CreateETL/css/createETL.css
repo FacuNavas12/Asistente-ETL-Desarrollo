@@ -220,13 +220,24 @@
   transition: opacity 0.2s, transform 0.15s;
 }
 
-.etl-infer-header-btn:hover {
+.etl-infer-header-btn:hover:not(:disabled) {
   opacity: 0.9;
   transform: translateY(-1px);
 }
 
-.etl-infer-header-btn:active {
+.etl-infer-header-btn:active:not(:disabled) {
   transform: scale(0.97);
+}
+
+.etl-infer-header-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Wrapper que mantiene accesible el tooltip (title) aun con el botón disabled. */
+.etl-infer-btn-wrap {
+  display: inline-flex;
 }
 
 .etl-infer-header-btn--next {

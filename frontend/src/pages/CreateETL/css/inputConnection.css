@@ -10,6 +10,17 @@
   font-size: 14px;
 }
 
+.conn-reuse-hint {
+  margin: -6px 0 16px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  color: var(--text-2, var(--text));
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .conn-catalog {
   margin-top: 20px;
 }

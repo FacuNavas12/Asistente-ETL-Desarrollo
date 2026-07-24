@@ -36,7 +36,7 @@ export default function CreateETL() {
   const navigate  = useNavigate();
   const location  = useLocation();
   const { draft, saveDraft, clearDraft, addEtl, saveInProgressEtl } = useEtl();
-  const { addToast, notifySystem, notifyValidation } = useToast();
+  const { addToast, notifySystem } = useToast();
 
   // fresh: true → always open blank (navbar "Nuevo ETL" button)
   // initialFormData → load from prior ETL (Continuar / Reutilizar)
@@ -59,6 +59,16 @@ export default function CreateETL() {
   const descripcionObjetivo = useWatch({ control, name: "descripcionObjetivo" });
   const origenTables        = useWatch({ control, name: "origenTables" });
   const reglasNegocio       = useWatch({ control, name: "reglasNegocio" });
+
+  // Requisitos mínimos para poder inferir: al menos una tabla de origen, el
+  // objetivo del proceso y las reglas de negocio. El botón Inferir queda
+  // deshabilitado hasta cumplirlos.
+  const missingToInfer = [
+    (!Array.isArray(origenTables) || origenTables.length === 0) && "una tabla de origen",
+    !descripcionObjetivo?.trim() && "el objetivo del proceso",
+    !reglasNegocio?.trim() && "las reglas de negocio",
+  ].filter(Boolean);
+  const canInfer = missingToInfer.length === 0;
 
   const [step,           setStep]           = useState(STEP.FORM);
   const [isEditingName,  setIsEditingName]  = useState(false);
@@ -257,18 +267,9 @@ export default function CreateETL() {
 
   // ── PASO 1 → PASO 2: llamar a /infer-structures ──────────────────────────
   const handleInfer = async () => {
-    if (!origenTables.length) {
-      notifyValidation("Debe agregar al menos una tabla de origen.");
-      return;
-    }
-    if (!descripcionObjetivo.trim()) {
-      notifyValidation("Debe describir el objetivo del proceso.");
-      return;
-    }
-    if (!reglasNegocio.trim()) {
-      notifyValidation("Debe describir las reglas de negocio.");
-      return;
-    }
+    // Los requisitos mínimos se validan deshabilitando el botón (ver canInfer);
+    // este guard es solo una red de seguridad, sin mensajes en pantalla.
+    if (!canInfer) return;
 
     setStep(STEP.INFERRING);
 
@@ -556,9 +557,18 @@ export default function CreateETL() {
               >
                 Guardar
               </button>
-              <button className="etl-infer-header-btn" onClick={handleInfer}>
-                Inferir
-              </button>
+              <span
+                className="etl-infer-btn-wrap"
+                title={canInfer ? undefined : `Faltan requisitos para inferir: ${missingToInfer.join(", ")}.`}
+              >
+                <button
+                  className="etl-infer-header-btn"
+                  onClick={handleInfer}
+                  disabled={!canInfer}
+                >
+                  Inferir
+                </button>
+              </span>
               {inferResult && (
                 <button
                   className="etl-infer-header-btn etl-infer-header-btn--next"
