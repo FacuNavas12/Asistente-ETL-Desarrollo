@@ -8,7 +8,6 @@ No AI calls — pure Python data transformation.
 """
 from __future__ import annotations
 
-import json
 import logging
 import re
 from datetime import datetime
@@ -23,7 +22,7 @@ from app.services.ktr_builder.connection import (
     _STEPS_NEEDING_CONNECTION,
     build_kettle_properties_template,
 )
-from app.services.ktr_builder.contracts import missing_required_keys, normalize_config, parse_cfg
+from app.services.ktr_builder.contracts import ConfigParseError, missing_required_keys, normalize_config, parse_cfg
 from app.services.ktr_builder.fields_validate import (
     FIELD_INTEGRITY_PREFIX,
     repair_select_values_narrowing,
@@ -114,17 +113,29 @@ def build_ktr(
     # config queda como dict (no string JSON) para el resto de esta función.
     # required_keys ausentes abortan acá mismo, apuntando al step culpable,
     # en vez de dejar que Spoon falle en runtime con un step "vacío".
+    # H6/D15: si el caller no pasó por normalize_step_configs() (ver
+    # etl_generator.py, punto de entrada del pipeline), un config todavía
+    # string y no-JSON llega hasta acá — capturarlo acá también en vez de
+    # dejar que build_ktr() aborte sin generar nada por una sola config rota.
+    cfg_parse_warnings: list[str] = []
     incomplete: list[str] = []
     for step in ktr_data.get("steps", []):
         canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
-        cfg = normalize_config(canonical, parse_cfg(step.get("config", {})))
+        try:
+            cfg = normalize_config(canonical, parse_cfg(step.get("config", {})))
+        except ConfigParseError as e:
+            cfg = {}
+            cfg_parse_warnings.append(
+                f"Step '{step.get('name')}' ({canonical}): config no es JSON válido, tratado "
+                f"como vacío — {e}. Revisar este step antes de ejecutar en Spoon."
+            )
         step["config"] = cfg
         for key, reason in missing_required_keys(canonical, cfg):
             incomplete.append(f"Config incompleto en '{step.get('name')}' ({canonical}): {reason}")
     if incomplete:
         raise KtrBuilderError(" | ".join(incomplete))
 
-    warnings = _validate_ktr(ktr_data)
+    warnings = cfg_parse_warnings + _validate_ktr(ktr_data)
     for w in warnings:
         logger.warning("KTR validation: %s", w)
 
@@ -186,14 +197,10 @@ def build_ktr(
     for step in ktr_data.get("steps", []):
         canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
         required = _CRITICAL_FIELDS.get(canonical, [])
-        raw = step.get("config", {})
-        if isinstance(raw, str):
-            try:
-                cfg = json.loads(raw) if raw.strip() else {}
-            except json.JSONDecodeError:
-                cfg = {}
-        else:
-            cfg = raw or {}
+        # config ya es dict acá: el pass de normalización de más arriba
+        # (línea ~118) ya reemplazó step["config"] en ktr_data — mismos
+        # objetos, mismo dict de steps, así que nunca llega un string.
+        cfg = step.get("config") or {}
         missing = [f for f in required if not (cfg.get(f) or cfg.get(f + "_name") or cfg.get("target_" + f))]
         # TableInput.sql tiene un fallback literal "SELECT 1" en el builder
         # (ver steps/input.py _step_TableInput) — presencia de la clave no
@@ -216,15 +223,8 @@ def build_ktr(
     for step in steps:
         canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
         if canonical in _STEPS_NEEDING_CONNECTION:
-            raw = step.get("config", {})
-            if isinstance(raw, str):
-                try:
-                    parsed = json.loads(raw) if raw.strip() else {}
-                except json.JSONDecodeError:
-                    parsed = {}
-                step["config"] = parsed  # normalizar a dict para el pre-pass
-                raw = parsed
-            cfg = raw if isinstance(raw, dict) else {}
+            # config ya es dict (ver pass de normalización más arriba).
+            cfg = step.get("config") or {}
             step.setdefault("config", cfg)
             explicit = (cfg.get("connection") or cfg.get("connection_name") or "").strip()
             resolved = _resolve_connection(
@@ -328,9 +328,13 @@ def build_ktr(
         raw_cfg = step.get("config", {})
         if isinstance(raw_cfg, str):
             try:
-                cfg = json.loads(raw_cfg) if raw_cfg.strip() else {}
-            except json.JSONDecodeError:
+                cfg = parse_cfg(raw_cfg)
+            except ConfigParseError as e:
                 logger.warning("KTR: config JSON inválido en step '%s': %r", step.get("name"), raw_cfg[:200])
+                warnings.append(
+                    f"Step '{step.get('name')}' ({canonical_type}): config no es JSON válido, "
+                    f"tratado como vacío — {e}. Revisar este step antes de ejecutar en Spoon."
+                )
                 cfg = {}
         else:
             cfg = raw_cfg if isinstance(raw_cfg, dict) else {}

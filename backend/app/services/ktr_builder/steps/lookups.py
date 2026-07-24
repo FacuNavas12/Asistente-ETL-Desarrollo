@@ -44,7 +44,11 @@ def _step_DimensionLookup(el: Element, cfg: dict) -> None:
     _sub(el, "table",                     table)
     _sub(el, "connection",                cfg.get("connection", ""))
     _sub(el, "commit",                    "100")
-    _sub(el, "update",                    "Y")
+    # D16: update=N cuando dimension_step_policy clasificó este step como
+    # lookup de FK del lado del hecho (solo lectura) — ver Paso 4 en
+    # dimension_step_policy.py. Default "Y" preserva el comportamiento
+    # anterior para cualquier caller que no pase por esa política.
+    _sub(el, "update",                    "Y" if str(cfg.get("update", "Y")).strip().upper() != "N" else "N")
     _sub(el, "returnfield",               return_field)
     _sub(el, "preload_cache",             "N")
     _sub(el, "cache_size",                "5000")

@@ -28,9 +28,9 @@ DDL, para el segundo chequeo):
 """
 from __future__ import annotations
 
-import json
 import logging
 
+from app.services.ktr_builder.contracts import parse_cfg as _parse_cfg
 from app.services.sql_defaults import looks_like_sql_function
 
 logger = logging.getLogger(__name__)
@@ -58,15 +58,6 @@ _TABLE_FIELD_KEYS: dict[str, tuple[str, ...]] = {
     "DimensionLookup":   ("lookup", "table_field"),
     "CombinationLookup": ("lookup", "table_field"),
 }
-
-
-def _parse_cfg(raw) -> dict:
-    if isinstance(raw, str):
-        try:
-            return json.loads(raw) if raw.strip() else {}
-        except json.JSONDecodeError:
-            return {}
-    return raw or {}
 
 
 def scrub_function_default_constants(ktr_data: dict, step_type_aliases: dict[str, str]) -> list[str]:

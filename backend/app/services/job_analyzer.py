@@ -271,7 +271,10 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
 
     for i, entry in enumerate(entries):
         x = 300 + i * 200
-        lines += _trans_entry(entry, x, 200)
+        if entry.entry_type == "job":
+            lines += _job_entry(entry, x, 200)
+        else:
+            lines += _trans_entry(entry, x, 200)
         if entry.transformation_name in checkpoint_names:
             cp = next(
                 (c for c in job_plan.checkpoints if c.after_transformation == entry.transformation_name),
@@ -383,6 +386,50 @@ def _trans_entry(entry: JobEntry, x: int, y: int) -> List[str]:
         "      <follow_abort_remote>N</follow_abort_remote>",
         "      <create_parent_folder>N</create_parent_folder>",
         "      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>",
+        *_entry_coords(x, y),
+        "    </entry>",
+    ]
+
+
+def _job_entry(entry: JobEntry, x: int, y: int) -> List[str]:
+    """JobEntryJob (H7/F2.5) — invoca otro .kjb, no un .ktr. Shape verificado
+    contra JobEntryJob.getXML() (pentaho-kettle) en kettle-jobentryjob-xml-spec.md:
+    <type> debe ser JOB (JobEntryTrans no lee estos tags — Spoon fallaría al
+    abrir/ejecutar aunque filename apunte al .kjb correcto), y
+    <specification_method>filename</specification_method> es obligatorio: sin
+    él, checkObjectLocationSpecificationMethod() cae a compatibilidad hacia
+    atrás y puede resolver contra un repositorio conectado en vez del archivo
+    en disco. Con specification_method=filename, <jobname>/<directory> quedan
+    vacíos (son solo para métodos de repositorio) y <job_object_id/> también
+    (solo aplica a rep_ref)."""
+    return [
+        "    <entry>",
+        f"      <name>{_esc(entry.transformation_name)}</name>",
+        f"      <description>{_esc(entry.rationale)}</description>",
+        "      <type>JOB</type>",
+        "      <specification_method>filename</specification_method>",
+        "      <job_object_id/>",
+        f"      <filename>${{Internal.Job.Filename.Directory}}/{_esc(entry.filename)}</filename>",
+        "      <jobname/>",
+        "      <directory/>",
+        "      <arg_from_previous>N</arg_from_previous>",
+        "      <params_from_previous>N</params_from_previous>",
+        "      <exec_per_row>N</exec_per_row>",
+        "      <set_logfile>N</set_logfile>",
+        "      <logfile/>",
+        "      <logext/>",
+        "      <add_date>N</add_date>",
+        "      <add_time>N</add_time>",
+        "      <loglevel>Basic</loglevel>",
+        "      <slave_server_name/>",
+        "      <wait_until_finished>Y</wait_until_finished>",
+        "      <follow_abort_remote>N</follow_abort_remote>",
+        "      <expand_remote_job>N</expand_remote_job>",
+        "      <create_parent_folder>N</create_parent_folder>",
+        "      <pass_export>N</pass_export>",
+        "      <run_configuration/>",
+        "      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>",
+        "      <set_append_logfile>N</set_append_logfile>",
         *_entry_coords(x, y),
         "    </entry>",
     ]

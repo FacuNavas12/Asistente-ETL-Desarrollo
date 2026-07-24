@@ -3,19 +3,10 @@ a construir el XML. Ver ktr_xml_validator.py para la validación post-XML."""
 from __future__ import annotations
 
 import difflib
-import json
 import re
 
+from app.services.ktr_builder.contracts import parse_cfg as _parse_cfg
 from app.services.ktr_builder.registry import STEP_TYPE_ALIASES
-
-
-def _parse_cfg(raw) -> dict:
-    if isinstance(raw, str):
-        try:
-            return json.loads(raw) if raw.strip() else {}
-        except json.JSONDecodeError:
-            return {}
-    return raw or {}
 
 
 def _select_column_names(sql: str) -> list[str]:

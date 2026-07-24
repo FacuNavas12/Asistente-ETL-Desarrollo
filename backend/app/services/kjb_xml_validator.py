@@ -36,9 +36,14 @@ def _check_flat_coords(root: Element) -> list[str]:
 
 
 def _check_has_trans_entry(root: Element) -> list[str]:
+    """Al menos una entrada que orqueste trabajo real: TRANS (.ktr) o JOB
+    (.kjb hijo — H7/F2.5). Un job_master.kjb de la jerarquía de 3 niveles
+    puede ser enteramente JOB (delega en job_origen_stg.kjb/job_stg_dwh.kjb,
+    que a su vez tienen las entradas TRANS) — exigir TRANS acá lo rechazaría
+    aunque sea válido."""
     types = {e.findtext("type") for e in root.findall("./entries/entry")}
-    if "TRANS" not in types:
-        return ["El job no tiene ninguna entrada TRANS — no orquesta ninguna transformación .ktr."]
+    if not (types & {"TRANS", "JOB"}):
+        return ["El job no tiene ninguna entrada TRANS ni JOB — no orquesta ninguna transformación .ktr ni job .kjb hijo."]
     return []
 
 

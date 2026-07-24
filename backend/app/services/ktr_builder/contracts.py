@@ -27,15 +27,30 @@ ProducerFn = Callable[[dict, "set[str] | None"], "set[str] | None"]
 ConsumerFn = Callable[[dict], "set[str]"]
 
 
+class ConfigParseError(ValueError):
+    """`config` llegó como string y no es JSON válido. H6/D5: un parseo roto
+    no se degrada a `{}` en silencio — se distingue de `Exception` genérica
+    para que cada call-site pueda capturarla quirúrgicamente (D15: marcar solo
+    ese step como no-verificable, sin abortar el resto del job) en vez de
+    dejar que un `except Exception` de otro nivel se la trague por error."""
+
+
 def parse_cfg(raw) -> dict:
     """Config puede llegar como dict (schema object) o string JSON (schema
     string) — normaliza siempre a dict. Usada por build.py y fields_validate.py
-    para no reimplementar el mismo try/except JSON en cada módulo."""
+    para no reimplementar el mismo try/except JSON en cada módulo.
+
+    Fail-fast (D5/H6): un string no-JSON o JSON inválido lanza ConfigParseError
+    en vez de degradar a `{}` — un `{}` en silencio hace que el step se vuelva
+    invisible para la matriz R/W, la política de dimensiones y los
+    validadores, exactamente el fallo silencioso que D5 prohíbe."""
     if isinstance(raw, str):
-        try:
-            return json.loads(raw) if raw.strip() else {}
-        except json.JSONDecodeError:
+        if not raw.strip():
             return {}
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise ConfigParseError(f"config no es JSON válido: {e}") from e
     return raw or {}
 
 
@@ -379,6 +394,36 @@ def normalize_config(canonical_type: str, cfg: dict) -> dict:
     if contract is None or not contract.key_aliases or not isinstance(cfg, dict):
         return cfg
     return _apply_aliases(cfg, contract.key_aliases)
+
+
+def normalize_step_configs(ktr_data: dict) -> tuple[dict, list[str]]:
+    """Corre UNA vez, en el punto más temprano del pipeline (antes de
+    repair_ktr_steps) — parsea el `config` (string JSON) de cada step a dict,
+    in-place. Después de esto, todo consumidor downstream (fields_validate,
+    validate.py, ktr_default_validator, lineage_builder, dimension_step_policy,
+    build.py) recibe siempre un dict ya resuelto: sus propias llamadas a
+    parse_cfg/normalize_config nunca vuelven a lanzar ConfigParseError para el
+    mismo step, porque ya no reciben un string.
+
+    D15 (mejor esfuerzo, notifica sin bloquear): un config roto no aborta la
+    generación. D5/H6 (nunca en silencio): se reemplaza por `{}` (mismo efecto
+    que tenía el bug original para el resto del pipeline) pero acá, una sola
+    vez, se emite un warning accionable por step — no en cada uno de los ~20
+    call-sites que leen `config` aguas abajo."""
+    warnings: list[str] = []
+    for step in ktr_data.get("steps", []):
+        raw = step.get("config", {})
+        if not isinstance(raw, str):
+            continue
+        try:
+            step["config"] = parse_cfg(raw)
+        except ConfigParseError as e:
+            step["config"] = {}
+            warnings.append(
+                f"Step '{step.get('name')}' ({step.get('type')}): config no es JSON válido, "
+                f"tratado como vacío — {e}. Revisar este step antes de ejecutar en Spoon."
+            )
+    return ktr_data, warnings
 
 
 def missing_required_keys(canonical_type: str, cfg: dict) -> list[tuple[str, str]]:

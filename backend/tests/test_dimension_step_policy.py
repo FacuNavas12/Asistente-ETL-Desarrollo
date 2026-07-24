@@ -10,6 +10,7 @@ from app.services.ktr_builder.dimension_step_policy import (
     OVERRIDE_STEP_PREFIX,
     derive_dimension_step_type,
     enforce_dimension_step_policy,
+    role_of_dimension_step,
 )
 from app.services.ktr_builder.registry import STEP_TYPE_ALIASES
 
@@ -149,3 +150,104 @@ def test_table_not_in_dim_contracts_is_ignored():
 def test_no_dim_contracts_short_circuits():
     ktr_data = {"steps": [{"name": "x", "type": "DimensionLookup", "config": {"table": "dim_x"}}]}
     assert enforce_dimension_step_policy(ktr_data, [], STEP_TYPE_ALIASES, []) == []
+
+
+# ─── D16 — role_of_dimension_step + Paso 4 (loader vs. fact-lookup) ─────────
+
+def _err1_like_ktr():
+    """Reproduce la forma de err1.ktr/err2.ktr (H21): 'Cargar Dim Producto'
+    (DimensionLookup, rama muerta sin hop de salida) + 'Lookup Dim Producto'
+    (DimensionLookup, alimenta 'Cargar Fact Venta') — mismo doble-escritor
+    sobre dim_producto que dispara C1-bis."""
+    return {
+        "steps": [
+            {"name": "Leer Staging Productos", "type": "TableInput", "config": {"connection": "c", "sql": "SELECT 1"}},
+            {"name": "Cargar Dim Producto", "type": "DimensionLookup",
+             "config": {"table": "dim_producto", "connection": "conn_dwh", "returnfield": "sk_producto",
+                        "keys": [{"stream_field": "id_producto", "table_field": "id_producto"}]}},
+            {"name": "Leer Staging Ventas", "type": "TableInput", "config": {"connection": "c", "sql": "SELECT 1"}},
+            {"name": "Lookup Dim Producto", "type": "DimensionLookup",
+             "config": {"table": "dim_producto", "connection": "conn_dwh", "returnfield": "sk_producto",
+                        "keys": [{"stream_field": "id_producto", "table_field": "id_producto"}]}},
+            {"name": "Cargar Fact Venta", "type": "InsertUpdate",
+             "config": {"table": "fact_venta", "connection": "conn_dwh"}},
+        ],
+        "hops": [
+            {"from": "Leer Staging Productos", "to": "Cargar Dim Producto", "enabled": True},
+            {"from": "Leer Staging Ventas", "to": "Lookup Dim Producto", "enabled": True},
+            {"from": "Lookup Dim Producto", "to": "Cargar Fact Venta", "enabled": True},
+        ],
+    }
+
+
+def test_role_of_dimension_step_classifies_loader_vs_fact_lookup():
+    ktr_data = _err1_like_ktr()
+    assert role_of_dimension_step("Cargar Dim Producto", "dim_producto", ktr_data, STEP_TYPE_ALIASES) == "loader"
+    assert role_of_dimension_step("Lookup Dim Producto", "dim_producto", ktr_data, STEP_TYPE_ALIASES) == "fact_lookup"
+
+
+def test_loader_with_checkpoint_writelog_stays_loader():
+    """Un loader que además loguea un checkpoint (WriteToLog) no debe
+    clasificar como fact_lookup — WriteToLog no es 'escritor de tabla'."""
+    ktr_data = _err1_like_ktr()
+    ktr_data["steps"].append({"name": "Log Carga Producto", "type": "WriteToLog", "config": {"message": "ok"}})
+    ktr_data["hops"].append({"from": "Cargar Dim Producto", "to": "Log Carga Producto", "enabled": True})
+    assert role_of_dimension_step("Cargar Dim Producto", "dim_producto", ktr_data, STEP_TYPE_ALIASES) == "loader"
+
+
+def test_enforce_dimension_step_policy_forces_readonly_on_fact_lookup_scd2():
+    """Paso 4 (D16): el step 'Lookup Dim Producto' (rol fact_lookup) se
+    fuerza a DimensionLookup+update=N; el loader queda intacto."""
+    ktr_data = _err1_like_ktr()
+    contracts = [_FakeDimContract("dim_producto", 2)]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    loader = next(s for s in ktr_data["steps"] if s["name"] == "Cargar Dim Producto")
+    lookup = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
+    assert loader["type"] == "DimensionLookup"
+    assert loader["config"].get("update", "Y") != "N"  # loader no tocado
+    assert lookup["type"] == "DimensionLookup"
+    assert lookup["config"]["update"] == "N"
+    assert any(r["tipo"] == "warning" and "solo lectura" in r["mensaje"] for r in results)
+
+
+def test_enforce_dimension_step_policy_already_readonly_is_left_untouched():
+    ktr_data = _err1_like_ktr()
+    for step in ktr_data["steps"]:
+        if step["name"] == "Lookup Dim Producto":
+            step["config"]["update"] = "N"
+    contracts = [_FakeDimContract("dim_producto", 2)]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    assert results == []
+
+
+def test_enforce_dimension_step_policy_reports_not_repairs_fact_lookup_scd1():
+    """scd_type sin versionar: no hay date_from/date_to seguras para forzar
+    DimensionLookup+update=N — se reporta (no se repara), D16 residual."""
+    ktr_data = _err1_like_ktr()
+    contracts = [_FakeDimContract("dim_producto", 1)]  # SCD1 -> CombinationLookup esperado
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    lookup = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
+    assert lookup["type"] == "DimensionLookup"  # sin tocar — no repara
+    fact_lookup_errors = [r for r in results if r["tipo"] == "error" and "lookup de FK" in r["mensaje"]]
+    assert len(fact_lookup_errors) == 1
+
+
+def test_enforce_dimension_step_policy_respects_override_for_fact_lookup_role():
+    ktr_data = _err1_like_ktr()
+    contracts = [_FakeDimContract("dim_producto", 2)]
+    validaciones = [{
+        "tipo": "info", "campo": "dim_producto",
+        "mensaje": f"{OVERRIDE_STEP_PREFIX}DimensionLookup update=Y — motivo: necesita insertar fila unknown en el mismo step.",
+    }]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, validaciones)
+
+    lookup = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
+    assert lookup["config"].get("update", "Y") != "N"  # override respetado, no forzado a solo-lectura
+    assert results == []

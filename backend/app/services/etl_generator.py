@@ -22,10 +22,13 @@ from app.services.adapters.ddl_adapter import parse_ddl
 from app.services.ddl_validation import validate_and_correct_ddl
 from app.services.ktr_builder import (
     build_ktr,
+    compute_cut,
     derive_dimension_step_type,
     enforce_dimension_step_policy,
+    normalize_step_configs,
     repair_integrity_gaps,
     repair_ktr_steps,
+    split_ktr_by_cut,
     STEP_TYPE_ALIASES,
 )
 from app.services.ktr_builder.build import _sanitize
@@ -221,29 +224,138 @@ def _dim_contracts_anomaly_warning(dwh_ddl: str, dim_contracts: list) -> list[st
     ]
 
 
-def _build_job_plan(ktr1_filename: str, ktr2_filename: str, process_name: str) -> "JobPlan":
-    """Arma el JobPlan del .kjb orquestador del flujo de 2 KTR en Python puro —
-    el orden STG-antes-que-DWH es siempre fijo, no hay ambigüedad que amerite
-    una llamada al modelo (a diferencia del flujo CreateJob, que sí la usa
-    porque orquesta .ktr arbitrarios subidos por el usuario). Reutiliza
-    build_kjb_xml() de job_analyzer.py sin modificarlo."""
+def _build_ktr_stage(
+    ktr_data: dict,
+    base_name: str,
+    **build_kwargs,
+) -> tuple[list[tuple[dict, str, str]], list[str]]:
+    """F3 punto 1 (03-plan.md, H20): entre repair_integrity_gaps y build_ktr(),
+    corta ktr_data en 1..N sub-transformaciones vía compute_cut() y llama
+    build_ktr() una vez por grupo, en el orden de ejecución que el corte exige
+    (escritor de una tabla-disparadora antes que su lector/otro-escritor —
+    dims antes que hechos, per err1.ktr/err2.ktr/H21).
+
+    Devuelve ([(ktr_data_del_grupo, xml, filename), ...], warnings) — warnings
+    incluye las notificaciones D15 del corte (V2/ciclo patológico) más las de
+    cada build_ktr(). 1 solo grupo (caso universal hoy, D6-bis) -> 1 sola
+    llamada a build_ktr(), mismo nombre/xml/filename que antes de este punto.
+
+    Capacidad de servicio completa y probada (test_fragmentation_wiring.py) —
+    NO todavía conectada a la respuesta HTTP (ETLGenerateResponse sigue fija
+    a ktr_xml/ktr2_xml/kjb_xml, 2 KTR + 1 KJB; ver hueco documentado en
+    03-plan.md). Los call sites del flujo en vivo (_build_response_from_*)
+    llaman compute_cut() por separado solo para sus notificaciones, sin
+    invocar esta función todavía — ver comentario en esos call sites."""
+    sub_dicts, notifications = split_ktr_by_cut(ktr_data, STEP_TYPE_ALIASES)
+    built: list[tuple[dict, str, str]] = []
+    warnings: list[str] = list(notifications)
+    for i, sub in enumerate(sub_dicts):
+        name = base_name if len(sub_dicts) == 1 else f"{base_name}_{i + 1}"
+        xml, filename, w = build_ktr(sub, name, **build_kwargs)
+        built.append((sub, xml, filename))
+        warnings.extend(w)
+    return built, warnings
+
+
+def _cut_pending_warning(label: str, groups: list[list[str]]) -> str:
+    """F3: compute_cut() detectó que la etapa `label` necesita partirse en
+    len(groups) sub-transformaciones (condición C1/C1-bis — misma clase de
+    carrera/doble-escritor que err1.ktr/err2.ktr, H21) pero ETLGenerateResponse
+    todavía no tiene dónde poner más de 1 archivo por etapa (hueco documentado
+    en 03-plan.md, no resuelto por F3 punto 1-3). Se entrega el .ktr SIN
+    partir — este warning es la señal explícita de que ese archivo entero
+    contiene el patrón de carrera, para que se revise a mano en Spoon en vez
+    de fallar en silencio."""
+    grupos_txt = "; ".join(f"grupo {i + 1}: {', '.join(g)}" for i, g in enumerate(groups))
+    return (
+        f"{FIELD_INTEGRITY_PREFIX}Corte estructural pendiente en la etapa {label}: el motor de "
+        f"fragmentación (F3, ver docs/refactor/03-plan.md) identificó {len(groups)} sub-transformaciones "
+        f"necesarias ({grupos_txt}) por una tabla escrita y leída (o escrita dos veces) por steps "
+        "distintos en el mismo archivo — el mismo patrón de carrera/doble-escritor que err1.ktr/"
+        "err2.ktr (H21). La generación multi-archivo por HTTP todavía no está soportada (hueco de "
+        "ETLGenerateResponse, ver 03-plan.md) — este .ktr se entrega SIN partir; revisar manualmente "
+        "en Spoon el riesgo de carrera antes de ejecutar."
+    )
+
+
+def _build_job_plan(
+    stages: list[tuple[str, list[tuple[dict, str, str]]]],
+    process_name: str,
+) -> tuple["JobPlan", list[tuple[str, str]]]:
+    """Arma la jerarquía de jobs del flujo de N KTR en Python puro — el orden
+    entre etapas es siempre fijo (origen→STG antes que STG→DWH) y, dentro de
+    una etapa, el que ya determinó compute_cut() (F2/F3) — no hay ambigüedad
+    que amerite una llamada al modelo (a diferencia del flujo CreateJob, que
+    sí la usa porque orquesta .ktr arbitrarios subidos por el usuario).
+
+    stages: [(etiqueta_etapa, [(ktr_data, xml, filename), ...]), ...] en
+    orden de ejecución — cada lista de archivos ya viene en el orden que
+    _build_ktr_stage()/compute_cut() exige dentro de esa etapa.
+
+    Etapa con 1 archivo -> entry_type="trans" directo al .ktr (comportamiento
+    histórico, sin wrapper). Etapa con N>1 -> entry_type="job" (F2.5/H7)
+    apuntando a un .kjb intermedio que orquesta esos N .ktr en secuencia
+    (jerarquía de 3 niveles: job_master -> job_<etapa> -> ktrs).
+
+    Devuelve (job_plan_maestro, sub_kjbs) — sub_kjbs = [(kjb_xml, kjb_filename), ...]
+    de los .kjb intermedios que alguna etapa haya necesitado (vacío si ninguna
+    etapa tiene más de 1 archivo — caso universal hoy, D6-bis)."""
     from app.schemas.job_schemas import JobEntry, JobPlan
+    from app.services.job_analyzer import build_kjb_xml
 
     name = process_name or "Proceso_ETL"
-    return JobPlan(
+    master_entries: list[JobEntry] = []
+    sub_kjbs: list[tuple[str, str]] = []
+    order = 0
+    for label, files in stages:
+        if not files:
+            continue
+        order += 1
+        if len(files) == 1:
+            _, _, filename = files[0]
+            master_entries.append(JobEntry(
+                order=order, transformation_name=f"KTR_{label}", filename=filename,
+                rationale=f"Carga {label}. Corre en secuencia con el resto de las etapas.",
+            ))
+            continue
+
+        inner_entries = [
+            JobEntry(
+                order=i + 1, transformation_name=f"KTR_{label}_{i + 1}", filename=filename,
+                rationale=(
+                    f"Sub-transformación {i + 1}/{len(files)} de {label} — corte estructural "
+                    "(F2/F3, ver 03-plan.md)."
+                ),
+            )
+            for i, (_, _, filename) in enumerate(files)
+        ]
+        inner_plan = JobPlan(
+            job_name=f"{name}_job_{label}",
+            description=f"Orquesta las {len(files)} sub-transformaciones de {label} en el orden del corte.",
+            overall_rationale=(
+                "Job intermedio generado por el motor de corte (F3) — jerarquía de 3 "
+                "niveles (H7/F2.5)."
+            ),
+            execution_order=inner_entries,
+        )
+        inner_kjb_filename = f"{_sanitize(name)}_job_{label}.kjb"
+        sub_kjbs.append((build_kjb_xml(inner_plan), inner_kjb_filename))
+        master_entries.append(JobEntry(
+            order=order, transformation_name=f"JOB_{label}", filename=inner_kjb_filename,
+            rationale=f"Orquesta las {len(files)} sub-transformaciones de {label}.",
+            entry_type="job",
+        ))
+
+    master_plan = JobPlan(
         job_name=f"{name}_job",
-        description=f"Orquesta {name}: origen→STAGING (KTR_1) y STAGING→DWH (KTR_2) en secuencia.",
+        description=f"Orquesta {name}: " + " → ".join(label for label, files in stages if files) + " en secuencia.",
         overall_rationale=(
-            "Job generado por el flujo de 2 KTR: orden fijo STG-antes-que-DWH, "
-            "sin ambigüedad de secuencia — no requiere razonamiento del modelo."
+            "Job generado por el flujo de N KTR (F3): orden fijo entre etapas, dentro de cada "
+            "etapa el orden que exige compute_cut() — no requiere razonamiento del modelo."
         ),
-        execution_order=[
-            JobEntry(order=1, transformation_name="KTR_1_origen_stg", filename=ktr1_filename,
-                      rationale="Carga origen → STAGING. Debe completar antes de KTR_2."),
-            JobEntry(order=2, transformation_name="KTR_2_stg_dwh", filename=ktr2_filename,
-                      rationale="Carga STAGING → DWH. Corre solo si KTR_1 finalizó."),
-        ],
+        execution_order=master_entries,
     )
+    return master_plan, sub_kjbs
 
 
 class KtrBuildError(Exception):
@@ -369,6 +481,16 @@ def _build_response_from_data(
             list(cfg.keys()),
         )
 
+    # F3 punto 1 (H20): mismo punto que en el flujo de 2 KTR — ver comentario
+    # equivalente en _build_response_from_two_ktr_data. Acá el ktr_data es el
+    # proceso monolítico completo (origen→STG→DWH en 1 archivo), así que un
+    # corte real acá es aún más significativo (el patrón de err1.ktr/err2.ktr
+    # vive todo en el mismo archivo).
+    cut = compute_cut(ktr_data, STEP_TYPE_ALIASES)
+    cut_warnings = list(cut["notifications"])
+    if len(cut["groups"]) > 1:
+        cut_warnings.append(_cut_pending_warning("proceso completo", cut["groups"]))
+
     try:
         ktr_xml, ktr_filename, ktr_warnings = build_ktr(
             ktr_data, process_name,
@@ -383,6 +505,7 @@ def _build_response_from_data(
         *data.get("advertencias_buenas_practicas", []),
         *(connection_warnings or []),
         *(extra_warnings or []),
+        *cut_warnings,
         *ktr_warnings,
     ])
 
@@ -433,6 +556,23 @@ def _build_response_from_two_ktr_data(
     ktr_data_1 = data_1["ktr"]
     ktr_data_2 = data_2["ktr"]
 
+    # F3 punto 1 (H20, 03-plan.md): compute_cut() ya corre acá, entre la
+    # reparación de integridad (arriba, en el caller) y build_ktr() (abajo).
+    # La partición física en N archivos (_build_ktr_stage, service-ready y
+    # probada en test_fragmentation_wiring.py) todavía NO se aplica en este
+    # flujo en vivo — ETLGenerateResponse sigue fija a 1 KTR por etapa (hueco
+    # nuevo, no listado en la lista original de "archivos a tocar" de F3, ver
+    # 03-plan.md). Mientras tanto, cada corte real detectado (condición C1/
+    # C1-bis) se promueve a Validacion tipo="error" en vez de pasar en
+    # silencio — es la misma clase de carrera/doble-escritor de err1.ktr/
+    # err2.ktr (H21) que motivó todo este refactor.
+    cut_warnings: list[str] = []
+    for label, ktr_data in (("origen→STG", ktr_data_1), ("STAGING→DWH", ktr_data_2)):
+        cut = compute_cut(ktr_data, STEP_TYPE_ALIASES)
+        cut_warnings.extend(cut["notifications"])
+        if len(cut["groups"]) > 1:
+            cut_warnings.append(_cut_pending_warning(label, cut["groups"]))
+
     try:
         ktr1_xml, ktr1_filename, warnings_1 = build_ktr(
             ktr_data_1, f"{process_name}_origen_stg" if process_name else "KTR_1_origen_stg",
@@ -476,7 +616,16 @@ def _build_response_from_two_ktr_data(
 
     from app.services.job_analyzer import build_kjb_xml
 
-    job_plan = _build_job_plan(ktr1_filename, ktr2_filename, process_name)
+    # Cada etapa se pasa como 1 solo archivo — _build_job_plan soporta N por
+    # etapa (F3 punto 2), pero este flujo en vivo todavía no aplica el corte
+    # (ver comentario arriba), así que sub_kjbs siempre da vacío acá.
+    job_plan, _sub_kjbs = _build_job_plan(
+        [
+            ("origen_stg", [(ktr_data_1, ktr1_xml, ktr1_filename)]),
+            ("stg_dwh", [(ktr_data_2, ktr2_xml, ktr2_filename)]),
+        ],
+        process_name,
+    )
     kjb_xml = build_kjb_xml(job_plan)
     kjb_filename = f"{_sanitize(process_name or 'Proceso_ETL')}_job.kjb"
 
@@ -487,6 +636,7 @@ def _build_response_from_two_ktr_data(
         *data_2.get("advertencias_buenas_practicas", []),
         *(connection_warnings or []),
         *(extra_warnings or []),
+        *cut_warnings,
         *warnings_1,
         *warnings_2,
     ])
@@ -578,10 +728,13 @@ async def build_etl_from_raw(
     )
     extra_warnings: list[str] = []
     if "ktr_1" in raw_llm_data and "ktr_2" in raw_llm_data:
+        raw_llm_data["ktr_1"]["ktr"], cfg_w1 = normalize_step_configs(raw_llm_data["ktr_1"]["ktr"])
+        raw_llm_data["ktr_2"]["ktr"], cfg_w2 = normalize_step_configs(raw_llm_data["ktr_2"]["ktr"])
+        extra_warnings = [*cfg_w1, *cfg_w2]
         if llm is not None:
             raw_llm_data["ktr_1"]["ktr"], w1 = await repair_ktr_steps(raw_llm_data["ktr_1"]["ktr"], llm, "")
             raw_llm_data["ktr_2"]["ktr"], w2 = await repair_ktr_steps(raw_llm_data["ktr_2"]["ktr"], llm, "")
-            extra_warnings = [*w1, *w2]
+            extra_warnings = [*extra_warnings, *w1, *w2]
         raw_llm_data["ktr_1"]["ktr"], w3 = await repair_integrity_gaps(raw_llm_data["ktr_1"]["ktr"], llm, "")
         raw_llm_data["ktr_2"]["ktr"], w4 = await repair_integrity_gaps(raw_llm_data["ktr_2"]["ktr"], llm, "")
         extra_warnings = [*extra_warnings, *w3, *w4]
@@ -594,8 +747,11 @@ async def build_etl_from_raw(
         return _build_response_from_two_ktr_data(
             raw_llm_data["ktr_1"], raw_llm_data["ktr_2"], metadata, extra_warnings=extra_warnings,
         )
+    if raw_llm_data.get("ktr"):
+        raw_llm_data["ktr"], extra_warnings = normalize_step_configs(raw_llm_data["ktr"])
     if llm is not None and raw_llm_data.get("ktr"):
-        raw_llm_data["ktr"], extra_warnings = await repair_ktr_steps(raw_llm_data["ktr"], llm, "")
+        raw_llm_data["ktr"], w = await repair_ktr_steps(raw_llm_data["ktr"], llm, "")
+        extra_warnings = [*extra_warnings, *w]
     if raw_llm_data.get("ktr"):
         raw_llm_data["ktr"], integrity_warnings = await repair_integrity_gaps(raw_llm_data["ktr"], llm, "")
         extra_warnings = [*extra_warnings, *integrity_warnings]
@@ -620,10 +776,11 @@ async def generate_etl(
 
     repair_warnings: list[str] = []
     if resp.json_data and resp.json_data.get("ktr"):
+        resp.json_data["ktr"], cfg_warnings = normalize_step_configs(resp.json_data["ktr"])
         context_text = f"{req.stagingDef!r}\n\n{req.dwhModel!r}"
         resp.json_data["ktr"], repair_warnings = await repair_ktr_steps(resp.json_data["ktr"], llm, context_text)
         resp.json_data["ktr"], integrity_warnings = await repair_integrity_gaps(resp.json_data["ktr"], llm, context_text)
-        repair_warnings = [*repair_warnings, *integrity_warnings]
+        repair_warnings = [*cfg_warnings, *repair_warnings, *integrity_warnings]
 
     return _build_response(resp, extra_warnings=repair_warnings)
 
@@ -797,6 +954,8 @@ async def generate_etl_from_inference(
         )
         raise ValueError("LLM returned no structured data — cannot parse ETL response")
 
+    data_1["ktr"], cfg_warnings_1 = normalize_step_configs(data_1["ktr"])
+    data_2["ktr"], cfg_warnings_2 = normalize_step_configs(data_2["ktr"])
     context_text = f"{req.stg_definition}\n\n{dwh_ddl}"
     data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
     data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
@@ -820,6 +979,7 @@ async def generate_etl_from_inference(
         data_1, data_2, metadata,
         required_columns_by_table=required_columns_by_table,
         extra_warnings=[
+            *cfg_warnings_1, *cfg_warnings_2,
             *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
             *type_warnings, *dim_contract_warnings, *ddl_change_warnings,
         ],
@@ -938,6 +1098,8 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             if data_1 is None or data_2 is None:
                 raise ValueError("El modelo no devolvió datos estructurados.")
 
+            data_1["ktr"], cfg_warnings_1 = normalize_step_configs(data_1["ktr"])
+            data_2["ktr"], cfg_warnings_2 = normalize_step_configs(data_2["ktr"])
             context_text = f"{req.stg_definition}\n\n{dwh_ddl}"
             data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
             data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
@@ -982,6 +1144,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             "metadata": metadata.model_dump(),
             "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, dwh_ddl),
             "repair_warnings": [
+                *cfg_warnings_1, *cfg_warnings_2,
                 *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
                 *type_warnings, *dim_contract_warnings, *ddl_change_warnings,
             ],

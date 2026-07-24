@@ -5,7 +5,6 @@ Producen un grafo dirigido origen → staging → DWH listo para el frontend.
 """
 from __future__ import annotations
 
-import json
 import logging
 import re
 from typing import Optional
@@ -13,10 +12,14 @@ from xml.etree import ElementTree as ET
 
 from app.schemas.lineage import Lineage, LineageEdge, LineageNode
 from app.services.ktr_builder import STEP_TYPE_ALIASES
+from app.services.ktr_builder.contracts import normalize_config
+from app.services.ktr_builder.contracts import parse_cfg as _parse_config
 
 logger = logging.getLogger(__name__)
 
-# Steps cuyo config tiene un campo "table" directo.
+# Steps cuyo config tiene un campo "table" directo (post-normalize_config —
+# ver _extract_table). DBLookup incluido (H11): antes quedaba invisible para
+# el linaje pese a tocar tabla en modo lectura (ver H19 en 01-hallazgos.md).
 _TABLE_FIELD_TYPES = {
     "TableOutput",
     "InsertUpdate",
@@ -24,6 +27,7 @@ _TABLE_FIELD_TYPES = {
     "Delete",
     "DimensionLookup",
     "CombinationLookup",
+    "DBLookup",
 }
 
 # Regex para extraer nombres de tabla de un SQL SELECT (FROM y cualquier JOIN).
@@ -38,19 +42,12 @@ def _canonical(raw_type: str) -> str:
     return STEP_TYPE_ALIASES.get(raw_type, raw_type)
 
 
-def _parse_config(raw) -> dict:
-    """El LLM a veces serializa 'config' como string JSON en vez de objeto."""
-    if isinstance(raw, str):
-        try:
-            return json.loads(raw) if raw.strip() else {}
-        except json.JSONDecodeError:
-            return {}
-    return raw or {}
-
-
 def _extract_table(canonical_type: str, config: dict) -> Optional[str]:
     if canonical_type in _TABLE_FIELD_TYPES:
-        return config.get("table") or None
+        # H4: alias de tabla (target_table/table_name -> table) resuelto vía
+        # contracts.STEP_CONTRACTS.key_aliases — misma fuente que usa el
+        # builder XML, no una copia propia que puede divergir.
+        return normalize_config(canonical_type, config).get("table") or None
     if canonical_type == "CsvInput":
         return config.get("filename") or None
     if canonical_type == "TableInput":
@@ -132,85 +129,103 @@ def build_lineage(ktr_data: dict) -> Lineage:
     return Lineage(nodes=nodes, edges=edges)
 
 
-_K2_PREFIX = "K2::"
-
-
-def stitch_lineage(ktr_data_1: dict, ktr_data_2: dict) -> Lineage:
+def stitch_lineage_many(ktr_data_list: list[dict]) -> Lineage:
     """
-    Cose el linaje de KTR_1 (origen→STG) y KTR_2 (STG→DWH) en un único grafo
-    origen→STG→DWH continuo, agregando un hop sintético por cada tabla de
-    staging que un TableOutput sink de KTR_1 escribe y un TableInput source de
-    KTR_2 lee (matcheados por nombre de tabla, no por posición).
+    F3 punto 3 (03-plan.md): generaliza stitch_lineage de 2 KTR fijos a M
+    archivos. Cose el linaje de ktr_data_list[0..M-1] (en el orden de
+    ejecución que ya vino dado — el de compute_cut() dentro de una etapa,
+    y el de las etapas entre sí) en un único grafo continuo, agregando un hop
+    sintético por cada tabla que un TableOutput sink de un archivo escribe y
+    un TableInput source de OTRO archivo (no necesariamente el siguiente) lee
+    (matcheados por nombre de tabla, no por posición ni adyacencia).
 
-    Los steps de KTR_2 se namespacean con el prefijo "K2::" — son 2 archivos
-    generados por llamadas separadas al modelo, sin garantía de nombres de
-    step únicos entre sí. Los de KTR_1 no se tocan.
+    Cada archivo a partir del segundo se namespacea con un prefijo por índice
+    ("F1::", "F2::", ...) — son archivos generados por llamadas/grupos
+    separados, sin garantía de nombres de step únicos entre sí. El primero
+    (índice 0) no se prefija, para no romper el linaje del flujo legacy de 1
+    solo KTR ni el caso M=1.
 
-    No modifica build_lineage(): la reusa tal cual sobre el grafo ya combinado,
-    para que la clasificación de capa (que depende del grado del nodo) vea el
-    grafo completo en vez de dos mitades desconectadas — un TableInput que hoy
-    sería in_deg==0 dentro de KTR_2 solo (mal clasificado como "origen") deja
-    de serlo una vez agregado el hop sintético que lo conecta al sink de KTR_1.
+    No modifica build_lineage(): la reusa tal cual sobre el grafo ya
+    combinado, para que la clasificación de capa (que depende del grado del
+    nodo) vea el grafo completo en vez de M mitades desconectadas — un
+    TableInput que sería in_deg==0 dentro de un archivo solo (mal clasificado
+    como "origen") deja de serlo una vez agregado el hop sintético que lo
+    conecta al sink que escribió esa tabla en otro archivo.
 
-    Tolerante: si un TableInput de KTR_2 no matchea ningún sink de KTR_1 (el
+    Un sink y su source nunca se conectan si están en el MISMO archivo (evita
+    un falso hop sintético dentro de una rama ya conectada por hops reales) —
+    la única diferencia real de comportamiento frente al M=2 original, que no
+    podía darse ese caso porque comparaba archivos distintos por construcción.
+
+    Tolerante: si un TableInput no matchea ningún sink de otro archivo (el
     modelo no respetó los nombres de tabla fijados en el prompt), esa rama
     queda sin costura y build_lineage() la clasifica "origen" igual que hoy —
     señal visual del mismatch en vez de una excepción.
     """
-    steps_1 = list(ktr_data_1.get("steps", []))
-    hops_1  = list(ktr_data_1.get("hops", []))
+    if not ktr_data_list:
+        return build_lineage({})
+    if len(ktr_data_list) == 1:
+        return build_lineage(ktr_data_list[0])
 
-    steps_2 = [
-        {**s, "name": f"{_K2_PREFIX}{s.get('name', '')}"}
-        for s in ktr_data_2.get("steps", [])
-    ]
-    hops_2 = [
-        {**h, "from": f"{_K2_PREFIX}{h.get('from', '')}", "to": f"{_K2_PREFIX}{h.get('to', '')}"}
-        for h in ktr_data_2.get("hops", [])
-    ]
+    all_steps: list[dict] = []
+    all_hops: list[dict] = []
+    sinks: dict[str, tuple[str, int]] = {}
+    pending_sources: list[tuple[str, int, list[str]]] = []
 
-    out_deg_1: dict[str, int] = {s.get("name", ""): 0 for s in steps_1}
-    for h in hops_1:
-        if h.get("from") in out_deg_1:
-            out_deg_1[h["from"]] += 1
+    for idx, ktr_data in enumerate(ktr_data_list):
+        prefix = f"F{idx}::" if idx > 0 else ""
+        steps = [
+            {**s, "name": f"{prefix}{s.get('name', '')}"}
+            for s in ktr_data.get("steps", [])
+        ]
+        hops = [
+            {**h, "from": f"{prefix}{h.get('from', '')}", "to": f"{prefix}{h.get('to', '')}"}
+            for h in ktr_data.get("hops", [])
+        ]
 
-    # Tablas STG escritas por un TableOutput sink en KTR_1 (sin hop saliente
-    # dentro de KTR_1 — es el final de su rama).
-    stg_sinks: dict[str, str] = {}
-    for s in steps_1:
-        name = s.get("name", "")
-        if _canonical(s.get("type", "Dummy")) != "TableOutput" or out_deg_1.get(name, 0) != 0:
-            continue
-        tabla = _extract_table("TableOutput", _parse_config(s.get("config", {})))
-        if tabla:
-            stg_sinks[tabla.strip().lower()] = name
+        out_deg: dict[str, int] = {s.get("name", ""): 0 for s in steps}
+        in_deg: dict[str, int] = {s.get("name", ""): 0 for s in steps}
+        for h in hops:
+            if h.get("from") in out_deg:
+                out_deg[h["from"]] += 1
+            if h.get("to") in in_deg:
+                in_deg[h["to"]] += 1
 
-    in_deg_2: dict[str, int] = {s.get("name", ""): 0 for s in steps_2}
-    for h in hops_2:
-        if h.get("to") in in_deg_2:
-            in_deg_2[h["to"]] += 1
+        for s in steps:
+            name = s.get("name", "")
+            canonical = _canonical(s.get("type", "Dummy"))
+            # Sink: TableOutput sin hop saliente dentro de su propio archivo
+            # (es el final de su rama).
+            if canonical == "TableOutput" and out_deg.get(name, 0) == 0:
+                tabla = _extract_table("TableOutput", _parse_config(s.get("config", {})))
+                if tabla:
+                    sinks.setdefault(tabla.strip().lower(), (name, idx))
+            # Source: TableInput sin hop entrante dentro de su propio archivo
+            # (es el inicio de su rama).
+            if canonical == "TableInput" and in_deg.get(name, 0) == 0:
+                tablas = _extract_table("TableInput", _parse_config(s.get("config", {})))
+                if tablas:
+                    pending_sources.append((name, idx, [t.strip().lower() for t in tablas.split(",")]))
 
-    # Tablas STG leídas por un TableInput source en KTR_2 (sin hop entrante
-    # dentro de KTR_2 — es el inicio de su rama) → hop sintético al sink que
-    # escribió esa misma tabla en KTR_1.
+        all_steps.extend(steps)
+        all_hops.extend(hops)
+
     synthetic_hops: list[dict] = []
-    for s in steps_2:
-        name = s.get("name", "")
-        if _canonical(s.get("type", "Dummy")) != "TableInput" or in_deg_2.get(name, 0) != 0:
-            continue
-        tablas = _extract_table("TableInput", _parse_config(s.get("config", {})))
-        if not tablas:
-            continue
-        for tabla in (t.strip().lower() for t in tablas.split(",")):
-            sink_step = stg_sinks.get(tabla)
-            if sink_step:
-                synthetic_hops.append({"from": sink_step, "to": name, "enabled": True})
+    for name, src_idx, tablas in pending_sources:
+        for tabla in tablas:
+            sink = sinks.get(tabla)
+            if sink is not None and sink[1] != src_idx:
+                synthetic_hops.append({"from": sink[0], "to": name, "enabled": True})
 
-    merged = {
-        "steps": steps_1 + steps_2,
-        "hops": hops_1 + hops_2 + synthetic_hops,
-    }
-    return build_lineage(merged)
+    return build_lineage({"steps": all_steps, "hops": all_hops + synthetic_hops})
+
+
+def stitch_lineage(ktr_data_1: dict, ktr_data_2: dict) -> Lineage:
+    """Caso M=2 de stitch_lineage_many() — origen→STG (KTR_1) y STG→DWH
+    (KTR_2). Firma preservada por compatibilidad: la usa stitch_lineage_from_xml
+    (routers/ai.py, endpoint público /api/ai/lineage-from-ktr que re-deriva
+    linaje a partir de 2 XML ya servidos)."""
+    return stitch_lineage_many([ktr_data_1, ktr_data_2])
 
 
 def _parse_ktr_xml(ktr_xml: str) -> dict:

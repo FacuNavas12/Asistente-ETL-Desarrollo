@@ -11,6 +11,7 @@ builders de cada familia de step, layout.py para el auto-layout y validate.py
 para la validación de estructura pre-XML.
 """
 from app.services.ktr_builder.build import build_ktr
+from app.services.ktr_builder.contracts import ConfigParseError, normalize_step_configs
 from app.services.ktr_builder.connection import (
     _build_connection,
     _DB_TYPE_TO_KETTLE,
@@ -23,6 +24,7 @@ from app.services.ktr_builder.dimension_step_policy import (
     derive_dimension_step_type,
     enforce_dimension_step_policy,
 )
+from app.services.ktr_builder.fragmentation import compute_cut, split_ktr_by_cut
 from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.registry import (
     KNOWN_PDI_STEP_TYPES,
@@ -43,4 +45,8 @@ __all__ = [
     "derive_dimension_step_type",
     "enforce_dimension_step_policy",
     "OVERRIDE_STEP_PREFIX",
+    "normalize_step_configs",
+    "ConfigParseError",
+    "compute_cut",
+    "split_ktr_by_cut",
 ]
