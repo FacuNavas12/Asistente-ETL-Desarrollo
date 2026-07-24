@@ -8,6 +8,33 @@ Toda sesión que tome una decisión cierra actualizando este archivo.
 
 ---
 
+## Índice por fase
+
+Navegación rápida — clic para ir directo a la decisión. Grupos según la taxonomía de fases de [`03-plan.md`](03-plan.md). El tag `[Fase]` al final de cada título de decisión repite este agrupamiento in situ, para orientarse sin volver acá.
+
+**Fundamentos** (doctrina general, aplica a todo el refactor, no a una fase puntual)
+[D1](#d1) fase lógica ≠ archivo físico · [D2](#d2) no se preserva comportamiento actual · [D3](#d3) datos guardados descartables · [D4](#d4) compat. hacia atrás no es requisito · [D5](#d5) ante la duda, falla · [D9](#d9) criterio de verificación: delta declarado · [D10](#d10) sin convivencia parseo viejo/nuevo · [D13](#d13) definición de terminado (toda fase) · [D15](#d15) fail-fast en detección, no fail-hard en emisión
+
+**Eje `dim_contracts` / G-step** (fuera de Track F, pero lo cruza en F3/F4)
+[D11](#d11) `dim_contracts` no choca con fragmentación
+
+**F1.5** — dominio mínimo para el corte
+[D8](#d8) conocimiento de dominio: una sola casa · [D14](#d14) F1.5/F2.5 no dependen circularmente de sí mismas · [D18](#d18) H2 (config string→object) pospuesto, no decidido
+
+**F2** — diseño del corte
+[D6](#d6) el backend decide la fragmentación, determinístico · [D6-bis](#d6-bis) fragmentación = corrección, no legibilidad · [D7](#d7) reglas derivadas de casos reales · [D17](#d17) F2 aprobado por el usuario
+
+**F3** — implementación del corte
+[D16](#d16) dependencia externa real: eje `dim_contracts` · [D19](#d19) wiring de servicio cerrado, HTTP en modo notificación · [D20](#d20) forma de la respuesta con N archivos
+
+**F4** — track de errores / contenido generado
+[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt
+
+**Otras secciones del archivo**
+[Deliberadamente no decidido](#deliberadamente-no-decidido) · [Verificaciones pendientes](#verificaciones-pendientes) · [Abiertos](#abiertos-no-bloquean-el-arranque-del-refactor-sí-bloquean-ítems-puntuales) — [C.1](#c1) dialecto multi-motor `[F4]` · [C.2](#c2) reglas de corte vs. D6-bis `[F2]` ✓ · [C.3](#c3) verificaciones DB real `[F1/F4]` · [C.4](#c4) auditoría retroactiva `[Fundamento]` · [C.5](#c5) constraints DDL `[F4]` · [C.6](#c6) FK no resuelta `[F4]` ✓ resuelta por D21
+
+---
+
 ## Objetivo
 
 Hoy el sistema fuerza todo ETL a exactamente dos archivos KTR (Origen→Staging, Staging→DWH). **Ese forzado es la falla:** cuando un proceso necesitaba separarse, meterlo igual dentro de dos archivos produjo errores.
@@ -24,7 +51,8 @@ Todo lo demás del proyecto es río abajo de este objetivo y se evalúa contra �
 
 ## Decisiones vigentes
 
-### D1 — Fase lógica ≠ archivo físico
+<a id="d1"></a>
+### D1 — Fase lógica ≠ archivo físico `[Fundamento]`
 
 La cantidad de archivos KTR deja de estar fijada. Se deriva de reglas aplicadas sobre el conjunto de steps y su grafo de dependencias.
 
@@ -34,13 +62,15 @@ La cantidad de archivos KTR deja de estar fijada. Se deriva de reglas aplicadas 
 
 *Qué la invalidaría:* que se demuestre que ningún caso real requiere más de dos archivos.
 
-### D2 — No optimizamos por preservar el comportamiento actual
+<a id="d2"></a>
+### D2 — No optimizamos por preservar el comportamiento actual `[Fundamento]`
 
 Las zonas afectadas van a sufrir cambios estructurales que vuelven irrelevante si hoy funcionaban. "Esto hoy anda" no es argumento para protegerlo.
 
 *Por qué:* el plan estaba gastando esfuerzo en conciliar comportamientos que el refactor vuelve obsoletos.
 
-### D3 — Los datos guardados son descartables
+<a id="d3"></a>
+### D3 — Los datos guardados son descartables `[Fundamento]`
 
 Regenerar los ETLs desde datos base es preferible, y además sirve para volver a probar el sistema. No pedimos migración de datos ni modo permisivo por compatibilidad histórica.
 
@@ -48,11 +78,13 @@ Regenerar los ETLs desde datos base es preferible, y además sirve para volver a
 
 *Qué la invalidaría:* que alguien del equipo tenga trabajo apoyado en ETLs guardados. Ver verificaciones pendientes.
 
-### D4 — La compatibilidad hacia atrás no es requisito hasta nuevo aviso
+<a id="d4"></a>
+### D4 — La compatibilidad hacia atrás no es requisito hasta nuevo aviso `[Fundamento]`
 
 Cuando lo sea, se decide explícitamente acá y se revisa todo lo que dependa de esto.
 
-### D5 — Ante la duda entre tolerar y fallar, se falla
+<a id="d5"></a>
+### D5 — Ante la duda entre tolerar y fallar, se falla `[Fundamento]`
 
 Preferimos que un cambio rompa fuerte y visible antes que degrade en silencio.
 
@@ -60,7 +92,8 @@ Preferimos que un cambio rompa fuerte y visible antes que degrade en silencio.
 
 *Consecuencia:* nada de degradar a valores vacíos dentro de un `except`. Un input inválido produce un error explícito con contexto suficiente para ubicarlo.
 
-### D6 — La fragmentación la decide el backend, de forma determinística
+<a id="d6"></a>
+### D6 — La fragmentación la decide el backend, de forma determinística `[F2]`
 
 El LLM propone el ETL lógico. El backend decide la materialización física en N KTRs más el KJB.
 
@@ -75,7 +108,8 @@ El LLM propone el ETL lógico. El backend decide la materialización física en 
 
 *Qué la invalidaría:* si se diera vuelta, cambia el schema de salida entero, las reglas pasan a ser prompt engineering en vez de código testeable, y hay que revisar D1 y el plan completo. (Ya no es un riesgo abierto — queda documentado por si algo futuro lo pone en duda.)
 
-### D6-bis — La fragmentación es un mecanismo de corrección, no de legibilidad
+<a id="d6-bis"></a>
+### D6-bis — La fragmentación es un mecanismo de corrección, no de legibilidad `[F2]`
 
 **La fragmentación responde únicamente a corrección estructural: races, fallas silenciosas, conflictos de lectura/escritura sobre la misma tabla. Un KTR largo pero correcto no se parte.**
 
@@ -87,7 +121,8 @@ El LLM propone el ETL lógico. El backend decide la materialización física en 
 
 *Pendiente:* el material de fragmentación (`handoff_fragmentacion_y_errores.md`) ya contiene reglas de cuándo fragmentar escritas antes de esta decisión. Hay que releerlas y eliminar las que respondan a legibilidad o tamaño en vez de corrección estructural — ver `03-plan.md`, ítem bloqueante antes de diseñar el corte (Track F2).
 
-### D7 — Las reglas de fragmentación se derivan de casos reales de falla
+<a id="d7"></a>
+### D7 — Las reglas de fragmentación se derivan de casos reales de falla `[F2]`
 
 No se diseñan desde una lista abstracta de buenas prácticas de Pentaho. Se derivan de los casos concretos donde forzar dos archivos produjo errores: qué ETL, qué steps, qué falló, cómo se resolvió separando.
 
@@ -95,7 +130,8 @@ No se diseñan desde una lista abstracta de buenas prácticas de Pentaho. Se der
 
 *Consecuencia:* cada caso histórico de falla es también un caso de prueba: debe producir la partición correcta.
 
-### D8 — El conocimiento de dominio sobre steps tiene una sola casa
+<a id="d8"></a>
+### D8 — El conocimiento de dominio sobre steps tiene una sola casa `[F1.5]`
 
 Qué tabla toca un step, con qué alias, y si lee o escribe: eso vive en un único lugar. Ningún código nuevo —incluido el motor de fragmentación— reimplementa esa noción por su cuenta.
 
@@ -103,7 +139,8 @@ Qué tabla toca un step, con qué alias, y si lee o escribe: eso vive en un úni
 
 *Consecuencia:* centralizamos el dato, no necesariamente la interfaz. Una sola fuente de verdad, y encima funciones separadas y finitas por cada proyección que los consumidores necesiten. No forzamos un accessor único que devuelva todo.
 
-### D9 — Criterio de verificación: delta declarado, no diff contra el pasado
+<a id="d9"></a>
+### D9 — Criterio de verificación: delta declarado, no diff contra el pasado `[Fundamento]`
 
 El prompt de Fase 5 (auditoría de arquitectura) pedía verificar cada paso "comparando el artefacto generado antes y después". D2 mata esa política de preservar comportamiento, pero no mata la necesidad de un criterio de verificación — solo cambia contra qué se compara.
 
@@ -124,7 +161,8 @@ El prompt de Fase 5 (auditoría de arquitectura) pedía verificar cada paso "com
 
 *Por qué:* sin este criterio, D2 se leía como "no verificamos nada", que no es lo que dice — dice que no usamos "distinto de antes" como señal de bug por sí sola.
 
-### D10 — Sin período de convivencia entre parseo viejo y nuevo
+<a id="d10"></a>
+### D10 — Sin período de convivencia entre parseo viejo y nuevo `[Fundamento]`
 
 Consecuencia directa de D3 verificado (ver Verificaciones pendientes): como nadie tiene trabajo apoyado en datos guardados, el requisito de compatibilidad no existe. El mecanismo de vuelta atrás ante un problema es revertir el commit, no sostener dos caminos en paralelo.
 
@@ -132,7 +170,8 @@ Consecuencia directa de D3 verificado (ver Verificaciones pendientes): como nadi
 
 *Por qué importa dejarlo explícito acá:* si el resto del prompt de Fase 5 se retoma sin marcar esto, se reabre desde cero una pregunta que ya tiene evidencia (D3).
 
-### D11 — `dim_contracts` (commit `149b836`) no choca con el refactor de fragmentación
+<a id="d11"></a>
+### D11 — `dim_contracts` (commit `149b836`) no choca con el refactor de fragmentación `[dim_contracts]`
 
 Eje distinto: `dim_contracts` decide **qué tipo de step** carga una dimensión (SCD1 vs SCD2); la fragmentación decide **cuántos archivos**. No se pisan.
 
@@ -140,7 +179,8 @@ Más importante: `dim_contracts` ya usa el patrón que D6 pide — el backend de
 
 *Consecuencia menor:* toca en chico dos cosas ya documentadas para cambiar bajo D8, ambas dentro del PASO 1 planeado — `dimension_step_policy.py:53` (copia propia de `parse_cfg`, ver H3 en `01-hallazgos.md`) y `dimension_step_policy.py:107` (alias de tabla con `or` inline en vez de `contracts.STEP_CONTRACTS.key_aliases`, ver H4).
 
-### D12 — Dialecto SQL: Postgres por defecto, con notificación obligatoria
+<a id="d12"></a>
+### D12 — Dialecto SQL: Postgres por defecto, con notificación obligatoria `[F4]`
 
 El SQL generado depende del motor que declara el usuario, y hasta ahora eso no estaba escrito en ningún lado — Postgres fue un supuesto implícito horneado en construcciones específicas de dialecto en el SQL generado (ej. `DISTINCT ON`) en salidas de sesiones anteriores. No hay ocurrencias de ese patrón en el backend actual (`backend/`) — el supuesto vive en el SQL que el LLM genera dentro de `config`, no en código Python.
 
@@ -154,7 +194,8 @@ El SQL generado depende del motor que declara el usuario, y hasta ahora eso no e
 
 **Segunda y tercera ocurrencia confirmada (2026-07-22, `bitacora_etl_ventas.md`):** `DISTINCT ON` (R12, dedup de staging por `DISTINCT ON (clave_negocio) ORDER BY stg_fecha_carga DESC`) y `generate_series` (R10, calendario contiguo de `dim_tiempo`) — ambas construcciones exclusivas de Postgres, ambas usadas y confirmadas en verde en la solución de contraste de la bitácora. Ya no es un patrón hipotético citado de sesiones anteriores — es un caso real, empírico, generado por un LLM sin que el prompt se lo pidiera explícitamente. Refuerza la necesidad del punto de notificación obligatorio que esta decisión ya fija. Ruteo: F4 (contenido generado) — ver `03-plan.md`.
 
-### D13 — Definición de terminado, obligatoria para toda fase del plan
+<a id="d13"></a>
+### D13 — Definición de terminado, obligatoria para toda fase del plan `[Fundamento]`
 
 Ninguna fase de `03-plan.md` (Track A o Track F) se da por cerrada sin estas tres cosas:
 
@@ -164,7 +205,8 @@ Ninguna fase de `03-plan.md` (Track A o Track F) se da por cerrada sin estas tre
 
 *Por qué:* sin esto, el tramo "rojo" de la migración no tiene final definido fase por fase — siempre se corre un cambio más antes de reconectar.
 
-### D14 — F2/F3 no dependen del borde tipado grande; dependían circularmente de sí mismas
+<a id="d14"></a>
+### D14 — F2/F3 no dependen del borde tipado grande; dependían circularmente de sí mismas `[F1.5/F2.5]`
 
 `03-plan.md` hacía depender F2 de "borde tipado + STEP_CONTRACTS centralizado" en su columna "Depende de", mientras la columna "Hallazgos que toca" de esa misma fila listaba H4 y H11 — los hallazgos que esa centralización requiere resolver. Mismo patrón en F3: "Depende de" pedía H7 resuelto, y "Hallazgos que toca" incluía H7. Las dos fases dependían de algo que ellas mismas producían — sin punto de entrada válido.
 
@@ -183,7 +225,8 @@ Los tres tienen dirección ya decidida (D5, D8) y no dependen de ningún spike n
 
 *Por qué:* mismo principio que D8 — el conocimiento de dominio tiene una sola casa, y esa casa se construye antes de que el consumidor (el corte) la dé por hecha, no como parte del mismo paso que la consume.
 
-### D15 — Fail-fast en detección, no fail-hard en emisión: el backend emite mejor esfuerzo y notifica
+<a id="d15"></a>
+### D15 — Fail-fast en detección, no fail-hard en emisión: el backend emite mejor esfuerzo y notifica `[Fundamento]`
 
 Ajuste de alcance sobre D5, motivado por el modelo de producto: el sistema es un acelerador para profesionales de Spoon, no un generador que garantiza corrección por sí solo. Un `.ktr` emitido con un problema señalado es menos costo para el usuario que un backend que se niega a generar — el costo de la alternativa estricta (tocar backend, regenerar steps, mecanismos de descarga de steps armados solo para mitigar ese costo) ya se pagó una vez.
 
@@ -213,7 +256,8 @@ Lo que sí sigue bajo D15 (generar-y-notificar, no bloquear): el caso genuinamen
 
 *Por qué separado de D5 en vez de reescribirla:* mismo criterio que D6/D6-bis — D5 sigue siendo la doctrina general (ante la duda, fallar visible). D15 fija dónde se traza la línea entre "fallar" (detección, sigue firme) y "bloquear" (emisión, se retira), que D5 dejaba ambigua y que `00-objetivo.md` había resuelto para el lado que esta decisión ahora corrige.
 
-### D16 — El corte tiene una dependencia externa real (eje `dim_contracts`), no una que Track F resuelva
+<a id="d16"></a>
+### D16 — El corte tiene una dependencia externa real (eje `dim_contracts`), no una que Track F resuelva `[F3]`
 
 Disparada por el análisis de `bitacora_etl_ventas.md`/`extracto_corte_F2.md` (2026-07-22): el `extracto` preguntó si C1-bis (doble escritor sobre `dim_producto` en `err1.ktr`/`err2.ktr`, H21) era un **fantasma** — un artefacto de que el step estaba mal elegido, no un problema estructural real. Verificado contra el código (no contra memoria):
 
@@ -258,11 +302,13 @@ No bloquea F3 (nunca bloqueó, D15). Cierre completo: la ambigüedad de "no hay 
 
 Tests: `tests/test_dimension_step_policy.py` (6 casos de la sesión original, incluida la reproducción de `err1.ktr`/`err2.ktr`, + 2 asserts nuevos sobre el contenido del mensaje de error del caso scd 0/1).
 
-### D17 — F2 (diseño del corte) aprobado por el usuario
+<a id="d17"></a>
+### D17 — F2 (diseño del corte) aprobado por el usuario `[F2]`
 
 **Aprobado 2026-07-23.** El diseño de F2 (`03-plan.md`, reporte del 2026-07-22: matriz R/W, disparadores C1/C1-bis, componentes conexos, excepción self-lookup, orden topológico, validado contra `err1.ktr`/`err2.ktr`) queda aprobado tal como está documentado. Desbloquea uno de los tres prerrequisitos de F3 (los otros dos: F2.5 en código, D16 camino 1 en código — ninguno de los dos escrito todavía).
 
-### D18 — H2 (config `string`→`object`) propuesto para adelantarse como fix de raíz de H6, no decidido — requiere spike antes de tocar `ETL_OUTPUT_SCHEMA`
+<a id="d18"></a>
+### D18 — H2 (config `string`→`object`) propuesto para adelantarse como fix de raíz de H6, no decidido — requiere spike antes de tocar `ETL_OUTPUT_SCHEMA` `[F1.5]`
 
 **Contexto (2026-07-23):** en vez de parchear H6 (fail-fast en `parse_cfg`) como venía planeado en F1.5, se propuso ir a la raíz — cambiar `config` de string a object en `ETL_OUTPUT_SCHEMA` para que el parseo deje de existir (no hay JSON que fallar al parsear si nunca fue string). Coherente con D2 (no protegemos el string actual porque "hoy funciona").
 
@@ -276,7 +322,8 @@ Tests: `tests/test_dimension_step_policy.py` (6 casos de la sesión original, in
 
 *Por qué D18 y no una edición directa de H2:* cambia si H2 se adelanta o se mantiene pospuesto — decisión de scope y de secuencia, no un dato nuevo sobre el hallazgo en sí.
 
-### D19 — F3 punto 1-3 (wiring del corte) cerrado a nivel de servicio; el flujo HTTP en vivo se queda en modo notificación hasta extender `ETLGenerateResponse`
+<a id="d19"></a>
+### D19 — F3 punto 1-3 (wiring del corte) cerrado a nivel de servicio; el flujo HTTP en vivo se queda en modo notificación hasta extender `ETLGenerateResponse` `[F3]`
 
 **Contexto (2026-07-24):** al arrancar F3 punto 1 (wiring de `compute_cut()` a `etl_generator.py`, ver `03-plan.md`), apareció un hueco no listado en la sección "Archivos a tocar" del reporte F2: `ETLGenerateResponse` (`backend/app/schemas/etl_schemas.py:119-136`) y el ZIP del frontend (commit `338bff2`) están cableados a exactamente 1 KTR por etapa + 1 `.kjb` (2 archivos + 1 job). Si `compute_cut()` devuelve `groups>1` en una etapa real — exactamente el patrón de `err1.ktr`/`err2.ktr` (H21), el caso que motivó todo el refactor — no hay dónde poner los archivos extra en la respuesta HTTP.
 
@@ -288,7 +335,8 @@ Tests: `tests/test_dimension_step_policy.py` (6 casos de la sesión original, in
 
 **Estado: F3 sigue "EN CURSO"**, no cierra hasta que el hueco de arriba se resuelva (ver "NO hecho" en el estado de F3, `03-plan.md`) y corra un test de integración end-to-end contra el pipeline HTTP completo con un caso que dispare un corte real.
 
-### D20 — Forma de la respuesta con N archivos (diseño, cierra el hueco de D19)
+<a id="d20"></a>
+### D20 — Forma de la respuesta con N archivos (diseño, cierra el hueco de D19) `[F3]`
 
 **Contexto (2026-07-24):** D19 dejó abierto cómo extender `ETLGenerateResponse` (hoy fija a `ktr_xml`/`ktr2_xml`/`kjb_xml`) para entregar N archivos por etapa cuando `compute_cut()` devuelve `groups>1`. Esta sesión cierra el diseño; implementación (backend) y consumo (frontend, ZIP) quedan para sesiones separadas — ver punto 5.
 
@@ -328,7 +376,8 @@ Tests: `test_etl_generate_response_shape.py` (nuevo, 5 casos — split real en `
 
 **F3 sigue "EN CURSO"** — falta D20-punto5 (frontend: consumir el nuevo shape + ZIP con carpetas), sesión aparte.
 
-### D21 — C.6 resuelta: política ante FK no resuelta = miembro inferido, implementado sin reabrir D16
+<a id="d21"></a>
+### D21 — C.6 resuelta: política ante FK no resuelta = miembro inferido, implementado sin reabrir D16 `[F4]`
 
 **Contexto (2026-07-24):** el usuario trajo la práctica estándar de Kimball para este caso (`fact_venta.fk_producto` NOT NULL, `id_producto` de la venta ausente del maestro en el momento de la carga) — tres políticas posibles, con criterio explícito de cuándo usar cada una.
 
@@ -364,7 +413,8 @@ Tests: `tests/test_inferred_member.py` (13 casos — detección con FK NOT NULL/
 
 *Por qué D21 y no una edición directa de C.6:* mismo patrón que D16→"resuelto"/D19→D20 — la pregunta se registró en `Abiertos` cuando apareció sin la información para cerrarla; esta sesión la cierra con datos concretos (la práctica de Kimball que trajo el usuario + la verificación contra el código ya shippeado). Se separa para que quede trazable qué se sabía en cada momento.
 
-### D22 — F4 arranca: "estrategia de fix" no es una elección única, se resuelve por ítem; triage completo, 3 gaps reales cerrados por prompt
+<a id="d22"></a>
+### D22 — F4 arranca: "estrategia de fix" no es una elección única, se resuelve por ítem; triage completo, 3 gaps reales cerrados por prompt `[F4]`
 
 **Contexto (2026-07-24):** F4 (`03-plan.md`) tenía como parte de su propio objetivo "decidir estrategia de fix (derivación determinista desde `dim_contracts` vs. parche de prompt)" — a diferencia de F2/F3/D16/D21, esa pregunta nunca se cerró con una regla. Arrancar F4 sin cerrarla primero significaba tocar código a ciegas en 8 frentes con naturaleza distinta (contenido SQL, código backend nuevo, verificación pendiente de ejecución, alcance sin definir).
 
@@ -392,6 +442,7 @@ Tests: `tests/test_inferred_member.py` (13 casos — detección con FK NOT NULL/
 
 *Por qué D22 y no una fila más en `03-plan.md`:* fija el criterio de ruteo que la fila de F4 dejaba como pregunta abierta ("decidir estrategia de fix") — nivel de decisión de scope, mismo motivo que D14/D16/D20.
 
+<a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido
 
 Distinguir esto de lo cerrado evita que alguien lo dé por resuelto:
@@ -404,6 +455,7 @@ Distinguir esto de lo cerrado evita que alguien lo dé por resuelto:
 
 ---
 
+<a id="verificaciones-pendientes"></a>
 ## Verificaciones pendientes
 
 1. ~~Confirmar que nadie del equipo tenga trabajo apoyado en ETLs guardados.~~ **Verificado 2026-07-22: nadie tiene trabajo apoyado en ETLs guardados.** D3 queda confirmado sin condición, desbloquea D10.
@@ -412,19 +464,23 @@ Distinguir esto de lo cerrado evita que alguien lo dé por resuelto:
 
 ---
 
+<a id="abiertos-no-bloquean-el-arranque-del-refactor-sí-bloquean-ítems-puntuales"></a>
 ## Abiertos (no bloquean el arranque del refactor, sí bloquean ítems puntuales)
 
-### C.1 — Plan de variabilidad de dialecto SQL
+<a id="c1"></a>
+### C.1 — Plan de variabilidad de dialecto SQL `[F4]`
 
 Postgres queda como default decidido (D12), pero el soporte multi-motor no tiene plan: dónde vive la decisión de dialecto, qué construcciones dependen de motor más allá de `DISTINCT ON`, qué pasa si el usuario cambia de motor después de generar, dónde exactamente se notifica. Requiere sesión y plan propios — información crítica que se fija antes de generar.
 
-### C.2 — Contrastar las reglas de fragmentación existentes contra D6-bis
+<a id="c2"></a>
+### C.2 — Contrastar las reglas de fragmentación existentes contra D6-bis `[F2]`
 
 **Resuelto 2026-07-22.** Releídas las reglas de "cuándo fragmentar" en `handoff_fragmentacion_y_errores.md` (sección Fase 2 del prompt, líneas 51-62): C1 (toda tabla que aparece W y R en la misma etapa marca corte), la agrupación en componentes conexos, el ordenamiento por grafo de FK, y los validadores V1/V2/V3 (ninguna tabla W+R en el mismo ktr / todo lookup tiene productor / un solo escritor por tabla). Las cuatro son señal estructural — ninguna depende de cantidad de steps, longitud de archivo, ni legibilidad. **No hay ningún umbral tipo "partir si >N steps" en el material** — no se encontró nada que eliminar.
 
 *Conclusión:* el handoff ya cumplía D6-bis antes de que D6-bis se escribiera formalmente — coincidencia, no verificación previa (el handoff es anterior). Track F2 puede diseñar sobre el criterio C1 + V1/V2/V3 tal como están, sin depurar nada primero. Desbloquea Track F2 en este eje — F2 sigue sin arrancar sin aprobación explícita (ver `03-plan.md`).
 
-### C.3 — Verificaciones contra la base real (independiente del dialecto)
+<a id="c3"></a>
+### C.3 — Verificaciones contra la base real (independiente del dialecto) `[F1/F4]`
 
 ```sql
 -- ¿existen las columnas que el WHERE/ORDER BY asumen?
@@ -444,19 +500,22 @@ WHERE table_name = 'dim_producto' AND column_name = 'sk_producto';
 ```
 Secuencia vía `DEFAULT`, no `IDENTITY`. **Esto solo protege si el `INSERT` omite la columna por completo.** Verificado contra el generador: `_step_InsertUpdate` (`backend/app/services/ktr_builder/steps/output.py:43-63`) arma la lista de `<value>` directamente desde `cfg["fields"]`, sin ningún filtro que excluya una clave técnica/surrogate — si el step que carga `dim_producto` emite un mapeo hacia `sk_producto` (aunque sea con un valor vacío), ese `INSERT` incluye la columna explícita y pisa el `DEFAULT`. La pregunta real no es "¿la base genera el sk?" (sí) sino "¿el step generado por el LLM alguna vez mapea algo a esa columna?" — eso depende del contenido de cada corrida, no es verificable en abstracto. `err1.ktr`/`err2.ktr` (ver D7, arriba) referencian `InsertUpdate` y `sk_producto` — candidatos para revisar esto en concreto cuando Track F1/F4 los analice. No es más "rotura esperando genérica"; es un caso puntual a confirmar contra esos dos archivos.
 
-### C.5 — ¿El backend recomienda/emite constraints DDL? (R7, `bitacora_etl_ventas.md`)
+<a id="c5"></a>
+### C.5 — ¿El backend recomienda/emite constraints DDL? (R7, `bitacora_etl_ventas.md`) `[F4]`
 
 L2-E05 (bitácora): `dim_producto` sin `UNIQUE(id_producto)` — el upsert por clave natural funciona igual, pero sin índice único admite duplicados en reprocesos concurrentes. Regla propuesta como R7: "emitir constraints de integridad que el upsert por clave natural asume."
 
 **No es una decisión que esta sesión pueda tomar sola — es superficie de producto nueva.** Hoy el backend **no emite DDL en ningún punto**: `dwh_ddl` es un input (el usuario lo provee), nunca un output. Antes de rutear R7 a cualquier track hay que decidir: ¿el backend alguna vez sugiere/emite `ALTER TABLE`, o se limita a advertir en el canal que ya existe? Camino barato disponible sin abrir superficie nueva: usar el canal de `advertencias_buenas_practicas` (ya existe, ya es advisory-only, D15 ya lo trata como "notifica, no bloquea") para señalar el constraint recomendado como texto, sin que el backend emita SQL DDL real. No aplicado — queda abierto hasta que el usuario confirme el camino.
 
-### C.6 — Política de default ante FK no resuelta (R5-b/R11, `bitacora_etl_ventas.md`)
+<a id="c6"></a>
+### C.6 — Política de default ante FK no resuelta (R5-b/R11, `bitacora_etl_ventas.md`) `[F4]` — resuelta por D21
 
 L2-E06 (bitácora, marcado ahí mismo como "a decidir"): una venta con `id_producto` ausente del maestro deja `fk_producto` NULL, y `fact_venta.fk_producto` es NOT NULL — el INSERT rompe.
 
 **Resuelto 2026-07-24 — ver D21.** Política = miembro inferido (Kimball): el lookup nunca devuelve NULL, crea placeholder en la dimensión con la clave natural real y se auto-corrige (overwrite tipo 1) cuando el producto llega de verdad. Implementación: anti-join previo (SQL directo, fuera de la matriz R/W) + `Union` hacia el loader único de la dimensión — `dim_producto` conserva exactamente un writer, evita el choque con D16 sin reabrirla y sin depender de ningún orden incidental entre steps. No implementado en código todavía — trabajo de F4.
 
-### C.4 — Auditoría retroactiva de cambios no declarados
+<a id="c4"></a>
+### C.4 — Auditoría retroactiva de cambios no declarados `[Fundamento]`
 
 El material de fragmentación es un **autorreporte de sesión**, no evidencia independiente: describe la división de KTR, pero la pérdida de SCD2 real y tres clases de cambio no declaradas (ver tabla de D9) no salieron a la luz hasta comparar los XML generados, varias sesiones después. Si el documento las hubiera declarado, no habrían sido un hallazgo — eso es justamente lo que D9 (registro de deltas) busca prevenir hacia adelante.
 
