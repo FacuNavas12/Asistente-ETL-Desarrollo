@@ -15,14 +15,21 @@ _log = logging.getLogger(__name__)
 from sqlalchemy.orm import Session
 
 from app.models.llm_base import BaseLLM, LLMResponse
-from app.schemas.etl_schemas import ETLRequest, ETLFromInferenceRequest, ETLGenerateResponse, MetadataResponse, Validacion
+from app.schemas.etl_schemas import (
+    ArchivoKtr,
+    ETLRequest,
+    ETLFromInferenceRequest,
+    ETLGenerateResponse,
+    EtapaOutput,
+    MetadataResponse,
+    Validacion,
+)
 from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
 from app.services.adapters.ddl_adapter import parse_ddl
 from app.services.ddl_validation import validate_and_correct_ddl
 from app.services.ktr_builder import (
     build_ktr,
-    compute_cut,
     derive_dimension_step_type,
     enforce_dimension_step_policy,
     normalize_step_configs,
@@ -33,7 +40,7 @@ from app.services.ktr_builder import (
 )
 from app.services.ktr_builder.build import _sanitize
 from app.services.ktr_builder.fields_validate import FIELD_INTEGRITY_PREFIX
-from app.services.lineage_builder import build_lineage, stitch_lineage
+from app.services.lineage_builder import stitch_lineage_many
 
 
 def _split_integrity_warnings(warnings: list[str]) -> tuple[list[str], list[Validacion]]:
@@ -224,6 +231,78 @@ def _dim_contracts_anomaly_warning(dwh_ddl: str, dim_contracts: list) -> list[st
     ]
 
 
+def _dims_with_inferred_member(dwh_ddl: str, dim_contracts: list) -> list[dict]:
+    """D21 (02-decisiones.md): dimensiones referenciadas por una FK NOT NULL de
+    una tabla de hechos necesitan el patrón anti-join+Union hacia el loader
+    único (miembro inferido) — el lookup de esa FK nunca puede devolver NULL.
+    Reusa parse_ddl (mismo parser que _dim_contracts_anomaly_warning arriba):
+    is_foreign_key/references/constraints.required por columna ya traen todo
+    lo necesario, sin parseo nuevo."""
+    if not dim_contracts or not dwh_ddl or not dwh_ddl.strip():
+        return []
+    try:
+        schemas = parse_ddl(dwh_ddl, dialect=None)
+    except Exception as exc:
+        _log.warning("No se pudo parsear dwh_model para detectar miembro inferido (D21): %s", exc)
+        return []
+
+    dims_by_table = {c.table.strip().split(".")[-1].lower(): c for c in dim_contracts}
+    result: list[dict] = []
+    for schema in schemas:
+        for field in schema.fields:
+            if not (field.is_foreign_key and field.constraints.required and field.references):
+                continue
+            ref_table = field.references.reference_resource.strip().split(".")[-1].lower()
+            dim = dims_by_table.get(ref_table)
+            if dim is None:
+                continue
+            result.append({
+                "dimension": dim.table,
+                "fact_table": schema.source_name,
+                "fk_column": field.name,
+                "natural_keys": list(dim.natural_keys),
+            })
+    return result
+
+
+def _format_inferred_member_dims(dims: list[dict]) -> str:
+    """Sección hermana de '## CONTRATOS DE DIMENSION' en el prompt STG→DWH —
+    solo aparece cuando hay al menos una dimensión que la necesita (D21).
+    Vacío en el caso común (sin FK NOT NULL hacia dim_contracts) no agrega
+    nada al prompt."""
+    if not dims:
+        return ""
+    lines = [
+        "\n## DIMENSIONES CON MIEMBRO INFERIDO OBLIGATORIO (D21)",
+        "Las siguientes dimensiones son referenciadas por una FK NOT NULL desde una tabla de "
+        "hechos — ese lookup NUNCA puede devolver NULL. El step que carga cada una (el "
+        "step_requerido de '## CONTRATOS DE DIMENSION' arriba) tiene que recibir, además del "
+        "stream real de origen, las claves naturales de la tabla de hechos que todavía no están "
+        "en la dimensión (anti-join previo, ej. TableInput/ExecSQL con NOT EXISTS) con atributos "
+        "default e `inferred_member='Y'`, unidas (Union) al stream real — AMBOS alimentando el "
+        "MISMO step loader, nunca un segundo writer separado para esta tabla. Ver 'PATRÓN "
+        "MIEMBRO INFERIDO' en las especificaciones de steps para el ejemplo completo.",
+    ]
+    for d in dims:
+        lines.append(
+            f"- {d['dimension']}: referenciada por {d['fact_table']}.{d['fk_column']} (NOT NULL). "
+            f"natural_keys={d['natural_keys']}"
+        )
+    return "\n".join(lines)
+
+
+def _inferred_member_notifications(dims: list[dict]) -> list[str]:
+    """Warnings accionables (D13/D15) — uno por dimensión que requiere el
+    patrón de miembro inferido, para que quede visible en el registro de
+    deltas de la corrida aunque el LLM lo haya implementado bien."""
+    return [
+        f"Miembro inferido (D21): '{d['dimension']}' referenciada por "
+        f"{d['fact_table']}.{d['fk_column']} (NOT NULL) — el loader debe recibir claves "
+        "naturales huérfanas vía anti-join+Union, no un segundo writer."
+        for d in dims
+    ]
+
+
 def _build_ktr_stage(
     ktr_data: dict,
     base_name: str,
@@ -240,41 +319,47 @@ def _build_ktr_stage(
     cada build_ktr(). 1 solo grupo (caso universal hoy, D6-bis) -> 1 sola
     llamada a build_ktr(), mismo nombre/xml/filename que antes de este punto.
 
-    Capacidad de servicio completa y probada (test_fragmentation_wiring.py) —
-    NO todavía conectada a la respuesta HTTP (ETLGenerateResponse sigue fija
-    a ktr_xml/ktr2_xml/kjb_xml, 2 KTR + 1 KJB; ver hueco documentado en
-    03-plan.md). Los call sites del flujo en vivo (_build_response_from_*)
-    llaman compute_cut() por separado solo para sus notificaciones, sin
-    invocar esta función todavía — ver comentario en esos call sites."""
+    D20 (02-decisiones.md): conectada de verdad en _build_response_from_data /
+    _build_response_from_two_ktr_data — el flujo HTTP en vivo ahora parte
+    físicamente cuando compute_cut() detecta groups>1, en vez de solo
+    notificarlo y entregar el .ktr sin partir."""
     sub_dicts, notifications = split_ktr_by_cut(ktr_data, STEP_TYPE_ALIASES)
     built: list[tuple[dict, str, str]] = []
     warnings: list[str] = list(notifications)
     for i, sub in enumerate(sub_dicts):
         name = base_name if len(sub_dicts) == 1 else f"{base_name}_{i + 1}"
+        # build_ktr() prioriza ktr_data["name"] por sobre el nombre que se le
+        # pasa (build.py:188, `ktr_data.get("name") or process_name`) — el
+        # KTR que el modelo devuelve siempre trae "name" (ETL_OUTPUT_SCHEMA lo
+        # exige), así que sin este override los N sub-dicts de un corte real
+        # comparten el mismo "name" heredado de split_ktr_by_cut() y build_ktr
+        # los emite con el mismo <name>/filename (timestamp aparte). Solo se
+        # pisa cuando hay más de 1 grupo — con 1 solo grupo `sub` es el mismo
+        # ktr_data de siempre (D19: cero cambio de comportamiento).
+        if len(sub_dicts) > 1:
+            sub = {**sub, "name": name}
         xml, filename, w = build_ktr(sub, name, **build_kwargs)
         built.append((sub, xml, filename))
         warnings.extend(w)
     return built, warnings
 
 
-def _cut_pending_warning(label: str, groups: list[list[str]]) -> str:
-    """F3: compute_cut() detectó que la etapa `label` necesita partirse en
-    len(groups) sub-transformaciones (condición C1/C1-bis — misma clase de
-    carrera/doble-escritor que err1.ktr/err2.ktr, H21) pero ETLGenerateResponse
-    todavía no tiene dónde poner más de 1 archivo por etapa (hueco documentado
-    en 03-plan.md, no resuelto por F3 punto 1-3). Se entrega el .ktr SIN
-    partir — este warning es la señal explícita de que ese archivo entero
-    contiene el patrón de carrera, para que se revise a mano en Spoon en vez
-    de fallar en silencio."""
-    grupos_txt = "; ".join(f"grupo {i + 1}: {', '.join(g)}" for i, g in enumerate(groups))
-    return (
-        f"{FIELD_INTEGRITY_PREFIX}Corte estructural pendiente en la etapa {label}: el motor de "
-        f"fragmentación (F3, ver docs/refactor/03-plan.md) identificó {len(groups)} sub-transformaciones "
-        f"necesarias ({grupos_txt}) por una tabla escrita y leída (o escrita dos veces) por steps "
-        "distintos en el mismo archivo — el mismo patrón de carrera/doble-escritor que err1.ktr/"
-        "err2.ktr (H21). La generación multi-archivo por HTTP todavía no está soportada (hueco de "
-        "ETLGenerateResponse, ver 03-plan.md) — este .ktr se entrega SIN partir; revisar manualmente "
-        "en Spoon el riesgo de carrera antes de ejecutar."
+def _etapa_output(
+    files: list[tuple[dict, str, str]],
+    sub_kjb: tuple[str, str] | None,
+) -> EtapaOutput:
+    """D20: empaqueta 1..N archivos ya construidos (_build_ktr_stage) en el
+    shape de ETLGenerateResponse.etapas. sub_kjb viene de _build_job_plan()
+    para la misma etapa — None cuando len(files)==1 (nada que orquestar),
+    (kjb_xml, kjb_filename) cuando compute_cut() partió esa etapa en N."""
+    if sub_kjb is None:
+        _, xml, filename = files[0]
+        return EtapaOutput(tipo="ktr", archivo=ArchivoKtr(xml=xml, filename=filename))
+    kjb_xml, kjb_filename = sub_kjb
+    return EtapaOutput(
+        tipo="kjb",
+        kjb=ArchivoKtr(xml=kjb_xml, filename=kjb_filename),
+        archivos=[ArchivoKtr(xml=xml, filename=filename) for _, xml, filename in files],
     )
 
 
@@ -481,18 +566,14 @@ def _build_response_from_data(
             list(cfg.keys()),
         )
 
-    # F3 punto 1 (H20): mismo punto que en el flujo de 2 KTR — ver comentario
-    # equivalente en _build_response_from_two_ktr_data. Acá el ktr_data es el
-    # proceso monolítico completo (origen→STG→DWH en 1 archivo), así que un
-    # corte real acá es aún más significativo (el patrón de err1.ktr/err2.ktr
-    # vive todo en el mismo archivo).
-    cut = compute_cut(ktr_data, STEP_TYPE_ALIASES)
-    cut_warnings = list(cut["notifications"])
-    if len(cut["groups"]) > 1:
-        cut_warnings.append(_cut_pending_warning("proceso completo", cut["groups"]))
-
+    # F3 punto 1 (H20), D20: entre repair_integrity_gaps (en el caller) y este
+    # punto, _build_ktr_stage() corta ktr_data en 1..N sub-transformaciones
+    # reales vía compute_cut() y llama build_ktr() una vez por grupo. Acá
+    # ktr_data es el proceso monolítico completo (origen→STG→DWH en 1
+    # archivo) — 1 sola "etapa" en la respuesta, a diferencia del flujo de
+    # inferencia (2 etapas, ver _build_response_from_two_ktr_data).
     try:
-        ktr_xml, ktr_filename, ktr_warnings = build_ktr(
+        built, ktr_warnings = _build_ktr_stage(
             ktr_data, process_name,
             real_connections=real_connections,
             required_columns_by_table=required_columns_by_table,
@@ -501,11 +582,20 @@ def _build_response_from_data(
         _log.error("build_ktr failed: %s — conservando raw_data para reintento manual", str(e))
         raise KtrBuildError(data, e) from e
 
+    # sub_kjb solo se arma cuando compute_cut() partió el proceso completo en
+    # N>1 archivos — _build_job_plan() reusa la misma lógica de armar el .kjb
+    # intermedio que usa el flujo de 2 etapas, sin necesidad de un job maestro
+    # acá (1 sola etapa, nada que secuenciar por encima de ella).
+    sub_kjb = None
+    if len(built) > 1:
+        _, sub_kjbs = _build_job_plan([("proceso", built)], process_name)
+        sub_kjb = sub_kjbs[0]
+    etapa = _etapa_output(built, sub_kjb)
+
     advertencias, integridad_validaciones = _split_integrity_warnings([
         *data.get("advertencias_buenas_practicas", []),
         *(connection_warnings or []),
         *(extra_warnings or []),
-        *cut_warnings,
         *ktr_warnings,
     ])
 
@@ -516,9 +606,8 @@ def _build_response_from_data(
         documentacion=data.get("documentacion", ""),
         advertencias_buenas_practicas=advertencias,
         dwh_sample=data.get("dwh_sample", {}),
-        ktr_xml=ktr_xml,
-        ktr_filename=ktr_filename,
-        lineage=build_lineage(ktr_data),
+        etapas=[etapa],
+        lineage=stitch_lineage_many([sub for sub, _, _ in built]),
         metadata=metadata,
     )
 
@@ -556,25 +645,15 @@ def _build_response_from_two_ktr_data(
     ktr_data_1 = data_1["ktr"]
     ktr_data_2 = data_2["ktr"]
 
-    # F3 punto 1 (H20, 03-plan.md): compute_cut() ya corre acá, entre la
-    # reparación de integridad (arriba, en el caller) y build_ktr() (abajo).
-    # La partición física en N archivos (_build_ktr_stage, service-ready y
-    # probada en test_fragmentation_wiring.py) todavía NO se aplica en este
-    # flujo en vivo — ETLGenerateResponse sigue fija a 1 KTR por etapa (hueco
-    # nuevo, no listado en la lista original de "archivos a tocar" de F3, ver
-    # 03-plan.md). Mientras tanto, cada corte real detectado (condición C1/
-    # C1-bis) se promueve a Validacion tipo="error" en vez de pasar en
-    # silencio — es la misma clase de carrera/doble-escritor de err1.ktr/
-    # err2.ktr (H21) que motivó todo este refactor.
-    cut_warnings: list[str] = []
-    for label, ktr_data in (("origen→STG", ktr_data_1), ("STAGING→DWH", ktr_data_2)):
-        cut = compute_cut(ktr_data, STEP_TYPE_ALIASES)
-        cut_warnings.extend(cut["notifications"])
-        if len(cut["groups"]) > 1:
-            cut_warnings.append(_cut_pending_warning(label, cut["groups"]))
-
+    # F3 punto 1 (H20), D20 (02-decisiones.md): _build_ktr_stage() corta cada
+    # etapa en 1..N sub-transformaciones reales vía compute_cut() y llama
+    # build_ktr() una vez por grupo — ya no solo notifica el corte (D19), lo
+    # aplica. Cada corte real detectado (condición C1/C1-bis, misma clase de
+    # carrera/doble-escritor de err1.ktr/err2.ktr, H21) sale como N archivos
+    # + un .kjb intermedio (ver _build_job_plan/_etapa_output abajo), no como
+    # una advertencia sobre un .ktr sin partir.
     try:
-        ktr1_xml, ktr1_filename, warnings_1 = build_ktr(
+        built_1, warnings_1 = _build_ktr_stage(
             ktr_data_1, f"{process_name}_origen_stg" if process_name else "KTR_1_origen_stg",
             real_connections=real_connections,
             required_columns_by_table=required_columns_by_table,
@@ -587,7 +666,7 @@ def _build_response_from_two_ktr_data(
         raise KtrBuildError({"ktr_1": data_1, "ktr_2": data_2}, e) from e
 
     try:
-        ktr2_xml, ktr2_filename, warnings_2 = build_ktr(
+        built_2, warnings_2 = _build_ktr_stage(
             ktr_data_2, f"{process_name}_stg_dwh" if process_name else "KTR_2_stg_dwh",
             real_connections=real_connections,
             required_columns_by_table=required_columns_by_table,
@@ -616,27 +695,34 @@ def _build_response_from_two_ktr_data(
 
     from app.services.job_analyzer import build_kjb_xml
 
-    # Cada etapa se pasa como 1 solo archivo — _build_job_plan soporta N por
-    # etapa (F3 punto 2), pero este flujo en vivo todavía no aplica el corte
-    # (ver comentario arriba), así que sub_kjbs siempre da vacío acá.
-    job_plan, _sub_kjbs = _build_job_plan(
-        [
-            ("origen_stg", [(ktr_data_1, ktr1_xml, ktr1_filename)]),
-            ("stg_dwh", [(ktr_data_2, ktr2_xml, ktr2_filename)]),
-        ],
+    # D20: el job maestro siempre secuencia las 2 etapas (origen→STG antes que
+    # STG→DWH), sin importar si alguna se partió — caso (d)/D20-punto3 cuando
+    # ninguna partió, casos (a)/(b)/(c) cuando sí. sub_kjbs trae, en el mismo
+    # orden que las etapas de abajo, un (kjb_xml, kjb_filename) por cada
+    # etapa que compute_cut() partió en N>1 (y nada para la que no).
+    job_plan, sub_kjbs = _build_job_plan(
+        [("origen_stg", built_1), ("stg_dwh", built_2)],
         process_name,
     )
-    kjb_xml = build_kjb_xml(job_plan)
-    kjb_filename = f"{_sanitize(process_name or 'Proceso_ETL')}_job.kjb"
+    kjb_master = ArchivoKtr(
+        xml=build_kjb_xml(job_plan),
+        filename=f"{_sanitize(process_name or 'Proceso_ETL')}_job.kjb",
+    )
 
-    lineage = stitch_lineage(ktr_data_1, ktr_data_2)
+    sub_kjb_iter = iter(sub_kjbs)
+    etapa_1 = _etapa_output(built_1, next(sub_kjb_iter) if len(built_1) > 1 else None)
+    etapa_2 = _etapa_output(built_2, next(sub_kjb_iter) if len(built_2) > 1 else None)
+
+    lineage = stitch_lineage_many([
+        *(sub for sub, _, _ in built_1),
+        *(sub for sub, _, _ in built_2),
+    ])
 
     advertencias, integridad_validaciones = _split_integrity_warnings([
         *data_1.get("advertencias_buenas_practicas", []),
         *data_2.get("advertencias_buenas_practicas", []),
         *(connection_warnings or []),
         *(extra_warnings or []),
-        *cut_warnings,
         *warnings_1,
         *warnings_2,
     ])
@@ -650,12 +736,8 @@ def _build_response_from_two_ktr_data(
         documentacion=data_1.get("documentacion", "") or data_2.get("documentacion", ""),
         advertencias_buenas_practicas=advertencias,
         dwh_sample={},
-        ktr_xml=ktr1_xml,
-        ktr_filename=ktr1_filename,
-        ktr2_xml=ktr2_xml,
-        ktr2_filename=ktr2_filename,
-        kjb_xml=kjb_xml,
-        kjb_filename=kjb_filename,
+        etapas=[etapa_1, etapa_2],
+        kjb_master=kjb_master,
         lineage=lineage,
         metadata=metadata,
     )
@@ -897,6 +979,7 @@ Definición completa (inferida y confirmada por el usuario):
 
 ## CONTRATOS DE DIMENSION (dim_contracts — fuente de verdad para Dimension lookup/update, NO derivar del DDL)
 {_format_dim_contracts(req.dim_contracts)}
+{_format_inferred_member_dims(_dims_with_inferred_member(dwh_ddl_txt, req.dim_contracts))}
 
 ## REGLAS DE NEGOCIO
 {reglas}
@@ -971,6 +1054,9 @@ async def generate_etl_from_inference(
     required_columns_by_table = _required_columns_from_ddl(req.stg_definition, dwh_ddl)
     type_warnings = _type_mismatch_warnings(req.stg_definition, dwh_ddl, data_2["ktr"])
     dim_contract_warnings = _dim_contracts_anomaly_warning(dwh_ddl, req.dim_contracts)
+    inferred_member_warnings = _inferred_member_notifications(
+        _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
+    )
     ddl_change_warnings = [f"DDL (Parte 3): {c}" for c in ddl_result.cambios_aplicados]
     step_policy_results = enforce_dimension_step_policy(
         data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
@@ -981,7 +1067,7 @@ async def generate_etl_from_inference(
         extra_warnings=[
             *cfg_warnings_1, *cfg_warnings_2,
             *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
-            *type_warnings, *dim_contract_warnings, *ddl_change_warnings,
+            *type_warnings, *dim_contract_warnings, *inferred_member_warnings, *ddl_change_warnings,
         ],
         extra_validaciones=[*ddl_result.conflictos, *[Validacion(**r) for r in step_policy_results]],
     )
@@ -1126,6 +1212,9 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
 
         type_warnings = _type_mismatch_warnings(req.stg_definition, dwh_ddl, data_2["ktr"])
         dim_contract_warnings = _dim_contracts_anomaly_warning(dwh_ddl, req.dim_contracts)
+        inferred_member_warnings = _inferred_member_notifications(
+            _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
+        )
         ddl_change_warnings = [f"DDL (Parte 3): {c}" for c in ddl_result.cambios_aplicados]
         # Muta data_2["ktr"] in-place cuando corrige un downgrade seguro — tiene
         # que correr ANTES de persistir raw_data_2, si no _try_build() reconstruye
@@ -1146,7 +1235,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             "repair_warnings": [
                 *cfg_warnings_1, *cfg_warnings_2,
                 *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
-                *type_warnings, *dim_contract_warnings, *ddl_change_warnings,
+                *type_warnings, *dim_contract_warnings, *inferred_member_warnings, *ddl_change_warnings,
             ],
             # Persistido para que _try_build() (que corre después, cuando el
             # usuario confirma las conexiones) pueda incluirlos en la

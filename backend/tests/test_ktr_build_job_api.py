@@ -143,8 +143,10 @@ def test_connections_before_model_then_model_finishes(client):
     body = resp.json()
     assert body["model_status"] == "done"
     assert body["build_status"] == "built"
-    assert body["result"]["ktr_xml"]
-    assert "<server>h</server>" in body["result"]["ktr_xml"]
+    etapa_origen_stg = body["result"]["etapas"][0]
+    assert etapa_origen_stg["tipo"] == "ktr"
+    assert etapa_origen_stg["archivo"]["xml"]
+    assert "<server>h</server>" in etapa_origen_stg["archivo"]["xml"]
 
 
 def test_model_finishes_then_connections_arrive(client):

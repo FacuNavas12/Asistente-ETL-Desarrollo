@@ -417,16 +417,16 @@ Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (20
 | R1 | G-step | Step de loader por forma de tabla (simple→Insert/Update, SCD2→DimensionLookup) | Eje `dim_contracts` (D11), no Track F | Gap confirmado — **H22**, decisión **D16** |
 | R2 | G-step | Lookup del lado del hecho siempre de solo lectura | Eje `dim_contracts` (D11), no Track F | Mismo gap — **H22**/**D16** |
 | R3 | S | Corte por tabla + KJB secuencial, dims antes que hechos | F2/F3 | Confirma el diseño de F2 (2 derivaciones independientes en verde) |
-| R4 | D-dialecto | Default de `COALESCE` debe tipar igual que la columna del DDL | F4 (contenido) + D12/C.1 (dialecto) | — |
+| R4 | D-dialecto | Default de `COALESCE` debe tipar igual que la columna del DDL | F4 (contenido) + D12/C.1 (dialecto) | **Ya cubierto — cerrado 2026-07-24 sin cambio (D22).** `system_etl.txt` K17/checklist-20 ya lo exigía |
 | R5 | D-integridad | (a) Toda dim referenciada tiene loader antes del hecho | Ya cubierto — **V2** (F2/F3, no nuevo trabajo) | Confirmado por `dim_tiempo` en H21 |
-| R5 | D-integridad | (b) Prever miembro desconocido o ruteo de huérfanos | F4, bloqueado por decisión de negocio | Ver **C.6** en `02-decisiones.md` |
-| R6 | D-dialecto | Alinear tipos de clave en lookups contra el DDL | F4 (contenido) + D12/C.1 | — |
+| R5 | D-integridad | (b) Prever miembro desconocido o ruteo de huérfanos | F4, diseño resuelto (D21), código pendiente | Ver **C.6**/**D21** en `02-decisiones.md` — bloqueado por diseño de implementación, no por decisión de negocio (ya no) |
+| R6 | D-dialecto | Alinear tipos de clave en lookups contra el DDL | F4 (contenido) + D12/C.1 | **Ya cubierto — cerrado 2026-07-24 sin cambio (D22).** `system_etl.txt` regla (e)/checklist-16 ya lo exigía |
 | R7 | D-ddl-constraint | Emitir/recomendar constraints (`UNIQUE`) que el upsert asume | Nuevo — sin dueño hasta decisión de producto | Ver **C.5** en `02-decisiones.md` |
-| R8 | G-step | Clave natural debe ir también como `value` (`update=N`) en `Insert/Update` de dimensión | F4 (mientras el LLM arma el config) → eje `dim_contracts` si D16 amplía el vocabulario | Extiende **H16** |
-| R9 | Env | `DBLookup` falla introspección contra pooler de Supabase → preferir `StreamLookup` | Nuevo hallazgo de entorno — candidato a regla en `system_etl.txt` | **H23** |
-| R10 | D-dialecto | `dim_tiempo` como calendario contiguo vía `generate_series` | F4 (contenido) + D12/C.1 | Segunda ocurrencia real de construcción dialecto-dependiente — nota en D12 |
-| R11 | D-integridad | Validar claves resueltas, rutear huérfanos antes del insert del hecho | F4, bloqueado por decisión de negocio | Ver **C.6** en `02-decisiones.md` |
-| R12 | D-dialecto | Dedup de staging vía `DISTINCT ON (...) ORDER BY ... DESC` + flag de auditoría | F4 (contenido) + D12/C.1 | Tercera ocurrencia real — nota en D12 (junto a R10) |
+| R8 | G-step | Clave natural debe ir también como `value` (`update=N`) en `Insert/Update` de dimensión | F4 (mientras el LLM arma el config) → eje `dim_contracts` si D16 amplía el vocabulario | Extiende **H16**. **Cerrado 2026-07-24 (prompt, D22)** — regla B16 + checklist-21 en `system_etl.txt` |
+| R9 | Env | `DBLookup` falla introspección contra pooler de Supabase → preferir `StreamLookup` | Nuevo hallazgo de entorno — candidato a regla en `system_etl.txt` | **H23. Cerrado 2026-07-24 (prompt, D22)** |
+| R10 | D-dialecto | `dim_tiempo` como calendario contiguo vía `generate_series` | F4 (contenido) + D12/C.1 | **Ya cubierto — cerrado 2026-07-24 sin cambio (D22).** `system_etl.txt` K18 ya lo instruía completo |
+| R11 | D-integridad | Validar claves resueltas, rutear huérfanos antes del insert del hecho | F4, diseño resuelto (D21), código pendiente | Ver **C.6**/**D21** en `02-decisiones.md` |
+| R12 | D-dialecto | Dedup de staging vía `DISTINCT ON (...) ORDER BY ... DESC` + flag de auditoría | F4 (contenido) + D12/C.1 | Tercera ocurrencia real — nota en D12 (junto a R10). **Cerrado 2026-07-24 (prompt, D22)** — K19 + checklist-22 en `system_etl.txt` |
 
 **Excepción de corte (self-lookup/insert-new-only, sección 3 del `extracto_corte_F2.md`):** no es una regla R con número propio en la bitácora, pero es una tercera conclusión de corte junto a R3 y la reconciliación de C1-bis — documentada en **H21** (arriba) y en el reporte de F2 (`03-plan.md`).
 
@@ -458,7 +458,7 @@ Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (20
 | H20 | Punto de inserción del corte + gap de orden por FK (Track F1 Q4/Q5) | Entregable — insumo de F2 |
 | H21 | Análisis de contenido `err1.ktr`/`err2.ktr`: confirma E4/E5 (`dim_producto`) y E6 (`dim_tiempo`); C1-bis reconciliado (no es fantasma); excepción self-lookup a C1 | Entregable — caso de prueba real de F2/F3 |
 | H22 | `dim_contracts` no deriva ningún step de solo lectura — prerrequisito externo real de F3 | **Parcialmente resuelto 2026-07-24** (D16 camino 1, código) — `role_of_dimension_step()` (BFS forward, ancla en escritor no-ambiguo) + `enforce_dimension_step_policy` Paso 4 fuerzan `DimensionLookup update=N` para el rol fact-lookup cuando `scd_type==2`. **Residual sin cerrar:** `scd_type` 0/1 (`CombinationLookup` esperado) no tiene mecanismo de solo-lectura seguro sin `date_from`/`date_to` conocidas — se reporta (tipo="error"), no se repara. Tests: `test_dimension_step_policy.py` |
-| H23 | Entorno: `DBLookup` falla introspección contra pooler de Supabase, preferir `StreamLookup` | Nuevo, sin dueño de track — candidato a `system_etl.txt` |
+| H23 | Entorno: `DBLookup` falla introspección contra pooler de Supabase, preferir `StreamLookup` | **Cerrado 2026-07-24 (F4/D22)** — nota agregada en `system_etl.txt` junto al bloque `DBLookup` |
 | H24 | `ConnectionsMapRequest.conn_dwh/conn_staging` no acepta connection_id string, pese a que `resolve_real_connections()` sí lo soporta | Abierto, sin dueño de track — decisión de producto (extender schema vs. borrar la rama string del service) |
 | H25 | `_CRITICAL_FIELDS["GetSystemInfo"]` deja inalcanzable el fallback de field por defecto de `_step_GetSystemInfo` | Abierto, sin dueño de track — fix simple pero cambia validación ya en producción |
 | H26 | `ETL_OUTPUT_SCHEMA` no declara `documentacion`, pese a que `ETLGenerateResponse`/`etl_generator.py` la esperan | Abierto, ambiguo — feature perdida vs. resto de código sin limpiar |

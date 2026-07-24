@@ -140,9 +140,13 @@ app/
     profiler.py                   — fetch_db_column_stats(), compute_file_column_stats(), profile_columns() → ColumnProfile
     dialect.py                    — DialectProfiler protocol + impl PostgreSQL / SQLServer / Fake
     masker.py                     — format-preserving masking de ejemplos antes de que entren al perfil
-    etl_generator.py              — construye prompt(s), llama LLM, arma ETLGenerateResponse.
-                                    Flujo 2-KTR: 2 llamadas al LLM (origen→STG / STG→DWH) +
-                                    build_kjb_xml() (.kjb) + stitch_lineage(); legacy: 1 llamada, 1 KTR.
+    etl_generator.py              — construye prompt(s), llama LLM, arma ETLGenerateResponse
+                                    (etapas: list[EtapaOutput] + kjb_master — D20, docs/refactor/02-decisiones.md;
+                                    ya no ktr_xml/ktr2_xml/kjb_xml). Flujo 2-KTR: 2 llamadas al LLM
+                                    (origen→STG / STG→DWH), cada etapa pasa por _build_ktr_stage()
+                                    (parte en N sub-transformaciones si compute_cut() lo exige, F3) +
+                                    build_kjb_xml() (.kjb, N-ario si hubo corte) + stitch_lineage_many();
+                                    legacy: 1 llamada, 1 etapa.
     ktr_builder/                  — paquete (antes módulo único): build_ktr(ktr_data, ...) → (xml, filename, warnings),
                                     serializa un ktr JSON → XML .ktr para Pentaho PDI (se llama 1x por KTR).
                                     resolve_real_connections() arma metadata real (host/port/db/user/tipo) pero

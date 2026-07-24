@@ -116,21 +116,41 @@ class MetadataResponse(BaseModel):
     region_inferencia: str
 
 
+class ArchivoKtr(BaseModel):
+    """Un archivo físico ya serializado (.ktr o .kjb)."""
+    xml: str
+    filename: str
+
+
+class EtapaOutput(BaseModel):
+    """D20 (docs/refactor/02-decisiones.md) — una fase lógica del proceso
+    materializada en 1..N archivos físicos, según lo que decidió
+    compute_cut() (D6/D19) para esa fase. tipo determina qué campo mirar:
+    - "ktr": la fase entera cupo en 1 archivo — archivo.
+    - "kjb": compute_cut() encontró señal estructural de corte (C1/C1-bis,
+      err1.ktr/err2.ktr, H21) y la fase se partió en N — kjb (el .kjb
+      intermedio que las orquesta) + archivos (los N .ktr, en orden de
+      ejecución)."""
+    tipo: Literal["ktr", "kjb"]
+    archivo: Optional[ArchivoKtr] = None
+    kjb: Optional[ArchivoKtr] = None
+    archivos: List[ArchivoKtr] = []
+
+
 class ETLGenerateResponse(BaseModel):
     proceso_etl: ProcesoETL
     validaciones: List[Validacion]
     documentacion: str = ""
     advertencias_buenas_practicas: List[str]
     dwh_sample: Dict[str, List[Dict[str, Any]]] = {}
-    ktr_xml: str = ""
-    ktr_filename: str = ""
-    # Flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH orquestados en secuencia).
-    # Vacíos ("") en el flujo monolítico legacy (build-from-raw) — el frontend
-    # los trata como "no hay KTR_2/.kjb para este resultado".
-    ktr2_xml: str = ""
-    ktr2_filename: str = ""
-    kjb_xml: str = ""
-    kjb_filename: str = ""
+    # D20: reemplaza los slots fijos ktr_xml/ktr2_xml/kjb_xml (siempre exactamente
+    # 2 KTR + 1 kjb) — ver docs/refactor/02-decisiones.md. Orden fijo cuando hay
+    # 2 fases: Origen→Staging, Staging→DWH (flujo generate-from-inference). El
+    # flujo monolítico legacy (build-from-raw con "ktr" plano) expone 1 sola
+    # etapa. kjb_master orquesta las etapas entre sí — solo existe cuando hay
+    # más de 1 etapa; None en el flujo monolítico (nada que secuenciar).
+    etapas: List[EtapaOutput] = []
+    kjb_master: Optional[ArchivoKtr] = None
     lineage: Optional["Lineage"] = None
     metadata: MetadataResponse
 

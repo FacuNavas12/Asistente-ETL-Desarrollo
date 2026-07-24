@@ -191,7 +191,17 @@ def compute_cut(ktr_data: dict, step_type_aliases: dict[str, str]) -> dict:
     for name, c in comp.items():
         groups_by_comp.setdefault(c, []).append(name)
 
-    graph: dict[int, set[int]] = {c: set() for c in groups_by_comp}
+    # Solo los componentes que participan de una trigger_edge se ordenan/
+    # separan — D6-bis: "componentes sin ninguna tabla-disparadora no se
+    # tocan, se agrupan todos juntos en un único archivo por etapa". Sin este
+    # filtro, cualquier ETL con 2+ ramas de hop desconectadas entre sí pero
+    # sin ningún conflicto real de tabla (el caso común: 2 tablas de origen
+    # independientes cargando 2 tablas de staging independientes) terminaba
+    # con 1 archivo por rama — corte sin señal, justo lo que D6-bis prohíbe.
+    triggered_comps = {c for pair in trigger_edges for c in pair}
+    untouched_comps = [c for c in groups_by_comp if c not in triggered_comps]
+
+    graph: dict[int, set[int]] = {c: set() for c in triggered_comps}
     for cw, cr in trigger_edges:
         graph.setdefault(cw, set()).add(cr)
         graph.setdefault(cr, set())
@@ -223,13 +233,22 @@ def compute_cut(ktr_data: dict, step_type_aliases: dict[str, str]) -> dict:
             "Ciclo detectado entre grupos al ordenar por dependencia de tabla — caso "
             "patológico (D15): no se pudo determinar un orden seguro, revisar a mano."
         )
-        final_order = list(groups_by_comp.keys())
+        final_order = list(triggered_comps)
     else:
         order.reverse()
         final_order = order
 
+    # Los componentes sin trigger van todos juntos en un único grupo extra —
+    # no hay relación de tabla que fije su posición relativa al resto, así
+    # que su orden dentro de ese grupo (y respecto a los grupos con trigger)
+    # no importa estructuralmente.
+    groups: list[list[str]] = []
+    if untouched_comps:
+        groups.append([name for c in untouched_comps for name in groups_by_comp[c]])
+    groups.extend(groups_by_comp[c] for c in final_order)
+
     return {
-        "groups": [groups_by_comp[c] for c in final_order],
+        "groups": groups,
         "notifications": notifications,
     }
 
@@ -266,8 +285,8 @@ def split_ktr_by_cut(ktr_data: dict, step_type_aliases: dict[str, str]) -> tuple
     return sub_dicts, cut["notifications"]
 
 
-# ─── Nota de estado (2026-07-24, wiring de servicio) ───────────────────────
-# Hecho esta sesión (ver test_fragmentation_wiring.py):
+# ─── Nota de estado (2026-07-24, wiring de servicio + D20) ─────────────────
+# Hecho (ver test_fragmentation_wiring.py + test_etl_generate_response_shape.py):
 # 1. split_ktr_by_cut() (este módulo) — parte ktr_data en N sub-dicts según
 #    compute_cut(). _build_ktr_stage() (etl_generator.py) la usa + llama
 #    build_ktr() una vez por grupo, en el punto H20 (entre
@@ -279,29 +298,15 @@ def split_ktr_by_cut(ktr_data: dict, step_type_aliases: dict[str, str]) -> tuple
 #    (prefijo "K2::") a M archivos (prefijo "F{idx}::"). stitch_lineage(a, b)
 #    es ahora un wrapper de stitch_lineage_many([a, b]) — firma preservada
 #    (la usa el endpoint público /api/ai/lineage-from-ktr).
+# 4. D20 (02-decisiones.md): ETLGenerateResponse reemplazó los slots fijos
+#    ktr_xml/ktr2_xml/kjb_xml por `etapas: list[EtapaOutput]` (2 en el flujo
+#    de inferencia, 1 en el monolítico legacy) + `kjb_master`. Los call sites
+#    en vivo (_build_response_from_two_ktr_data / _build_response_from_data,
+#    etl_generator.py) ahora invocan _build_ktr_stage() de verdad — cuando
+#    compute_cut() detecta groups>1, la etapa sale como N archivos + su .kjb
+#    intermedio (tipo="kjb"), no como un .ktr sin partir con una advertencia.
 #
-# Hueco nuevo, no listado originalmente en "Archivos a tocar" de F3 (ver
-# 03-plan.md): ETLGenerateResponse (etl_schemas.py) y el ZIP del frontend
-# (commit 338bff2) siguen fijos a exactamente 1 KTR por etapa + 1 KJB —
-# no hay dónde poner los archivos extra de un corte real en la respuesta
-# HTTP. Por eso el flujo en vivo (_build_response_from_two_ktr_data /
-# _build_response_from_data en etl_generator.py) llama compute_cut() (así que
-# SÍ corre en todo pipeline real, notificaciones V2/patológico incluidas) pero
-# NO invoca _build_ktr_stage() para partir de verdad — si detecta groups>1,
-# entrega el archivo sin partir + un Validacion(error) explícito con la tabla
-# y los steps en conflicto, en vez de fallar en silencio o dropear archivos.
-# La capacidad de servicio (split + N builds + jerarquía de jobs + linaje
-# cosido) está completa y probada — lista para conectarse en cuanto el schema
-# de respuesta deje de estar fijo a 2 archivos.
-#
-# Sigue pendiente:
-# 4. Notificación V2 (lookup sin productor) dentro de compute_cut() — hoy es
-#    una pasada aparte sobre build_rw_matrix (tabla leída que nunca aparece
-#    escrita por ningún step de la etapa). Ya se emite como notificación, no
-#    cambia con este wiring.
-# 5. Extender ETLGenerateResponse/frontend para entregar N archivos por HTTP
-#    (hueco de arriba) — recién ahí _build_ktr_stage() reemplaza a las
-#    llamadas directas a build_ktr() en el flujo en vivo.
-# 6. Test de integración end-to-end contra el pipeline HTTP completo (hoy los
-#    tests de servicio llaman las funciones internas directamente, no pasan
-#    por generate_etl_from_inference con un caso que dispare un corte real).
+# Sigue pendiente (ver "NO hecho" en 03-plan.md, fila F3):
+# 5. Frontend: consumir el nuevo shape de ETLGenerateResponse y armar el ZIP
+#    con carpetas por etapa partida (D20-punto4/punto5) — sesión aparte,
+#    deliberadamente fuera de esta.

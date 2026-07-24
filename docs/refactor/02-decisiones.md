@@ -278,6 +278,110 @@ Tests: `tests/test_dimension_step_policy.py` (6 casos nuevos, incluida la reprod
 
 **Estado: F3 sigue "EN CURSO"**, no cierra hasta que el hueco de arriba se resuelva (ver "NO hecho" en el estado de F3, `03-plan.md`) y corra un test de integración end-to-end contra el pipeline HTTP completo con un caso que dispare un corte real.
 
+### D20 — Forma de la respuesta con N archivos (diseño, cierra el hueco de D19)
+
+**Contexto (2026-07-24):** D19 dejó abierto cómo extender `ETLGenerateResponse` (hoy fija a `ktr_xml`/`ktr2_xml`/`kjb_xml`) para entregar N archivos por etapa cuando `compute_cut()` devuelve `groups>1`. Esta sesión cierra el diseño; implementación (backend) y consumo (frontend, ZIP) quedan para sesiones separadas — ver punto 5.
+
+**Respuestas del usuario que fijan el diseño:**
+
+1. **No hay más casos conocidos de N>1, y no hacen falta.** El criterio ya es estructural, no un catálogo de casos: "si un step escribe una tabla y otro step la lee, no pueden vivir en la misma transformación." Esto **ya es exactamente C1/C1-bis** (F2, `03-plan.md`), no una regla nueva. Confirma que D7 (reglas derivadas de casos reales) y D6-bis (señal estructural, no legibilidad) alcanzan por sí solas para cualquier N futuro — el algoritmo generaliza porque la señal es la misma sin importar cuántas veces dispare, no hace falta enumerar escenarios.
+
+2. **Sin compatibilidad hacia atrás que preservar (refuerza D4).** Único consumidor de `ktr_xml`/`ktr2_xml`/`kjb_xml` es el frontend de este mismo repo. Se puede romper el schema de respuesta sin período de convivencia — el frontend se arregla después, en su propia sesión (punto 5).
+
+3. **Forma de la respuesta — jerarquía de 2 a 4 niveles, no lista plana.** El usuario describe 4 combinaciones, una por cada etapa (Origen→Staging, Staging→DWH) siendo simple o partida:
+   - (a) ambas partidas: 1 KJB maestro → 2 sub-KJB (uno por etapa) → cada sub-KJB orquesta 1+ KTR.
+   - (b) solo Origen→Staging partida: 1 KJB maestro → 1 sub-KJB (orquesta 1+ KTR) + 1 KTR directo (Staging→DWH).
+   - (c) solo Staging→DWH partida: simétrico a (b).
+   - (d) ninguna partida (caso vigente hoy): 1 KJB maestro → 2 KTR directos. La response no cambia de forma en este caso.
+
+   Mapea 1:1 con lo que el backend ya construye a nivel de servicio (`_build_job_plan` N-ario, D19): cada etapa es o bien un KTR único (`entry_type="trans"` directo) o un KJB intermedio + N KTR (`entry_type="job"`). **La respuesta debe reflejar esa estructura, no aplanarla.** Diseño concreto para `ETLGenerateResponse`: reemplazar los slots fijos `ktr_xml`/`ktr2_xml` por una lista de 2 `EtapaOutput` (una por fase lógica, orden fijo Origen→Staging / Staging→DWH), cada una con forma:
+   - `{tipo: "ktr", archivo: {xml, filename}}` — caso simple.
+   - `{tipo: "kjb", kjb: {xml, filename}, archivos: [{xml, filename}, ...]}` — caso partido.
+
+   Más `kjb_master: {xml, filename}` al tope, sin cambios respecto a hoy. Esto es diseño, **no implementado todavía** — próxima sesión de backend.
+
+4. **UX del multi-archivo — confirma agrupación por carpeta, convención de nombres ya vigente.** El nombre de archivo ya codifica tipo/tabla/etapa (`ktr_builder`, existente). Cuando una etapa es `tipo:"kjb"`, sus KTR van agrupados en una carpeta nombrada por esa etapa/sub-job dentro del ZIP; el sub-KJB queda expuesto junto al maestro, no escondido en la carpeta. Caso (d) — el vigente hoy — el ZIP se mantiene plano, sin carpetas, sin cambio de UX percibido. Trabajo de ZIP/frontend (`etlCardActions.js`, JSZip) — **no entra en esta sesión** (punto 5).
+
+5. **Alcance de sesión — entregas separadas.** Esta sesión cierra el diseño de la respuesta (arriba). Implementación en dos tandas futuras, no en la misma sesión: primero backend (`ETLGenerateResponse` + conectar `_build_ktr_stage()` de verdad en `_build_response_from_two_ktr_data`/`_build_response_from_data` en vez de solo notificar), después frontend (consumo del nuevo shape + ZIP con carpetas).
+
+**Consecuencia sobre D19 y `03-plan.md`:** el hueco que D19 dejaba abierto (qué forma tiene la respuesta) queda **diseñado, no implementado**. F3 sigue "EN CURSO" — no cierra hasta que la implementación backend del punto 5 esté en código y probada end-to-end (ver "NO hecho" en `03-plan.md`; esos puntos no cambian de contenido, solo se resuelve la pregunta de diseño que bloqueaba empezarlos).
+
+*Por qué D20 y no una edición directa de D19:* D19 documentó el hueco cuando apareció, a mitad de sesión, sin la información para cerrarlo. D20 es la sesión siguiente cerrando esa pregunta con datos del usuario — mismo patrón que D16→"resuelto 2026-07-23", se separa para que quede trazable qué se sabía en cada momento.
+
+**Backend implementado 2026-07-24 (sesión 3).** `ETLGenerateResponse` (`etl_schemas.py`) reemplazó `ktr_xml`/`ktr_filename`/`ktr2_xml`/`ktr2_filename`/`kjb_xml`/`kjb_filename` por `etapas: list[EtapaOutput]` (`ArchivoKtr{xml,filename}`, `EtapaOutput{tipo:"ktr"|"kjb", archivo?, kjb?, archivos[]}`) + `kjb_master: ArchivoKtr|None`, exactamente como quedó diseñado arriba. `_build_response_from_two_ktr_data`/`_build_response_from_data` (`etl_generator.py`) dejaron de llamar `build_ktr()` directo y ahora pasan por `_build_ktr_stage()` → cuando `compute_cut()` detecta `groups>1` en una etapa, esa etapa sale como `tipo="kjb"` con sus N archivos reales, no como un `.ktr` sin partir con una advertencia (el hueco que D19 dejaba). Sin período de convivencia (D4/D20-punto2): el shape viejo desapareció del todo — **el frontend actual no puede leer una respuesta nueva hasta su propia sesión** (D20-punto5, no tocado acá).
+
+Dos bugs reales encontrados y corregidos al conectar el corte de verdad (invisibles mientras `compute_cut()` solo generaba notificaciones, D19):
+1. **`build_ktr()` prioriza `ktr_data["name"]` por sobre el nombre pasado por parámetro** (`build.py:188`). `split_ktr_by_cut()` copia `{**ktr_data, "steps":..., "hops":...}` preservando `"name"` sin cambios en cada sub-dict — sin fix, los N archivos de un corte real comparten el mismo `<name>` interno y el mismo filename (el modelo siempre manda `ktr.name`, `ETL_OUTPUT_SCHEMA` lo exige). Fix en `_build_ktr_stage()` (`etl_generator.py`): pisa `sub["name"]` con el nombre por-grupo antes de llamar a `build_ktr()`, solo cuando hay más de 1 grupo.
+2. **`compute_cut()` separaba en archivos distintos cualquier par de componentes de hop desconectados, incluso sin ninguna señal estructural entre ellos** — contradecía la doctrina que el propio docstring del módulo ya declaraba (D6-bis: "componentes sin tabla-disparadora se agrupan todos juntos"), pero el código no lo implementaba: cada componente conexo se devolvía como su propio grupo sin condición. Invisible mientras el corte no se aplicaba de verdad. Caso real que lo dispara: 2 tablas de origen independientes cargando 2 tablas de staging independientes (sin ningún hop entre las dos ramas) — el caso más común de un ETL con más de una tabla de origen. Fix en `compute_cut()` (`fragmentation.py`): los componentes sin ninguna `trigger_edge` se fusionan en un único grupo adicional; solo los componentes conectados por una relación de tabla real (C1/C1-bis) se ordenan y separan.
+
+Tests: `test_etl_generate_response_shape.py` (nuevo, 5 casos — split real en `_build_response_from_two_ktr_data`/`_build_response_from_data`, round-trip JSON del contrato, rechazo de `tipo` inválido, end-to-end HTTP contra `/api/v1/etl/generate-from-inference` con un caso que dispara corte real) + 2 casos nuevos en `test_fragmentation.py`/`test_fragmentation_wiring.py` cubriendo el bug de componentes desconectados sin señal. Suite completa corrida en frío: mismos 45 fallos preexistentes de antes de esta sesión (2 bugs no relacionados en `test_ktr_xml_validator.py`/`test_structured_outputs.py`, 6 en `test_ktr_build_job_api.py` por un bug preexistente y no relacionado de `ConnectionsMapRequest`/`InlineConnection` — el test manda un `connection_id` string donde el schema espera un objeto `InlineConnection`, sin tocar en esta sesión —, y 37 en `test_api.py` por apuntar a un servidor real en `localhost:8000` que no corre en CI), cero fallos nuevos.
+
+**F3 sigue "EN CURSO"** — falta D20-punto5 (frontend: consumir el nuevo shape + ZIP con carpetas), sesión aparte.
+
+### D21 — C.6 resuelta: política ante FK no resuelta = miembro inferido, implementado sin reabrir D16
+
+**Contexto (2026-07-24):** el usuario trajo la práctica estándar de Kimball para este caso (`fact_venta.fk_producto` NOT NULL, `id_producto` de la venta ausente del maestro en el momento de la carga) — tres políticas posibles, con criterio explícito de cuándo usar cada una.
+
+**Decisión — miembro inferido (inferred member) como política de negocio para R5-b/R11/C.6:**
+- El lookup nunca devuelve NULL. Si `id_producto` no matchea, se crea al vuelo una fila placeholder en `dim_producto`: `sk_producto` nuevo, la clave natural real (`id_producto`, ya conocida desde el hecho), atributos con default ("Pendiente"/"Desconocido"), flag `inferred_member='Y'`. El hecho inserta con esa FK válida — sin pérdida de fila, NOT NULL satisfecho.
+- Cuando el producto real llega en un batch futuro, overwrite tipo 1 sobre esa misma fila: el `sk` no cambia, los hechos ya cargados quedan enlazados retroactivamente sin reproceso.
+- Criterio de cuándo aplica cada política (de negocio, no técnico): **miembro inferido** es el default para hechos que deben reportarse aunque la dimensión no exista todavía (caso normal de ventas). **Miembro desconocido único** (`sk=-1`/`sk=0`) se reserva para claves genuinamente nulas/inválidas en el origen, no para "todavía no llegó" — pierde la clave natural, no se puede reconectar después. **Rechazo/cuarentena** (R11, ya validado en la bitácora vía Sol02) solo si la política de negocio prohíbe explícitamente hechos con dimensión incompleta.
+
+**Choque encontrado con D16 (cerrada, código ya shippeado) — resuelto sin reabrirla:** la implementación nativa de Pentaho para este patrón (step único `Dimension Lookup/Update` en modo `update=Y`, directo en el stream del hecho) es exactamente el step/rol que D16 prohíbe:
+- `dimension_step_policy.py:190-227` fuerza cualquier step en rol `fact_lookup` a `DimensionLookup` + `update="N"` — lo reescribiría de vuelta a solo-lectura, neutralizando el placeholder en silencio.
+- `fragmentation.py:46-47` clasifica `DimensionLookup` con `update="Y"` como `"RW"` — combinado con el loader dedicado de `dim_producto` (otro step, otro writer), dispara C1-bis (doble escritor), la señal que el propio refactor existe para eliminar.
+
+**Camino de implementación — corregido en la misma sesión (steps separados descartado, ver abajo por qué).** Primer intento (`StreamLookup` → `FilterRows sk IS NULL` → Insert dedicado en el lado del hecho → merge) quedó descartado tras revisar `compute_cut` en detalle: el Insert dedicado es un **segundo writer real** de `dim_producto` (el loader ya es el primero). `compute_cut` (`fragmentation.py:149-188`) sí detecta esto como C1-bis, pero:
+- Si loader e Insert-dedicado caen en componentes de hop distintos (caso esperado, igual que `err1.ktr`/`err2.ktr`), el edge de orden entre ambos (`fragmentation.py:183-188`) se arma en el orden de `enumerate(writers)` — orden de aparición en la lista `ktr_data["steps"]` del JSON, **no** el orden de ejecución real (eso lo da `hops`). Nada garantiza que el loader aparezca antes que el Insert-dedicado ahí — si el LLM los emite al revés, el topo-sort fuerza fact-antes-que-loader en silencio, exactamente al revés de lo que necesita miembro inferido.
+- Si por algún motivo caen en el mismo componente, la excepción self-lookup (`fragmentation.py:158-174`) tampoco lo cubre: exige que el lector (`Lookup Dim Producto`) tenga camino dirigido hacia **todo** writer, y no lo tiene hacia el loader dedicado (rama distinta) — cae a "revisar a mano", bloqueando el corte automático.
+
+Ninguna rama de `compute_cut` deja esta versión blindada — relocaliza C1-bis en vez de resolverlo, tal como se identificó al revisar la decisión.
+
+**Camino corregido — pasada previa, un único writer de `dim_producto`:** antes del loader, un step de anti-join contra `dim_producto` (SQL directo — `TableInput`/`ExecSQL` sin `table` propia en `cfg`, ya excluido de la matriz R/W por diseño, mismo trato que cualquier SQL arbitrario, D15) obtiene las claves naturales de `staging_ventas` que todavía no están en la dimensión. Esas filas (clave natural real + atributos default/"Pendiente" + `inferred_member='Y'`) se unen (`Union`) al stream real de `staging_productos`, y **ambos alimentan el mismo step único "Cargar Dim Producto"**. Resultado:
+- `dim_producto` tiene exactamente un writer en todo el KTR — `len(writers)==1`, C1-bis no puede disparar para esa tabla, sin depender de ningún orden incidental.
+- Solo dispara C1 (loader W, `Lookup Dim Producto` R) — el mismo split de siempre, ya validado contra `err1.ktr`/`err2.ktr`: loader antes que el hecho.
+- El lookup del lado del hecho (`StreamLookup`) queda R puro — D16 satisfecho sin excepciones ni casos de borde. Como el loader ya garantiza (por construcción, antes de que el hecho corra) que toda clave natural de la venta está en `dim_producto`, ese lookup nunca debería fallar por match — no hace falta ningún patrón de filtro/insert del lado del hecho.
+
+**Detección implementada 2026-07-24 (F4/D22) — la parte que el backend puede resolver determinísticamente.** `etl_generator.py`: `_dims_with_inferred_member(dwh_ddl, dim_contracts)` reusa `ddl_adapter.parse_ddl()` (mismo parser que `_dim_contracts_anomaly_warning`, cero parsing nuevo) para cruzar columnas `is_foreign_key AND constraints.required AND references` de `dwh_ddl` contra `dim_contracts[].table` — sin código de detección propio de FK que escribir, ya vivía en `CanonicalField`. Resultado inyectado en el prompt STG→DWH (`_build_prompt_from_inference`, único punto de armado, sin duplicación) como sección nueva `## DIMENSIONES CON MIEMBRO INFERIDO OBLIGATORIO`, hermana de `## CONTRATOS DE DIMENSION` — vacía y sin efecto en el caso común (ninguna FK NOT NULL hacia una dimensión del contrato). `_inferred_member_notifications()` agrega un warning accionable por dimensión afectada al registro de deltas (D13/D15), en los dos call sites (`generate_etl_from_inference`, `generate_etl_async`).
+
+**Emisión del step (anti-join + Union) — resuelta como regla de prompt, no código backend.** Criterio de F4/D22 (ver esa decisión): sintetizar en Python un `TableInput` con SQL de anti-join + un `Union rows` + rewiring de hops es una síntesis de grafo desde cero — más riesgoso que lo que `enforce_dimension_step_policy` hace hoy (que solo corrige tipo/flags de un step YA existente, nunca inventa steps nuevos). El LLM ya arma el resto del grafo del KTR; describirle el patrón exacto (`system_etl.txt`, bloque "PATRÓN MIEMBRO INFERIDO" — anti-join `NOT EXISTS`/`LEFT JOIN`, atributos default + `inferred_member='Y'`, `Union` hacia el ÚNICO loader, checklist ítem 23) es consistente con cómo se resuelve todo el resto del contenido SQL/config (D12). **Red de seguridad sin trabajo nuevo:** si el LLM arma mal el patrón y deja un segundo writer real sobre la dimensión, `compute_cut()`/C1-bis (F2/F3, ya en producción) lo detecta igual que cualquier doble-escritor — separa en 2 KTR+KJB o emite `Validacion(tipo="error")` (D19/D20). No se escribió un validador nuevo para este caso: la fragmentación ya es el backstop.
+
+Tests: `tests/test_inferred_member.py` (13 casos — detección con FK NOT NULL/nullable/fuera de contrato/dim_contracts vacío/DDL vacío/DDL inválido; formato de sección y notificaciones vacío-vs-poblado; contrato expuesto hacia el prompt en los 3 modos, incluida ausencia en `origen_stg`).
+
+**Sigue sin cubrir, fuera de alcance de esta detección:**
+- Confirmar que el loader dedicado de la dimensión (SCD1/upsert por clave natural) sobrescribe correctamente la fila placeholder cuando el producto real llega — depende de que ese loader sea upsert, no insert-only; verificar contra `scd_type` de cada dimensión en `dim_contracts`. Sin código nuevo identificado — a confirmar con una corrida real.
+- No cubre dimensiones sin FK NOT NULL del lado del hecho (ej. `dim_tiempo`, ya tratada por V2/D15 como caso de integridad distinto, no de política de default).
+
+*Por qué D21 y no una edición directa de C.6:* mismo patrón que D16→"resuelto"/D19→D20 — la pregunta se registró en `Abiertos` cuando apareció sin la información para cerrarla; esta sesión la cierra con datos concretos (la práctica de Kimball que trajo el usuario + la verificación contra el código ya shippeado). Se separa para que quede trazable qué se sabía en cada momento.
+
+### D22 — F4 arranca: "estrategia de fix" no es una elección única, se resuelve por ítem; triage completo, 3 gaps reales cerrados por prompt
+
+**Contexto (2026-07-24):** F4 (`03-plan.md`) tenía como parte de su propio objetivo "decidir estrategia de fix (derivación determinista desde `dim_contracts` vs. parche de prompt)" — a diferencia de F2/F3/D16/D21, esa pregunta nunca se cerró con una regla. Arrancar F4 sin cerrarla primero significaba tocar código a ciegas en 8 frentes con naturaleza distinta (contenido SQL, código backend nuevo, verificación pendiente de ejecución, alcance sin definir).
+
+**Resuelto — no es una sola estrategia, es un criterio de ruteo por ítem, ya implícito en cómo se resolvió todo lo anterior (D6 vs. D12):**
+- Si el fix depende de información que YA vive determinística en el backend (`dim_contracts`, DDL parseado, grafo de hops) y previene un error estructural (race, doble escritor, violación de `NOT NULL`) → código backend, mismo patrón que D16/D21.
+- Si el fix es contenido SQL/config que hoy arma el LLM dentro de lo que el catálogo permite (dialecto, patrón de dedup, elección de step por comportamiento de entorno) → prompt (`system_etl.txt`), reforzado por el checklist de verificación que ya existe ahí.
+
+**Triage de los 8 ítems de intake de F4 (R4/R6/R8/R10/R12/H23/R5-b/R11) + los 6 puntos originales del handoff, contra el prompt real (no contra memoria):**
+
+| Ítem | Resultado | Evidencia |
+|---|---|---|
+| R4 — default de `COALESCE` tipado igual que la columna | **Ya cubierto, cerrado sin cambio.** | `system_etl.txt` K17/checklist-20 ya exige literal del mismo tipo (string/numérico) al envolver en `COALESCE` — la regla ya existía antes de que F4 arrancara. |
+| R6 — alinear tipos de clave en lookups contra el DDL | **Ya cubierto, cerrado sin cambio.** | `system_etl.txt` regla (e) + checklist-16 ya exigen `SelectValues.cast` explícito antes de cualquier `keys`/`stream_field` con tipo distinto entre capas. |
+| R10 — `dim_tiempo` como calendario contiguo vía `generate_series` | **Ya cubierto, cerrado sin cambio.** | `system_etl.txt` K18 ya instruye el patrón completo (no cargar automáticamente, warning con `generate_series`, fila "unknown" sk=0, default en el `DBLookup`). |
+| R8 — clave natural también como `value` (`update=N`) en `InsertUpdate` de dimensión | **Gap real, cerrado esta sesión (prompt).** Extiende H16. | Regla B16 + ejemplo + checklist-21 agregados a `system_etl.txt` (bloque `InsertUpdate`). |
+| R12 — dedup de staging vía `DISTINCT ON (...) ORDER BY ... DESC` | **Gap real, cerrado esta sesión (prompt).** | K19 + checklist-22 agregados a `system_etl.txt`. |
+| H23 — `DBLookup` falla introspección contra pooler de Supabase, preferir `StreamLookup` | **Gap real, cerrado esta sesión (prompt).** | Nota agregada junto al bloque `DBLookup` de `system_etl.txt`: preferir `StreamLookup` para la FK de una dimensión cargada por el mismo `ktr`; reservar `DBLookup` para tablas que este `ktr` no carga. |
+| D12 (dialecto) — punto de notificación obligatorio | **Gap encontrado y cerrado de paso.** D12 exige notificar cuando se emite SQL dialecto-dependiente desde 2026-07-22, pero `system_etl.txt` no tenía ninguna regla pidiéndolo — verificado por grep, cero ocurrencias de "dialecto"/"Postgres" en el prompt antes de esta sesión. | K19 (nueva) fija Postgres como default, cross-referencia R4/R10 (ya cubiertos) + R12 (nuevo), y exige `validaciones` tipo `"info"` declarando la construcción dialecto-específica. |
+| R5-b/R11 (D21) — anti-join + `Union` hacia el loader único (miembro inferido) | **No implementado — el ítem grande de F4.** Diseño ya cerrado por D21, pero es código backend nuevo (detectar FK NOT NULL de un hecho contra una dimensión desde `dwh_ddl`, emitir 3 steps + rewire), no una corrección de prompt ni de una línea. Requiere su propia sesión de diseño de implementación antes de tocar código — mismo criterio que exigió F2 antes de F3. | Sin código todavía — ver D21. |
+| E3 (mapeo invertido `sk_producto`/`sk_tiempo`), key vacía en `CombinationLookup`, E14 (`Number` vs `BigNumber`) | **Sin tocar — bloqueado, no descartado.** H9 ya lo marca "no verificable sin ejecutar": son errores de una corrida específica, no localizables por lectura de código. Corregir a ciegas sin confirmar que persisten arriesga escribir una regla de prompt para un bug que ya no existe. | Ver H9, `01-hallazgos.md`. |
+| E1/E2 (SelectValues solo-cast no ejercitado, SCD2 declarado no ejercitado) | **Sin tocar — mismo bloqueo que arriba.** | Ver H10, `01-hallazgos.md`. |
+| Validador de contrato staging→DWH | **Sin definir.** Nunca tuvo `archivo:línea` ni H-number propio — la frase viene del objetivo original de F4 en `03-plan.md`, sin que ninguna sesión haya precisado qué contrato exactamente valida (¿columnas de staging que el KTR STG→DWH espera existen, ya cubierto en parte por K15/checklist-3c? ¿algo más amplio?). No se inventa el alcance acá. | — |
+
+**Consecuencia sobre el plan:** F4 pasa a "EN CURSO" — 3 gaps reales cerrados (R8, R12, H23) + 1 gap transversal cerrado (D12/K19), 3 ítems confirmados ya resueltos antes de esta sesión (R4, R6, R10) sin necesidad de tocarlos. Quedan abiertos, cada uno bloqueado por una razón distinta, no por falta de trabajo: R5-b/R11 (necesita diseño de implementación), E3/E14/keyvacía/E1/E2 (necesitan una corrida fresca para confirmar que persisten), validador de contrato (necesita que alguien defina el alcance).
+
+*Por qué D22 y no una fila más en `03-plan.md`:* fija el criterio de ruteo que la fila de F4 dejaba como pregunta abierta ("decidir estrategia de fix") — nivel de decisión de scope, mismo motivo que D14/D16/D20.
+
 ## Deliberadamente no decidido
 
 Distinguir esto de lo cerrado evita que alguien lo dé por resuelto:
@@ -338,11 +442,9 @@ L2-E05 (bitácora): `dim_producto` sin `UNIQUE(id_producto)` — el upsert por c
 
 ### C.6 — Política de default ante FK no resuelta (R5-b/R11, `bitacora_etl_ventas.md`)
 
-L2-E06 (bitácora, marcado ahí mismo como "a decidir"): una venta con `id_producto` ausente del maestro deja `fk_producto` NULL, y `fact_venta.fk_producto` es NOT NULL — el INSERT rompe. Dos políticas válidas, mutuamente excluyentes, ninguna obviamente "la correcta" sin decisión de negocio:
-1. **Miembro desconocido:** insertar una fila `sk=0` en la dimensión y usarla como default del lookup (fila nunca queda huérfana, pero "contamina" el hecho con un miembro sintético).
-2. **Ruteo de huérfanos (R11, validado en la bitácora vía Sol02):** `FilterRows` (`sk IS NOT NULL`) tras cada lookup, huérfanos van a un stream de descarte en vez de al INSERT — la venta no se carga hasta que el maestro la tenga.
+L2-E06 (bitácora, marcado ahí mismo como "a decidir"): una venta con `id_producto` ausente del maestro deja `fk_producto` NULL, y `fact_venta.fk_producto` es NOT NULL — el INSERT rompe.
 
-**No decidido acá.** Impacta directamente el diseño de F4 (qué patrón emitir para resolver FK del lado del hecho) — bloquea la implementación de R11, no su reconocimiento como hallazgo.
+**Resuelto 2026-07-24 — ver D21.** Política = miembro inferido (Kimball): el lookup nunca devuelve NULL, crea placeholder en la dimensión con la clave natural real y se auto-corrige (overwrite tipo 1) cuando el producto llega de verdad. Implementación: anti-join previo (SQL directo, fuera de la matriz R/W) + `Union` hacia el loader único de la dimensión — `dim_producto` conserva exactamente un writer, evita el choque con D16 sin reabrirla y sin depender de ningún orden incidental entre steps. No implementado en código todavía — trabajo de F4.
 
 ### C.4 — Auditoría retroactiva de cambios no declarados
 
