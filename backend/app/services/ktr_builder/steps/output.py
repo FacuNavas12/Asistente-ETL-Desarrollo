@@ -58,8 +58,14 @@ def _step_InsertUpdate(el: Element, cfg: dict) -> None:
         _sub(ke, "name2")
     for f in cfg.get("fields", []):
         ve = SubElement(lookup, "value")
-        _sub(ve, "name",   f.get("stream_field", f.get("name", "")))
-        _sub(ve, "rename", f.get("table_field",  f.get("rename", "")))
+        # InsertUpdateMeta.getXML()/readData() (pentaho-kettle): <name> es la
+        # columna de la tabla (updateLookup), <rename> es el campo del stream
+        # (updateStream) -- invertido de <key>, donde <name> SÍ es el stream.
+        # Antes acá iba al revés (name=stream_field, rename=table_field): todo
+        # InsertUpdate emitido escribía en una "columna" con nombre de campo de
+        # stream, que no existe en la tabla real.
+        _sub(ve, "name",   f.get("table_field",  f.get("rename", "")))
+        _sub(ve, "rename", f.get("stream_field", f.get("name", "")))
         _sub(ve, "update", "Y" if f.get("update", True) else "N")
 
 
@@ -82,8 +88,10 @@ def _step_Update(el: Element, cfg: dict) -> None:
         _sub(ke, "name2")
     for f in cfg.get("fields", []):
         ve = SubElement(lookup, "value")
-        _sub(ve, "name",   f.get("stream_field", f.get("name", "")))
-        _sub(ve, "rename", f.get("table_field",  f.get("rename", "")))
+        # Mismo layout que InsertUpdate (UpdateMeta.getXML() usa el mismo
+        # readData de <value>) -- ver comentario en _step_InsertUpdate.
+        _sub(ve, "name",   f.get("table_field",  f.get("rename", "")))
+        _sub(ve, "rename", f.get("stream_field", f.get("name", "")))
 
 
 def _step_Delete(el: Element, cfg: dict) -> None:

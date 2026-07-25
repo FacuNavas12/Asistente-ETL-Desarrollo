@@ -593,3 +593,37 @@ def test_no_duplicate_key_alias_tables_outside_contracts():
     source = inspect.getsource(fields_validate)
     assert "STEP_CONTRACTS" in source
     assert 'canonical_type == "' not in source
+
+
+@pytest.mark.parametrize("step_type", ["InsertUpdate", "Update"])
+def test_insert_update_value_name_is_table_column_not_stream_field(step_type):
+    # Bug real (H9/E3, docs/refactor/01-hallazgos.md): InsertUpdateMeta.getXML()/
+    # readData() (pentaho-kettle, InsertUpdateMeta.java) define, dentro de
+    # <lookup><value>, <name> = columna de la TABLA (updateLookup) y
+    # <rename> = campo del STREAM (updateStream) -- invertido respecto de
+    # <key>, donde <name> sí es el stream. Antes de este fix, output.py
+    # emitía <name>=stream_field/<rename>=table_field para TODO InsertUpdate
+    # y Update generado -- Kettle intentaba escribir en una "columna" con
+    # nombre de campo de stream, inexistente en la tabla real.
+    ktr = _minimal_ktr(
+        steps=[
+            {
+                "name": "In", "type": "TableInput",
+                "config": {"sql": "SELECT sk_producto, id_venta FROM stg_x"},
+            },
+            {
+                "name": "Cargar Fact Venta", "type": step_type,
+                "config": {
+                    "table": "fact_venta", "connection": "conn_origen",
+                    "keys": [{"stream_field": "id_venta", "table_field": "id_venta"}],
+                    "fields": [{"stream_field": "sk_producto", "table_field": "fk_producto", "update": True}],
+                },
+            },
+        ],
+        hops=[{"from": "In", "to": "Cargar Fact Venta"}],
+    )
+    xml, _, _ = build_ktr(ktr)
+    step = _find_step(xml, "Cargar Fact Venta")
+    value = step.find("lookup").find("value")
+    assert value.findtext("name") == "fk_producto", "name debe ser la columna de tabla (updateLookup)"
+    assert value.findtext("rename") == "sk_producto", "rename debe ser el campo de stream (updateStream)"
