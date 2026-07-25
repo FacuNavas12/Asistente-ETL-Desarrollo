@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 from app.models.llm_base import BaseLLM, LLMResponse
 from app.schemas.etl_schemas import (
     ArchivoKtr,
-    ETLRequest,
     ETLFromInferenceRequest,
     ETLGenerateResponse,
     EtapaOutput,
@@ -28,6 +27,7 @@ from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
 from app.services.adapters.ddl_adapter import parse_ddl
 from app.services.ddl_validation import validate_and_correct_ddl
+from app.services.validate_business_rules import validate_business_rules
 from app.services.ktr_builder import (
     build_ktr,
     derive_dimension_step_type,
@@ -456,64 +456,6 @@ def _load_system(filename: str) -> str:
     return (Path(__file__).resolve().parent.parent.parent / "prompts" / filename).read_text(encoding="utf-8")
 
 
-def _build_prompt(req: ETLRequest, origen_txt: str) -> str:
-    staging_txt = ""
-    for t in req.stagingDef:
-        origen_ref = f" (origen: {t.origenVinculado})" if t.origenVinculado else ""
-        cols = "\n".join(
-            (
-                f"    - {c.origenColumna} → {c.nombre} ({c.tipo})"
-                if c.origenColumna and c.origenColumna != c.nombre
-                else f"    - {c.nombre} ({c.tipo})"
-            ) + (f" | reglas: {', '.join(c.reglas)}" if c.reglas else "")
-            + f" | dato no válido: {c.datoNoValido}"
-            for c in t.columns
-        )
-        staging_txt += f"\n  Tabla: {t.tableName}{origen_ref}\n{cols}\n"
-
-    dwh_txt = ""
-    for t in req.dwhModel.tables:
-        origen_ref = f" | origen: {t.origenVinculado}" if t.origenVinculado else ""
-        cols = "\n".join(
-            (
-                f"    - {c.origenColumna} → {c.nombre} ({c.tipo}){' [SK]' if c.esSurrogateKey else ''}"
-                if c.origenColumna and c.origenColumna != c.nombre
-                else f"    - {c.nombre} ({c.tipo}){' [SK]' if c.esSurrogateKey else ''}"
-            )
-            for c in t.columnas
-        )
-        dwh_txt += f"\n  Tabla {t.tipo}: {t.nombre}{origen_ref}\n{cols}\n"
-
-    reglas  = req.reglasNegocio.strip() or "No se especificaron reglas de negocio adicionales."
-    objetivo = req.descripcionObjetivo.strip() or "No especificado."
-
-    return f"""## OBJETIVO DEL PROCESO ETL
-{objetivo}
-
-## ESQUEMA DE ORIGEN (perfilado — sin datos crudos)
-{origen_txt}
-## ESQUEMA DE STAGING
-{staging_txt}
-## MODELO DE DWH
-{dwh_txt}
-## REGLAS DE NEGOCIO
-
-{reglas}
-
----
-
-Genera el proceso ETL completo respetando estrictamente el objetivo indicado.
-El mapeo "origen → nombre" indica que el campo se renombra entre capas; respetá los nombres destino exactos.
-Aplica todas las reglas de limpieza definidas en cada columna de staging.
-Verifica la consistencia de tipos y nombres entre las tres capas.
-
-Antes de escribir el objeto `ktr`, determiná en orden:
-**Etapa 1 — Diseño del grafo:** listá mentalmente todos los steps necesarios (nombre, tipo) y sus conexiones (hops) para ESTE proceso específico, sin entrar en configs internas. Verificá grafo completo: ningún step aislado.
-**Etapa 2 — Configuración interna:** solo después del grafo completo, poblá el `config` de cada step en orden topológico (entrada → salida).
-No mezcles las etapas — configura solo cuando el grafo esté cerrado.
-"""
-
-
 def _build_response_from_data(
     data: dict,
     metadata: MetadataResponse,
@@ -846,27 +788,6 @@ async def build_etl_from_raw(
     return _build_response_from_data(raw_llm_data, metadata, extra_warnings=extra_warnings)
 
 
-async def generate_etl(
-    req: ETLRequest,
-    llm: BaseLLM,
-    db: Optional[Session] = None,
-) -> ETLGenerateResponse:
-    ctx        = context_builder.build_model_context(req.origenTables, db)
-    origen_txt = context_builder.format_model_context_for_prompt(ctx)
-    prompt     = _build_prompt(req, origen_txt)
-    resp       = await llm.complete(prompt, _load_system("system_etl.txt"), schema=ETL_OUTPUT_SCHEMA)
-
-    repair_warnings: list[str] = []
-    if resp.json_data and resp.json_data.get("ktr"):
-        resp.json_data["ktr"], cfg_warnings = normalize_step_configs(resp.json_data["ktr"])
-        context_text = f"{req.stagingDef!r}\n\n{req.dwhModel!r}"
-        resp.json_data["ktr"], repair_warnings = await repair_ktr_steps(resp.json_data["ktr"], llm, context_text)
-        resp.json_data["ktr"], integrity_warnings = await repair_integrity_gaps(resp.json_data["ktr"], llm, context_text)
-        repair_warnings = [*cfg_warnings, *repair_warnings, *integrity_warnings]
-
-    return _build_response(resp, extra_warnings=repair_warnings)
-
-
 def _build_prompt_from_inference(
     req: ETLFromInferenceRequest,
     origen_txt: str,
@@ -1058,6 +979,10 @@ async def generate_etl_from_inference(
         _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
     )
     ddl_change_warnings = [f"DDL (Parte 3): {c}" for c in ddl_result.cambios_aplicados]
+    business_rule_warnings = [
+        *validate_business_rules(req.stg_definition, req.reglasNegocio, data_1["ktr"]),
+        *validate_business_rules(dwh_ddl, req.reglasNegocio, data_2["ktr"]),
+    ]
     step_policy_results = enforce_dimension_step_policy(
         data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
     )
@@ -1068,6 +993,7 @@ async def generate_etl_from_inference(
             *cfg_warnings_1, *cfg_warnings_2,
             *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
             *type_warnings, *dim_contract_warnings, *inferred_member_warnings, *ddl_change_warnings,
+            *business_rule_warnings,
         ],
         extra_validaciones=[*ddl_result.conflictos, *[Validacion(**r) for r in step_policy_results]],
     )

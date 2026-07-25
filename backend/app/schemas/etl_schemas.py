@@ -30,54 +30,6 @@ class TablaOrigen(BaseModel):
     canonical_schema: Optional[CanonicalSchema] = None  # type: ignore[type-arg]
 
 
-# ─── INPUT — Staging ──────────────────────────────────────────────────────────
-
-class ColumnaStaging(BaseModel):
-    origenColumna: str = ""
-    nombre: str
-    tipo: str
-    reglas: List[str] = []       # array de reglas de limpieza
-    datoNoValido: str = "Reemplazar por NULL"
-
-
-class TablaStaging(BaseModel):
-    tableName: str
-    origenVinculado: str = ""
-    columns: List[ColumnaStaging]
-    reglasTabla: Optional[dict] = None   # filtros, dedup, politicaError
-    metadata: Optional[dict] = None      # sourceSystem, etc.
-
-
-# ─── INPUT — DWH ─────────────────────────────────────────────────────────────
-
-class ColumnaDwh(BaseModel):
-    origenColumna: str = ""
-    nombre: str
-    tipo: str
-    esSurrogateKey: bool
-
-
-class TablaDwh(BaseModel):
-    tipo: str               # Fact | Dimension
-    nombre: str
-    origenVinculado: str = ""
-    columnas: List[ColumnaDwh]
-
-
-class ModeloDwh(BaseModel):
-    tables: List[TablaDwh]
-
-
-# ─── INPUT — Request principal ────────────────────────────────────────────────
-
-class ETLRequest(BaseModel):
-    descripcionObjetivo: str = ""
-    origenTables: List[TablaOrigen]
-    stagingDef: List[TablaStaging]
-    dwhModel: ModeloDwh
-    reglasNegocio: str
-
-
 class ETLValidateRequest(BaseModel):
     proceso_etl: dict
 

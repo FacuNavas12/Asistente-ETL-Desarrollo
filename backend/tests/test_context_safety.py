@@ -5,7 +5,6 @@ These tests verify that neither a connection identifier nor raw column values
 ever appear in the prompt payload that is sent to the model.
 
 Covered call sites:
-  - etl_generator.generate_etl
   - etl_generator.generate_etl_from_inference
   - structure_inferrer.infer_structures
   - structure_inferrer.refine_structures
@@ -30,17 +29,12 @@ def _run(coro):
     return asyncio.run(coro)
 from app.schemas.etl_schemas import (
     ColumnaOrigen,
-    ColumnaDwh,
     ETLDocumentRequest,
     ETLFromInferenceRequest,
-    ETLRequest,
     ETLValidateRequest,
     InferRequest,
-    ModeloDwh,
     RefineRequest,
     TablaOrigen,
-    TablaStaging,
-    TablaDwh,
 )
 
 # ─── Sentinel values that must never appear in any prompt ──────────────────────
@@ -83,32 +77,16 @@ def _make_llm(captured: list[str], response_json: dict | None = None) -> BaseLLM
 
 # ─── Sample request builders ──────────────────────────────────────────────────
 
-def _etl_request(with_conn_id: bool = False) -> ETLRequest:
+def _from_inference_request(with_conn_id: bool = False) -> ETLFromInferenceRequest:
     col = ColumnaOrigen(name="email", dataType="string", data=list(_RAW_VALUES))
     tabla = TablaOrigen(
         tableName="customers",
         columns=[col],
         connection_id=_CONN_ID if with_conn_id else None,
     )
-    return ETLRequest(
-        descripcionObjetivo="Test safety",
-        origenTables=[tabla],
-        stagingDef=[TablaStaging(tableName="STG_CUSTOMERS", columns=[])],
-        dwhModel=ModeloDwh(tables=[
-            TablaDwh(
-                tipo="Dimension", nombre="DIM_CUSTOMERS",
-                columnas=[ColumnaDwh(nombre="SK", tipo="INTEGER", esSurrogateKey=True)],
-            )
-        ]),
-        reglasNegocio="",
-    )
-
-
-def _from_inference_request() -> ETLFromInferenceRequest:
-    col = ColumnaOrigen(name="email", dataType="string", data=list(_RAW_VALUES))
     return ETLFromInferenceRequest(
         descripcionObjetivo="Test",
-        origenTables=[TablaOrigen(tableName="customers", columns=[col])],
+        origenTables=[tabla],
         stg_definition="CREATE TABLE STG_CUSTOMERS (email VARCHAR(255));",
         dwh_model="CREATE TABLE DIM_CUSTOMERS (SK INTEGER PRIMARY KEY);",
         reglasNegocio="",
@@ -157,22 +135,14 @@ def _assert_safe(prompt: str, label: str):
 
 # ─── Tests ────────────────────────────────────────────────────────────────────
 
-def test_generate_etl_no_raw_data():
-    captured: list[str] = []
-    from app.services.etl_generator import generate_etl
-    _run(generate_etl(_etl_request(), _make_llm(captured), db=None))
-    assert captured, "LLM was never called"
-    _assert_safe(captured[0], "generate_etl / memory path")
-
-
-def test_generate_etl_no_connection_id_with_db_flag():
+def test_generate_etl_from_inference_no_connection_id_with_db_flag():
     """connection_id must not reach the prompt even when set in the request."""
     captured: list[str] = []
-    from app.services.etl_generator import generate_etl
+    from app.services.etl_generator import generate_etl_from_inference
     # db=None forces memory fallback; connection_id is still in the request object.
-    _run(generate_etl(_etl_request(with_conn_id=True), _make_llm(captured), db=None))
+    _run(generate_etl_from_inference(_from_inference_request(with_conn_id=True), _make_llm(captured), db=None))
     assert captured
-    _assert_safe(captured[0], "generate_etl / with connection_id but db=None")
+    _assert_safe(captured[0], "generate_etl_from_inference / with connection_id but db=None")
 
 
 def test_generate_etl_from_inference_no_raw_data():
