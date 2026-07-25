@@ -47,9 +47,9 @@ def _select_column_names(sql: str) -> list[str]:
 
 def _validate_ktr(ktr: dict) -> list[str]:
     warnings = []
-    step_names = {s["name"] for s in ktr.get("steps", [])}
+    step_names = {s.get("name") for s in ktr.get("steps", [])}
     # Normalizar tipos usando los aliases, así reconocemos tanto "Table Input" como "TableInput"
-    types = {STEP_TYPE_ALIASES.get(s["type"], s["type"]) for s in ktr.get("steps", [])}
+    types = {STEP_TYPE_ALIASES.get(s.get("type", ""), s.get("type", "")) for s in ktr.get("steps", [])}
 
     input_types  = {"TableInput", "CsvInput", "ExcelInput", "TextFileInput", "JsonInput", "DataGrid", "RowGenerator"}
     output_types = {"TableOutput", "InsertUpdate", "Update", "Delete"}

@@ -1,13 +1,15 @@
 """
 JSON Schema for the full ETL generation response.
 
-Fields proceso_etl.steps[*].configuracion and ktr.steps[*].config are left
-as {"type": "object"} without additionalProperties: false because their internal
-structure varies by Pentaho step type — enforcing additionalProperties on them
-would either require a massive oneOf discriminator or would reject valid configs.
+ktr.steps[*].config is left as {"type": "string"} (a JSON string the builder
+parses with json.loads()) instead of {"type": "object"} because its internal
+structure varies by Pentaho step type — enforcing additionalProperties on an
+object would either require a massive oneOf discriminator or would reject
+valid configs. See D18 in docs/refactor/02-decisiones.md for why the object
+form was proposed and shelved.
 
 dwh_sample maps table names (unknown at schema-definition time) to lists of row
-dicts, so its keys cannot be enumerated — it also stays as {"type": "object"}.
+dicts, so its keys cannot be enumerated — it stays as {"type": "object"}.
 
 All other objects have additionalProperties: false.
 """
