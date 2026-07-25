@@ -46,6 +46,7 @@ from xml.etree import ElementTree as ET
 
 MONEY_FIELD_HINTS = (
     "importe", "precio", "monto", "total", "subtotal", "valor", "costo", "price", "amount",
+    "impuesto", "iva", "descuento", "saldo", "comision", "recargo", "tipo_cambio", "arancel", "cuota",
 )
 FACT_TABLE_PREFIXES = ("fact_", "hechos_", "hecho_")
 

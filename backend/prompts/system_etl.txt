@@ -334,13 +334,13 @@ Ejemplo correcto:
 **REGLA CRÍTICA — Calculator NUNCA encadena sus propios cálculos:** todos los `calculations` de un mismo step `Calculator` operan sobre la fila tal como llegó al step — ninguno puede usar en `field_a`/`field_b`/`field_c` el `field_name` de otro cálculo del mismo step. Un campo recién calculado solo está disponible como columna real del stream para el step siguiente, no para otro cálculo del mismo step. Si un cálculo B depende del resultado del cálculo A, generá dos steps `Calculator` separados y conectados por un hop (A en el primero, B en el segundo) — nunca ambos en la misma lista de `calculations`. Violar esta regla produce el error en runtime "Unable to find the second argument field '...' for calculation #N".
 ```json
 {"calculations": [
-  {"field_name": "monto_usd", "calc_type": "MULTIPLY", "field_a": "monto", "field_b": "FACTOR_UYU_USD", "value_type": "Number", "value_length": 15, "value_precision": 2},
+  {"field_name": "monto_usd", "calc_type": "MULTIPLY", "field_a": "monto", "field_b": "FACTOR_UYU_USD", "value_type": "BigNumber", "value_length": 15, "value_precision": 2},
   {"field_name": "anio_venta", "calc_type": "YEAR_OF_DATE", "field_a": "fecha_venta", "value_type": "Integer"}
 ]}
 ```
 **Formula** — expresiones libformula (sintaxis tipo OpenFormula/ODF, más potente que Calculator):
 ```json
-{"formulas": [{"field_name": "total_con_iva", "formula": "[monto] * 1.22", "type": "Number", "length": 15, "precision": 2}]}
+{"formulas": [{"field_name": "total_con_iva", "formula": "[monto] * 1.22", "type": "BigNumber", "length": 15, "precision": 2}]}
 ```
 **REGLA CRÍTICA B11 — literales booleanos en fórmulas:** los literales booleanos en `formula` deben escribirse `TRUE()` y `FALSE()` (funciones sin argumentos), NUNCA `TRUE`/`FALSE` sueltos — el motor libformula los trata como llamadas a función y exige el paréntesis; sin él, produce `FormulaParseException`.
 **REGLA CRÍTICA B12 — NUNCA usar `"type": "Boolean"` en ningún campo de Formula [CRÍTICO, agnóstico de nombre de step/campo]:** el step `Formula` de Kettle 9.4.0.0-343 no puede bindear un resultado booleano como tipo nativo en el `PreparedStatement` hacia Postgres — llega como string (`"Y"`/`"N"`) y Postgres rechaza la conversión contra cualquier columna `boolean` o `smallint`. Esta regla aplica sin excepción a cualquier campo calculado por `Formula`, independientemente del nombre del step o del campo (indicadores, banderas, condiciones lógicas, campos tipo "es_X", "tiene_Y", "aplica_Z" — todos sin excepción):
@@ -348,6 +348,13 @@ Ejemplo correcto:
 - La fórmula de condición lógica SIEMPRE debe envolverse en `IF(condición; 1; 0)` — nunca devolver el resultado directo de `AND(...)`/`OR(...)`/una comparación (esos devuelven Boolean, que no bindea).
 - La columna de destino en el DDL debe declararse `SMALLINT`, nunca `BOOLEAN`.
 Ejemplo correcto: `{"field_name": "es_incobrable", "formula": "IF(AND([estado]=\"VENCIDA\";[saldo]>0);1;0)", "type": "Integer"}`
+**REGLA CRÍTICA B17 — `BigNumber` vs `Number` vs `Integer`, en TODO step que declara `type`/`value_type` por campo** (`Calculator`, `Formula`, `SelectValues` al castear en `meta`, `ScriptValueMod`, `GetVariable`, `RowGenerator`, y el schema declarado de `CsvInput`/`TextFileInput`/`ExcelInput`/`JsonInput`/`TextFileOutput`/`ExcelOutput`): `Number` en Kettle es un `double` binario (IEEE 754) — no representa exacto la mayoría de las fracciones decimales (`0.1 + 0.2` ya no da `0.3`) y ese error se acumula al sumar/agregar sobre muchas filas. `BigNumber` es `BigDecimal` (precisión arbitraria, aritmética decimal exacta).
+- **`BigNumber`** — todo campo monetario/contable (importes, precios unitarios, impuestos, IVA, descuentos, tipos de cambio, saldos, comisiones, recargos, cuotas); cualquier valor que se sume/agregue sobre muchas filas (el redondeo de `Number` se acumula); cualquier campo cuya columna de origen en BD sea `DECIMAL`/`NUMERIC`/`MONEY`; o que necesite más de 15 dígitos significativos.
+- **`Number`** — solo valores analíticos/estadísticos, ratios o porcentajes donde un error de punto flotante ínfimo es tolerable (no se suman en cascada ni se persisten como saldo).
+- **`Integer`** — conteos, IDs, surrogate keys.
+- **No alcanza con tipar el campo RESULTADO en `BigNumber` si los operandos de entrada ya son `Number`:** en `Calculator`/`Formula`, si `field_a`/`field_b`/los campos referenciados en `formula` llegan como `Number` (double), el cálculo pierde precisión en la operación misma — declarar `value_type: "BigNumber"` en la salida solo envuelve un double ya redondeado en un `BigDecimal`, no recupera los dígitos perdidos. Los campos monetarios deben ser `BigNumber` desde el step que los origina (columna `DECIMAL`/`NUMERIC` real vía `TableInput`, o cast explícito en `SelectValues`) para que toda la cadena de cálculo lo sea.
+- Declará `value_length`/`value_precision` (`Calculator`) o `length`/`precision` (`Formula`/`SelectValues`) junto con `BigNumber` — típicamente precisión 2 para importes, más para tipos de cambio con decimales finos.
+- Los campos monetarios calculados directamente en SQL (`TableInput.config.sql`, ej. `precio * cantidad AS importe`) no necesitan esta regla — Kettle infiere el tipo real vía el driver JDBC contra la columna `NUMERIC`/`DECIMAL` de origen. Esta regla aplica cuando sos vos quien asigna `type`/`value_type` a mano.
 **RegexEval** — evaluar/capturar con expresión regular:
 ```json
 {"field": "email", "regex": "^[^@]+@[^@]+\\.[^@]+$",
@@ -605,6 +612,7 @@ Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es N
 22. ¿Emitiste alguna construcción SQL dialecto-dependiente (`DISTINCT ON`, `generate_series`, u otra específica de Postgres) sin declarar `tipo: "info"` en `validaciones`? [K19] → Si SÍ: agregá la entrada de `validaciones` faltante.
 23. Si el prompt trae "## DIMENSIONES CON MIEMBRO INFERIDO OBLIGATORIO" (D21): ¿cada dimensión listada tiene EXACTAMENTE un step que la escribe (anti-join + Union hacia el ÚNICO loader), y el/los lookup(s) de su FK del lado del hecho son de solo lectura (`StreamLookup`, o `DimensionLookup`/`CombinationLookup` sin escritura)? → Si NO: corregí — un segundo writer sobre esa tabla es exactamente el doble-escritor que este proyecto existe para eliminar (ver "PATRÓN MIEMBRO INFERIDO").
 24. ¿Algún step busca la FK de una dimensión con `scd_type` 0 o 1 (sin historial, según `dim_contracts`) usando `CombinationLookup`, `DimensionLookup` o `DBLookup` en vez de `TableInput`+`StreamLookup`? [D16] → Si SÍ: reemplazá por un `TableInput` (lee la dimensión ya cargada) conectado a un `StreamLookup` (match por clave natural), dentro de la MISMA transformación (ver "LOOKUP DE FK DEL LADO DEL HECHO").
+25. ¿Algún campo con nombre de pinta monetaria/contable (importe, precio, monto, total, subtotal, valor, costo, impuesto, iva, descuento, saldo, comisión, recargo, tipo de cambio, arancel, cuota) queda declarado `"type"`/`"value_type": "Number"` en vez de `"BigNumber"`, en cualquier step que lo declare (`Calculator`, `Formula`, `SelectValues` meta, `ScriptValueMod`, `GetVariable`, `RowGenerator`, `CsvInput`/`TextFileInput`/`ExcelInput`/`JsonInput`/`TextFileOutput`/`ExcelOutput`)? [B17] → Si SÍ: cambiá a `BigNumber` y verificá que los operandos de entrada (`field_a`/`field_b`/campos referenciados en `formula`) también lo sean — no alcanza con tipar solo el resultado.
 
 ## CAMPO dwh_sample — OBLIGATORIO
 
