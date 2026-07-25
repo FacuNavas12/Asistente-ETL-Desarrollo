@@ -153,28 +153,41 @@ El mismo patrón está en las 4 copias listadas en H3 (`validate.py:14-17`, `dim
 
 ## H9 — Errores vivos del generador sobre output fresco
 
-**Qué:** tres errores confirmados en una corrida real reciente:
+**Qué (original, corrida antigua):** tres errores confirmados en una corrida real:
 - **E3** — mapeo invertido (`sk_producto`/`sk_tiempo`) en el step `Cargar Fact Venta` (`InsertUpdate`).
 - **E14** — el step `Calcular Importe` (Formula) emite `value_type=Number` en vez de `BigNumber` para un campo monetario.
 - **Key vacía** en `CombinationLookup` del step `Lookup o Crear Dim Producto` — fuera de catálogo, no ejecuta en Spoon (el más grave de los tres).
 
-**Evidencia:** nombres de step de una corrida de prueba, documentados en el handoff de Fragmentación, sección "Estado actual". No son `archivo:línea` de código — son identificadores de steps generados por el LLM en esa corrida. **No verificable sin ejecutar** una generación nueva para confirmar que persisten.
+**Evidencia original:** nombres de step de una corrida de prueba, documentados en el handoff de Fragmentación, sección "Estado actual". No eran `archivo:línea` de código.
 
 **Sesión de origen:** Fragmentación.
 
-**Estado:** abierto. Plan de fix propuesto en el mismo documento (punto 1-4 de "Próximos pasos"): derivación determinista desde `dim_contracts` en backend, no parche de prompt.
+**Re-verificado 2026-07-25 (`backend/tests_manual_llm/test_h9_h10_live_scenario.py`, 2 corridas reales contra Gemini con el prompt actual — K12/K17/K19/B16/D21, escenario ventas/productos/tiempo, `dim_producto` ahora SCD2 sobre `categoria` para forzar H10):**
+
+- **E3 — causa raíz real encontrada, distinta de la hipótesis original, corregida en código.** No era (solo) un error de contenido del LLM eligiendo mal qué SK va en qué FK. `backend/app/services/ktr_builder/steps/output.py` (`_step_InsertUpdate` y `_step_Update`) emitía `<lookup><value><name>` = campo de stream y `<rename>` = columna de tabla — **invertido** respecto del formato real de Kettle (verificado contra `InsertUpdateMeta.java` de `pentaho/pentaho-kettle` en GitHub: `getXML()`/`readData()` — `<name>` = `updateLookup` = columna de tabla, `<rename>` = `updateStream` = campo de stream). Bug estructural, presente en **todo** `InsertUpdate`/`Update` jamás generado por el sistema, no dependiente de una corrida puntual del LLM. `error_catalog_checks.py::v6_insert_update_mapeos` ya documentaba el formato correcto — estaba en desacuerdo con el propio builder, sin test que lo cubriera. **Corregido** (`output.py`, ambos steps) + test de regresión `tests/test_ktr_builder_fidelity.py::test_insert_update_value_name_is_table_column_not_stream_field` (2 casos, `InsertUpdate`/`Update`), suite completa sin regresiones (505 passed, mismos 2 fallos pre-existentes de antes del fix, no relacionados). Con el fix aplicado, la corrida real NO reprodujo ningún mapeo `fk_producto`/`fk_tiempo` invertido — **no reproducido**.
+- **E14 — sigue vivo, confirmado.** `Calcular Importe` (`Calculator`, no `Formula` en esta corrida) sigue emitiendo `importe` con `value_type=Number`. `v11_monetario_sin_bignumber` lo detecta correctamente. **Sin corregir** — es contenido del LLM, no código backend; candidato a regla de prompt (checklist K-algo, mismo patrón que K17).
+- **Key vacía (V13)** — **no reproducida** en ninguno de los 2 archivos `.ktr` generados (`v13_lookup_key_incompleta` sin findings).
+
+**Hallazgo nuevo, no catalogado E1-E14, encontrado en esta corrida:** `enforce_dimension_step_policy` marcó `error` sobre `Lookup FK Tiempo` — el LLM usó `DBLookup` contra `dim_tiempo`, pero `dim_contracts` (scd_type=1) deriva `CombinationLookup`; sin override registrado, el sistema no auto-corrige (por diseño — le faltaría inventar `fields`/`date_from`/`date_to` sin criterio de negocio) y lo deja como `Validacion` tipo error. Comportamiento de guardrail funcionando como se diseñó (D22/D23), no un crash — pero el `.ktr` queda con un mismatch real declarado. Sin investigar más a fondo esta sesión.
+
+**Estado:** E3 — **cerrado** (causa raíz de código corregida + regresión cubierta). E14 — **abierto**, confirmado vivo, pendiente de regla de prompt. Key vacía — **no reproducido**, no se puede afirmar "arreglado" (una corrida no lo garantiza), pero deja de ser bloqueante.
 
 ---
 
 ## H10 — E1/V4 y E2/V5: no evaluados, no arreglados
 
-**Qué:** dos puntos ciegos del corpus de prueba: el modelo no emitió `SelectValues` solo-cast (E1/V4) ni una dimensión SCD2 declarada (E2/V5) en la corrida usada como referencia. No se puede afirmar que estén arreglados, solo que no se ejercitaron.
+**Qué (original):** dos puntos ciegos del corpus de prueba: el modelo no emitió `SelectValues` solo-cast (E1/V4) ni una dimensión SCD2 declarada (E2/V5) en la corrida usada como referencia. No se podía afirmar que estuvieran arreglados, solo que no se ejercitaron.
 
-**Evidencia:** handoff de Fragmentación, sección "Estado actual — No evaluables este run". Sin `archivo:línea` propio — depende de forzar esos casos en una generación nueva.
+**Evidencia original:** handoff de Fragmentación, sección "Estado actual — No evaluables este run".
 
 **Sesión de origen:** Fragmentación.
 
-**Estado:** abierto, pendiente de ejercitar (punto 5 de "Próximos pasos" del handoff).
+**Re-verificado 2026-07-25 (mismo test que H9 arriba, `dim_producto` forzado a `scd_type=2` sobre `categoria` específicamente para ejercitar E2, que el corpus original no tenía):**
+
+- **E1 — ejercitado, sin defecto encontrado.** El LLM emitió `Castear Tipos Ventas` (`SelectValues`) con SOLO entradas `<meta>` (cast `cantidad` VARCHAR→INTEGER), sin `<field>`/`<remove>` — exactamente el patrón que H10 no había visto nunca. `v4_select_values_sin_entradas` no aplica (SÍ tiene entradas), y no se encontró otro defecto asociado.
+- **E2 — ejercitado, sin defecto encontrado.** `Cargar Dim Producto SCD2` (`DimensionLookup`) contra `dim_producto` (scd_type=2), con `fields: [{nombre: Update}, {categoria: Insert}]` — separación correcta entre atributo SCD1 (sobrescribir) y SCD2 (versionar) tal como pide `dim_contracts.attributes_scd1`/`attributes_scd2`.
+
+**Estado:** cerrado — ambos puntos ciegos quedaron ejercitados sin encontrar defecto en esta corrida. Como con key vacía en H9, una sola corrida no es garantía permanente, pero deja de ser "no evaluable".
 
 ---
 
@@ -408,6 +421,32 @@ Los 37 de `test_api.py` (requieren servidor local en `localhost:8000`) y el flak
 
 ---
 
+## H27 — B17 (BigNumber en operandos) es inferencia de aritmética de punto flotante general, no verificada contra el motor real de Kettle
+
+**Qué:** `system_etl.txt` regla B17 (agregada 2026-07-25, cierre de E14/H9) instruye que declarar `value_type: "BigNumber"` en el campo RESULTADO de un `Calculator`/`Formula` no alcanza si los operandos de entrada (`field_a`/`field_b`, campos referenciados en `formula`) ya son `Number` — el cálculo pierde precisión en la operación misma. Esa afirmación se apoya en punto flotante binario general (IEEE 754: un double ya redondeado no recupera dígitos al envolverlo en BigDecimal), pero NO se verificó contra el código real de Kettle (`Calculator.java`/`ValueDataUtil.java`/el motor libformula de `Formula`). Sin verificar: (a) si Kettle promueve automáticamente a aritmética `BigDecimal` cuando AL MENOS UN operando ya es `BigNumber` aunque el otro sea `Number`/`Integer`/literal — en ese caso la regla podría ser más laxa de lo que B17 exige; (b) si mezclar un operando `BigNumber` con una constante numérica plana en el JSON (no un `field`) se comporta igual; (c) si el motor libformula de `Formula` promueve tipos igual que el `Calculator` step (son implementaciones Java distintas).
+
+**Evidencia:** `backend/prompts/system_etl.txt`, regla B17 (agregada 2026-07-25). Contraste directo con el fix de E3 del mismo turno: para E3 SÍ se verificó contra `InsertUpdateMeta.java` real (`pentaho/pentaho-kettle`, GitHub) antes de tocar código — acá la regla se escribió por principio general, sin el mismo nivel de verificación.
+
+**Sesión de origen:** esta sesión (2026-07-25), cierre de E14/H9 vía B17.
+
+**Estado:** abierto, no bloqueante para B17 tal como está — la regla actual ("todos los operandos en BigNumber") es conservadora, nunca produce un falso negativo aunque Kettle promoviera solo. Bloqueante si se quiere una regla más precisa (ej. "alcanza con que UN operando sea BigNumber") o confirmar que la actual no es sobre-ingeniería que el prompt no necesitaba pedir.
+
+---
+
+## H28 — `FIELD_TYPE_SOURCES` (`error_catalog_checks.py`): catálogo armado por inspección de código propio, no contra el comportamiento documentado de cada step type en Kettle — 2 huecos concretos ya detectados
+
+**Qué:** B17 y el checklist ítem 25 (`system_etl.txt`) delegan la verificación automática (E14/`v11_monetario_sin_bignumber`) al catálogo `FIELD_TYPE_SOURCES` (`error_catalog_checks.py:305-317`): `Calculator`, `Formula`, `SelectValues` (meta), `ScriptValueMod`, `GetVariable`, `RowGenerator`, `CsvInput`, `TextFileInput`, `ExcelInput`, `JsonInput`, `TextFileOutput`, `ExcelOutput`. Este catálogo se armó leyendo el propio `ktr_builder/steps/*.py`, no contra documentación de Kettle step-by-step ni un inventario exhaustivo de los ~40+ step types que soporta `registry.py`. Dos huecos concretos ya encontrados sin resolver:
+- **(a) `Constant`** (`ktr_builder/steps/transform.py:191-201`, `_step_Constant`) emite el mismo shape `<fields><field><name>/<type>` que SÍ está cubierto para otros steps (ej. `RowGenerator`) — pero `Constant` no está en `FIELD_TYPE_SOURCES`. Un campo monetario hardcodeado vía `Constant` con `"type": "Number"` no lo detecta `v11`/B17. Fix mecánico de 1 línea, no necesita research — agregar `("Constant", "fields", "field", "name", "type")` a la tupla.
+- **(b) Exhaustividad sin confirmar** — no se revisó el resto de los step types de `registry.py` buscando cuáles más declaran `type`/`value_type` por campo; la lista de 12 quedó acotada a los que ya aparecían mencionados en el catálogo E1-E14 original, no a un barrido completo.
+
+**Evidencia:** `backend/app/services/ktr_builder/error_catalog_checks.py:305-317` (`FIELD_TYPE_SOURCES`), `backend/app/services/ktr_builder/steps/transform.py:191-201` (`_step_Constant`, shape no incluido). Confirmado por lectura de código esta sesión (2026-07-25), sin research de Kettle todavía.
+
+**Sesión de origen:** esta sesión (2026-07-25), cierre de E14/H9 vía B17.
+
+**Estado:** abierto. (a) fix trivial, sin bloqueo — pendiente solo porque esta sesión decidió no seguir tocando código y cerrar con documentación (ver decisión del usuario). (b) sí depende de revisar `registry.py` contra cada step type, potencialmente contra documentación Kettle.
+
+---
+
 ## Intake — `bitacora_etl_ventas.md` (R1-R12): clasificación y ruteo
 
 Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (2026-07-22) — evita que cada regla nueva de un test se acumule como un H-number suelto. Ver la sección "Intake de hallazgos de tests" en `03-plan.md` para el mecanismo completo; acá solo la aplicación concreta a R1-R12.
@@ -447,7 +486,7 @@ Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (20
 | H9 | E3/E14/key vacía vivos en output fresco | Abierto, no verificable sin ejecutar |
 | H10 | E1/V4, E2/V5 no ejercitados | Abierto, pendiente de ejercitar |
 | H11 | `DBLookup` fuera del linaje | **Resuelto 2026-07-22** — agregado a `_TABLE_FIELD_TYPES` |
-| H12 | Docstring `etl_output.py` desactualizado | Abierto, cosmético |
+| H12 | Docstring `etl_output.py` desactualizado | **Resuelto 2026-07-25** (F5) — docstring corregido: `config` documentado como `{"type":"string"}` real (no `object`), campo inexistente `proceso_etl.steps[*].configuracion` eliminado de la mención |
 | H13 | Compatibilidad con ETLs guardados | Cerrado por D3 |
 | H14 | Colisión con `dim_contracts` (149b836) | Resuelto — D11: no choca, es precedente |
 | H15 | D6 pendiente de re-verificación en frío | **Resuelto** — D6/D6-bis, backend determinístico, solo corrección |

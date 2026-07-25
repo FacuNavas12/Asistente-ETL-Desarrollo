@@ -1,6 +1,6 @@
 # Decisiones — Refactor de fragmentación
 
-**Última actualización:** 2026-07-24
+**Última actualización:** 2026-07-25
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -28,7 +28,7 @@ Navegación rápida — clic para ir directo a la decisión. Grupos según la ta
 [D16](#d16) dependencia externa real: eje `dim_contracts` · [D19](#d19) wiring de servicio cerrado, HTTP en modo notificación · [D20](#d20) forma de la respuesta con N archivos
 
 **F4** — track de errores / contenido generado
-[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt
+[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22)
 
 **Otras secciones del archivo**
 [Deliberadamente no decidido](#deliberadamente-no-decidido) · [Verificaciones pendientes](#verificaciones-pendientes) · [Abiertos](#abiertos-no-bloquean-el-arranque-del-refactor-sí-bloquean-ítems-puntuales) — [C.1](#c1) dialecto multi-motor `[F4]` · [C.2](#c2) reglas de corte vs. D6-bis `[F2]` ✓ · [C.3](#c3) verificaciones DB real `[F1/F4]` · [C.4](#c4) auditoría retroactiva `[Fundamento]` · [C.5](#c5) constraints DDL `[F4]` · [C.6](#c6) FK no resuelta `[F4]` ✓ resuelta por D21
@@ -434,13 +434,38 @@ Tests: `tests/test_inferred_member.py` (13 casos — detección con FK NOT NULL/
 | H23 — `DBLookup` falla introspección contra pooler de Supabase, preferir `StreamLookup` | **Gap real, cerrado esta sesión (prompt).** | Nota agregada junto al bloque `DBLookup` de `system_etl.txt`: preferir `StreamLookup` para la FK de una dimensión cargada por el mismo `ktr`; reservar `DBLookup` para tablas que este `ktr` no carga. |
 | D12 (dialecto) — punto de notificación obligatorio | **Gap encontrado y cerrado de paso.** D12 exige notificar cuando se emite SQL dialecto-dependiente desde 2026-07-22, pero `system_etl.txt` no tenía ninguna regla pidiéndolo — verificado por grep, cero ocurrencias de "dialecto"/"Postgres" en el prompt antes de esta sesión. | K19 (nueva) fija Postgres como default, cross-referencia R4/R10 (ya cubiertos) + R12 (nuevo), y exige `validaciones` tipo `"info"` declarando la construcción dialecto-específica. |
 | R5-b/R11 (D21) — anti-join + `Union` hacia el loader único (miembro inferido) | **No implementado — el ítem grande de F4.** Diseño ya cerrado por D21, pero es código backend nuevo (detectar FK NOT NULL de un hecho contra una dimensión desde `dwh_ddl`, emitir 3 steps + rewire), no una corrección de prompt ni de una línea. Requiere su propia sesión de diseño de implementación antes de tocar código — mismo criterio que exigió F2 antes de F3. | Sin código todavía — ver D21. |
-| E3 (mapeo invertido `sk_producto`/`sk_tiempo`), key vacía en `CombinationLookup`, E14 (`Number` vs `BigNumber`) | **Sin tocar — bloqueado, no descartado.** H9 ya lo marca "no verificable sin ejecutar": son errores de una corrida específica, no localizables por lectura de código. Corregir a ciegas sin confirmar que persisten arriesga escribir una regla de prompt para un bug que ya no existe. | Ver H9, `01-hallazgos.md`. |
-| E1/E2 (SelectValues solo-cast no ejercitado, SCD2 declarado no ejercitado) | **Sin tocar — mismo bloqueo que arriba.** | Ver H10, `01-hallazgos.md`. |
-| Validador de contrato staging→DWH | **Sin definir.** Nunca tuvo `archivo:línea` ni H-number propio — la frase viene del objetivo original de F4 en `03-plan.md`, sin que ninguna sesión haya precisado qué contrato exactamente valida (¿columnas de staging que el KTR STG→DWH espera existen, ya cubierto en parte por K15/checklist-3c? ¿algo más amplio?). No se inventa el alcance acá. | — |
+| E3 (mapeo invertido `sk_producto`/`sk_tiempo`), key vacía en `CombinationLookup`, E14 (`Number` vs `BigNumber`) | **Desbloqueado y verificado 2026-07-25.** E3 no era bug de contenido del LLM — causa raíz real en `output.py` (`_step_InsertUpdate`/`_step_Update`, `<value><name>`/`<rename>` invertidos vs. formato real de Kettle), **corregida en código** + test de regresión, sin depender de ninguna corrida puntual. Key vacía — no reproducida en corrida fresca. E14 — **confirmado vivo**, queda como gap de prompt (contenido del LLM, no backend), mismo criterio de ruteo de esta decisión. | Ver H9, `01-hallazgos.md` (sección actualizada 2026-07-25). Test: `backend/tests_manual_llm/test_h9_h10_live_scenario.py` (manual, fuera de `tests/`, consume API — no correr en CI). |
+| E1/E2 (SelectValues solo-cast no ejercitado, SCD2 declarado no ejercitado) | **Desbloqueado y verificado 2026-07-25.** Ambos ejercitados en corrida fresca (forzando `dim_producto` a `scd_type=2` sobre `categoria`) sin encontrar defecto asociado. | Ver H10, `01-hallazgos.md` (sección actualizada 2026-07-25). Mismo test que la fila de arriba. |
+| Validador de contrato staging→DWH | **Alcance cerrado 2026-07-25 — ver D23.** No implementado todavía. | — |
 
-**Consecuencia sobre el plan:** F4 pasa a "EN CURSO" — 3 gaps reales cerrados (R8, R12, H23) + 1 gap transversal cerrado (D12/K19), 3 ítems confirmados ya resueltos antes de esta sesión (R4, R6, R10) sin necesidad de tocarlos. Quedan abiertos, cada uno bloqueado por una razón distinta, no por falta de trabajo: R5-b/R11 (necesita diseño de implementación), E3/E14/keyvacía/E1/E2 (necesitan una corrida fresca para confirmar que persisten), validador de contrato (necesita que alguien defina el alcance).
+**Consecuencia sobre el plan:** F4 pasa a "EN CURSO" — 3 gaps reales cerrados (R8, R12, H23) + 1 gap transversal cerrado (D12/K19), 3 ítems confirmados ya resueltos antes de esta sesión (R4, R6, R10) sin necesidad de tocarlos. **Actualizado 2026-07-25:** E3/key-vacía/E1/E2 verificados con corrida fresca — E3 tenía causa raíz real de código (`output.py`), ya corregida; key vacía no reprodujo; E1/E2 quedaron ejercitados sin defecto. E14 recibió regla de prompt (B17, `system_etl.txt` — checklist ítem 25) + `MONEY_FIELD_HINTS` extendido en `error_catalog_checks.py` para que el checker automático alcance el mismo vocabulario que la regla — **queda en debe: la regla NO se re-verificó con una corrida real todavía** (la corrida que confirmó E14 vivo fue ANTES de agregar B17). Validador de contrato con alcance cerrado mas no implementado (D23). Queda abierto, bloqueado por diseño pendiente: R5-b/R11 (necesita sesión de diseño de implementación, sin cambios esta sesión).
+
+**B17 no implica retrabajo de fases anteriores:** es contenido de prompt puro (mismo ruteo que R8/R12/H23 arriba — "contenido SQL/config que arma el LLM dentro de lo que el catálogo permite → prompt"), no toca fragmentación (F1-F3), `compute_cut()`, derivación de `dim_contracts` ni ninguna estructura de backend. El fix de E3 (`output.py`) y la extensión de `MONEY_FIELD_HINTS` tampoco — son correcciones de builder/checker aisladas, sin relación con las fases de corte.
+
+**Deuda técnica nueva registrada por el cierre de E14 — H27/H28 (`01-hallazgos.md`):** B17 asume, sin verificar contra código/documentación real de Kettle, que (a) los operandos de un `Calculator`/`Formula` deben ser todos `BigNumber` para que el resultado sea confiable (H27 — inferencia de punto flotante general, no confirmada contra el motor real), y (b) que `FIELD_TYPE_SOURCES` (`error_catalog_checks.py`) es el catálogo completo y correcto de steps que declaran `type`/`value_type` por campo (H28 — ya se encontró un hueco concreto: `Constant` no está incluido pese a tener el mismo shape que steps que sí lo están). Ninguno de los dos bloquea B17 tal como quedó escrito (la regla es conservadora, no genera falsos negativos conocidos) — quedan como investigación pendiente, no como fix urgente.
 
 *Por qué D22 y no una fila más en `03-plan.md`:* fija el criterio de ruteo que la fila de F4 dejaba como pregunta abierta ("decidir estrategia de fix") — nivel de decisión de scope, mismo motivo que D14/D16/D20.
+
+<a id="d23"></a>
+### D23 — Alcance del validador de contrato entre KTR (writer→reader); cierra el ítem "sin definir" de D22 `[F4]`
+
+**Contexto:** D22 (fila "Validador de contrato staging→DWH") dejó el ítem sin `archivo:línea` ni alcance propio — la frase venía del objetivo original de F4 en `03-plan.md`, sin que ninguna sesión anterior precisara qué compara exactamente. Esta sesión lo cierra.
+
+**Resuelto (2026-07-25):**
+
+1. **Qué compara.** No usa `stg_definition`/`dwh_model` (lo que el usuario declaró) como tercera fuente de verdad. Compara las dos salidas reales del LLM entre sí: lo que el KTR escritor realmente produce sobre una tabla vs. lo que el KTR lector realmente espera leer de esa misma tabla. Corre por cada relación escritor→lector real entre los `.ktr` generados — si hubo fragmentación (F2/F3), no queda atado al par legacy KTR_1/KTR_2: se adapta a N archivos, una comparación por cada arista escritor→lector del grafo de corte.
+
+2. **Qué necesita cada lado — no simétrico.** El KTR productor (ej. Origen→STG) no necesita el DDL del lado que no escribe (DWH) para su parte de la validación; el KTR consumidor (ej. STG→DWH) sí necesita el DDL del lado que lee, además de lo que el productor realmente escribió. Extiende — no reemplaza — K15/checklist-3c (`fields_validate.py`) y V1-V6 (`ddl_validation.py`/`prompt_validacion_src.txt`): esas validaciones existentes se adaptan para correr por-KTR-generado, reusando su lógica en vez de reimplementarla.
+
+3. **Qué valida, mínimo.** Columnas + nombres + tipos entre lo que un KTR escribe y lo que el siguiente lee. NO valida que las reglas de negocio (`business_rules`) se hayan aplicado — hoy nada en el pipeline valida eso: `business_rules` solo entra como texto libre al prompt de `structure_inferrer.py` (líneas 81/135) para dar forma a `stg_ddl`/`dwh_ddl`/`dim_contracts` en el momento de inferir; ningún validador post-generación comprueba que un step implemente efectivamente una regla de negocio. Gap real, distinto, no cerrado por esta decisión.
+
+   **Punto de enganche creado 2026-07-25** (sin implementación real todavía): `validate_business_rules()` (`backend/app/services/validate_business_rules.py`) — stub deliberado, pase libre siempre (lista vacía). Wireado en `etl_generator.py::generate_etl_from_inference`, una llamada por etapa (KTR_1 contra `stg_definition`, KTR_2 contra `dwh_ddl`), ambas contra `reglasNegocio` y los steps ya generados de esa etapa. El enganche existe para que la lógica real se sume después sin tener que volver a decidir dónde ni con qué firma se llama — implementarla sigue siendo trabajo futuro, no de esta sesión.
+
+4. **Severidad — D15 uniforme, sin caso especial.** Todo mismatch detectado (desde un campo puntual con tipo distinto hasta una tabla STG completa sin productor real) se anota como `Validacion` tipo="error"/severidad máxima, mismo canal que V1/V2/K15 ya usan. El `.ktr`/`.kjb` se emite siempre — nunca se bloquea la emisión por esto, tampoco en el caso de corte totalmente descosido. Elegido explícitamente por el usuario en vez de abrir una categoría de bloqueo nueva: consistente con el patrón ya establecido, sin precedente de excepción en el código hoy.
+
+**Consecuencia sobre el plan:** cierra el ítem pendiente de la fila "Validador de contrato staging→DWH" en D22. Diseño de alcance cerrado — implementación no escrita todavía, queda como trabajo de F4.
+
+*Por qué D23 y no una fila más en `03-plan.md`:* mismo criterio que D14/D16/D20/D22 — fija scope que una sesión anterior dejó abierto, antes de tocar código.
 
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido
