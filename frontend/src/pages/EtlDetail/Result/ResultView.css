@@ -145,6 +145,35 @@
   line-height: 1.4;
 }
 
+/* ── Archivos generados (etapas/kjb_master, D20) ─────────────────────────── */
+.etl-artifacts-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.etl-artifacts-etapa__nombre {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.etl-artifacts-sublist {
+  margin: 4px 0 0;
+  padding: 0 0 0 16px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.etl-artifacts-file--indent {
+  padding-left: 12px;
+  opacity: 0.85;
+}
+
 /* ── Advertencias buenas prácticas ───────────────────────────────────────── */
 .etl-warnings-list {
   margin: 0;

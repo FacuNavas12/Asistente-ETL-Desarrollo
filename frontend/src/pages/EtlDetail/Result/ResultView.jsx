@@ -1,5 +1,6 @@
 import ChartPanel from "@/components/ui/ChartPanel";
 import CollapsibleSection from "../components/CollapsibleSection";
+import { readEtlArtifacts } from "@/utils/etlArtifacts";
 import "../etlDetail-global.css";
 import "./ResultView.css";
 
@@ -15,6 +16,38 @@ function ValidationItem({ v }) {
   );
 }
 
+function ArtifactsSection({ art }) {
+  if (art.status !== "ok") {
+    return <p className="etl-section__text">{art.message}</p>;
+  }
+  return (
+    <ul className="etl-artifacts-list">
+      {art.etapas.map((etapa) => (
+        <li key={etapa.nombre} className="etl-artifacts-etapa">
+          <span className="etl-artifacts-etapa__nombre">{etapa.nombre}</span>
+          {etapa.split ? (
+            <ul className="etl-artifacts-sublist">
+              <li>{etapa.kjb.filename}</li>
+              {etapa.files.map((f) => (
+                <li key={f.filename} className="etl-artifacts-file--indent">{f.filename}</li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="etl-artifacts-sublist">
+              {etapa.files.map((f) => <li key={f.filename}>{f.filename}</li>)}
+            </ul>
+          )}
+        </li>
+      ))}
+      {art.master && (
+        <li className="etl-artifacts-etapa">
+          <span className="etl-artifacts-etapa__nombre">{art.master.filename}</span>
+        </li>
+      )}
+    </ul>
+  );
+}
+
 export default function ResultView({ result }) {
   const {
     proceso_etl,
@@ -22,6 +55,8 @@ export default function ResultView({ result }) {
     documentacion = "",
     advertencias_buenas_practicas = [],
   } = result ?? {};
+
+  const art = readEtlArtifacts(result);
 
   return (
     <div className="etl-detail__body">
@@ -31,6 +66,10 @@ export default function ResultView({ result }) {
           <p className="etl-section__text">{proceso_etl.descripcion}</p>
         </CollapsibleSection>
       )}
+
+      <CollapsibleSection title="Archivos generados">
+        <ArtifactsSection art={art} />
+      </CollapsibleSection>
 
       {proceso_etl?.steps?.length > 0 && (
         <CollapsibleSection title="Estadísticas del proceso">

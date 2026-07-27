@@ -1,10 +1,50 @@
 # Decisiones — Refactor de fragmentación
 
-**Última actualización:** 2026-07-25
+**Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
+
+**Última actualización:** 2026-07-27 (D28)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
 Toda sesión que tome una decisión cierra actualizando este archivo.
+
+---
+
+## Índice — el estado de una decisión vive únicamente acá
+
+El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se edita para reflejar estado nuevo. Si una decisión cambia, la nueva D la supersede y esta fila se marca `superseded por D<n>`.
+
+| # | Qué es | Estado |
+|---|---|---|
+| D1 | Fase lógica ≠ archivo físico | Vigente |
+| D2 | No se preserva comportamiento actual | Vigente |
+| D3 | Datos guardados descartables | Vigente — verificado 2026-07-22 |
+| D4 | Compat. hacia atrás no es requisito | Vigente |
+| D5 | Ante la duda, falla | Vigente — acotada por D15 (detección sí, emisión no) |
+| D6 | Backend decide fragmentación, determinístico | Confirmado, evidencia en repo |
+| D6-bis | Fragmentación = corrección, no legibilidad | Vigente |
+| D7 | Reglas derivadas de casos reales | Vigente |
+| D8 | Conocimiento de dominio: una sola casa | Vigente |
+| D9 | Criterio de verificación: delta declarado | Vigente |
+| D10 | Sin convivencia parseo viejo/nuevo | Vigente |
+| D11 | `dim_contracts` no choca con fragmentación | Vigente |
+| D12 | Dialecto SQL: Postgres default + notificación | Vigente |
+| D13 | Definición de terminado (toda fase) | Vigente — reforzada por D26 |
+| D14 | F1.5/F2.5 no dependen circularmente de sí mismas | Vigente, F1.5/F2.5 cerradas |
+| D15 | Fail-fast en detección, no fail-hard en emisión | Vigente |
+| D16 | Dependencia externa real: eje `dim_contracts` | Resuelto — camino 1 en código (scd_type==2); residual 0/1 cerrado vía prompt |
+| D17 | F2 aprobado por el usuario | Cerrado |
+| D18 | H2 (config string→object) pospuesto | No decidido — requiere spike |
+| D19 | Wiring de servicio cerrado, HTTP en notificación | Superseded en parte por D20 (backend ya implementado) |
+| D20 | Forma de la respuesta con N archivos | Diseño cerrado, backend implementado — falta frontend (D20-punto5) |
+| D21 | Miembro inferido (cierra C.6) | Resuelto — detección en código; residual en `04-verificacion.md` |
+| D22 | Triage F4, 3 gaps cerrados por prompt | Resuelto |
+| D23 | Alcance validador de contrato entre KTR | Alcance cerrado, sin código |
+| D24 | Track A retomada, A0 ejecutada | Cerrado |
+| D25 | A0.5 ejecutada, deriva H29 | Cerrado |
+| D26 | Suite roja marcada + test arquitectura + separación tests | Parte 2 (test de arquitectura) implementada 2026-07-27 como `backend/tests/test_architecture_layers.py` — no `test_architecture_boundaries.py` como decía el texto original, mismo objetivo. Partes 1 (xfail known failures) y 3 (separación unit/integration/manual) siguen sin implementar |
+| D27 | Split `registry.py` → `step_types.py`/`step_emitters.py`, borrado de `KNOWN_PDI_STEP_TYPES`, `CanonicalType`/`FieldFormat`/`ColumnRole` → `domain/`, criterio "vocabulario PDI es dominio" | Ejecutado, suite verde |
+| D28 | D20-punto5 cerrado: frontend consume `etapas`/`kjb_master`; linaje recalculado se borra del front; datos viejos se rechazan explícitos; `EtapaOutput` gana `nombre`; Superset fuera de alcance | Ejecutado, F3 cerrada |
 
 ---
 
@@ -13,7 +53,7 @@ Toda sesión que tome una decisión cierra actualizando este archivo.
 Navegación rápida — clic para ir directo a la decisión. Grupos según la taxonomía de fases de [`03-plan.md`](03-plan.md). El tag `[Fase]` al final de cada título de decisión repite este agrupamiento in situ, para orientarse sin volver acá.
 
 **Fundamentos** (doctrina general, aplica a todo el refactor, no a una fase puntual)
-[D1](#d1) fase lógica ≠ archivo físico · [D2](#d2) no se preserva comportamiento actual · [D3](#d3) datos guardados descartables · [D4](#d4) compat. hacia atrás no es requisito · [D5](#d5) ante la duda, falla · [D9](#d9) criterio de verificación: delta declarado · [D10](#d10) sin convivencia parseo viejo/nuevo · [D13](#d13) definición de terminado (toda fase) · [D15](#d15) fail-fast en detección, no fail-hard en emisión
+[D1](#d1) fase lógica ≠ archivo físico · [D2](#d2) no se preserva comportamiento actual · [D3](#d3) datos guardados descartables · [D4](#d4) compat. hacia atrás no es requisito · [D5](#d5) ante la duda, falla · [D9](#d9) criterio de verificación: delta declarado · [D10](#d10) sin convivencia parseo viejo/nuevo · [D13](#d13) definición de terminado (toda fase) · [D15](#d15) fail-fast en detección, no fail-hard en emisión · [D26](#d26) suite roja marcada (xfail/known failures) + test de arquitectura ejecutable + separación de tests
 
 **Eje `dim_contracts` / G-step** (fuera de Track F, pero lo cruza en F3/F4)
 [D11](#d11) `dim_contracts` no choca con fragmentación
@@ -30,8 +70,11 @@ Navegación rápida — clic para ir directo a la decisión. Grupos según la ta
 **F4** — track de errores / contenido generado
 [D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22)
 
+**Track A** — auditoría de arquitectura
+[D24](#d24) Track A retomada, A0 ejecutada · [D25](#d25) A0.5 ejecutada (censo de fallos silenciosos), H29 · [D26](#d26) adelanta en chico una porción de A2/R1 (test de arquitectura), sin esperar a A7 · [D27](#d27) split `registry.py`, `KNOWN_PDI_STEP_TYPES` borrado, `CanonicalType` a `domain/`, criterio vocabulario-PDI-es-dominio
+
 **Otras secciones del archivo**
-[Deliberadamente no decidido](#deliberadamente-no-decidido) · [Verificaciones pendientes](#verificaciones-pendientes) · [Abiertos](#abiertos-no-bloquean-el-arranque-del-refactor-sí-bloquean-ítems-puntuales) — [C.1](#c1) dialecto multi-motor `[F4]` · [C.2](#c2) reglas de corte vs. D6-bis `[F2]` ✓ · [C.3](#c3) verificaciones DB real `[F1/F4]` · [C.4](#c4) auditoría retroactiva `[Fundamento]` · [C.5](#c5) constraints DDL `[F4]` · [C.6](#c6) FK no resuelta `[F4]` ✓ resuelta por D21
+[Deliberadamente no decidido](#deliberadamente-no-decidido) · [Verificaciones pendientes](#verificaciones-pendientes) · [Abiertos](#abiertos-no-bloquean-el-arranque-del-refactor-sí-bloquean-ítems-puntuales) — [C.1](#c1) dialecto multi-motor `[F4]` · [C.2](#c2) reglas de corte vs. D6-bis `[F2]` ✓ · [C.3](#c3) verificaciones DB real `[F1/F4]` · [C.4](#c4) auditoría retroactiva `[Fundamento]` · [C.5](#c5) constraints DDL `[F4]` · [C.6](#c6) FK no resuelta `[F4]` ✓ resuelta por D21 · [C.7](#c7) `ConnectionsMapRequest` vs. connection_id string `[sin track]` · [C.8](#c8) `GetSystemInfo` fallback inalcanzable `[sin track]` · [C.9](#c9) `documentacion` ambigua en el schema `[sin track]`
 
 ---
 
@@ -252,7 +295,7 @@ Consecuencia sobre el rol de cada validador — **V1 y V3 no son gates, son las 
 - **V1** (ninguna tabla W y R en el mismo KTR) y **V3** (un solo escritor por tabla por KTR) son señal estructural de corte (consistente con C.2 y D6-bis): tabla escrita y leída por steps distintos, o doble escritor, marcan frontera. Separar exactamente ahí satisface V1/V3 por construcción — no se validan después, se usan para decidir el corte.
 - **V2** (todo lookup tiene productor en el job) es distinto: no dice dónde separar, dice si el ETL está completo. Un lookup sin productor es un dato faltante — error a notificar bajo esta misma D15, no una señal de fragmentación.
 
-Lo que sí sigue bajo D15 (generar-y-notificar, no bloquear): el caso genuinamente patológico — ciclo real en el grafo, `config` malformado que ni H6 pudo salvar, lookup sin productor (V2). Ninguno de esos es una rama del algoritmo de corte; son el mismo mejor-esfuerzo que D15 ya cubre para cualquier otro fallo de generación. F2 no diseña un plan B para el corte — diseña la separación constructiva. Detalle de las reglas concretas en `03-plan.md`, fila de F2.
+Lo que sí sigue bajo D15 (generar-y-notificar, no bloquear): el caso genuinamente patológico — ciclo real en el grafo, `config` malformado que ni H6 pudo salvar, lookup sin productor (V2). Ninguno de esos es una rama del algoritmo de corte; son el mismo mejor-esfuerzo que D15 ya cubre para cualquier otro fallo de generación. F2 no diseña un plan B para el corte — diseña la separación constructiva. Detalle de las reglas concretas en el Reporte F2 (`03b-reportes.md`).
 
 *Por qué separado de D5 en vez de reescribirla:* mismo criterio que D6/D6-bis — D5 sigue siendo la doctrina general (ante la duda, fallar visible). D15 fija dónde se traza la línea entre "fallar" (detección, sigue firme) y "bloquear" (emisión, se retira), que D5 dejaba ambigua y que `00-objetivo.md` había resuelto para el lado que esta decisión ahora corrige.
 
@@ -305,7 +348,7 @@ Tests: `tests/test_dimension_step_policy.py` (6 casos de la sesión original, in
 <a id="d17"></a>
 ### D17 — F2 (diseño del corte) aprobado por el usuario `[F2]`
 
-**Aprobado 2026-07-23.** El diseño de F2 (`03-plan.md`, reporte del 2026-07-22: matriz R/W, disparadores C1/C1-bis, componentes conexos, excepción self-lookup, orden topológico, validado contra `err1.ktr`/`err2.ktr`) queda aprobado tal como está documentado. Desbloquea uno de los tres prerrequisitos de F3 (los otros dos: F2.5 en código, D16 camino 1 en código — ninguno de los dos escrito todavía).
+**Aprobado 2026-07-23.** El diseño de F2 (Reporte F2 en `03b-reportes.md`, 2026-07-22: matriz R/W, disparadores C1/C1-bis, componentes conexos, excepción self-lookup, orden topológico, validado contra `err1.ktr`/`err2.ktr`) queda aprobado tal como está documentado. Desbloquea uno de los tres prerrequisitos de F3 (los otros dos: F2.5 en código, D16 camino 1 en código — ninguno de los dos escrito todavía).
 
 <a id="d18"></a>
 ### D18 — H2 (config `string`→`object`) propuesto para adelantarse como fix de raíz de H6, no decidido — requiere spike antes de tocar `ETL_OUTPUT_SCHEMA` `[F1.5]`
@@ -333,7 +376,7 @@ Tests: `tests/test_dimension_step_policy.py` (6 casos de la sesión original, in
 
 **Efecto inmediato, sin esperar la extensión del schema:** todo pipeline de generación real ahora corre `compute_cut()` (antes no corría en absoluto) — un ETL que hoy dispara C1/C1-bis (carrera/doble-escritor, el bug de origen del refactor) sale con un `Validacion(tipo="error")` explícito en vez de silencioso. Es una mejora de diagnóstico entregada ya, independiente de cuándo se resuelva el hueco.
 
-**Estado: F3 sigue "EN CURSO"**, no cierra hasta que el hueco de arriba se resuelva (ver "NO hecho" en el estado de F3, `03-plan.md`) y corra un test de integración end-to-end contra el pipeline HTTP completo con un caso que dispare un corte real.
+**Estado: F3 sigue "EN CURSO"**, no cierra hasta que el hueco de arriba se resuelva (ver "Estado F3" en `03b-reportes.md`) y corra un test de integración end-to-end contra el pipeline HTTP completo con un caso que dispare un corte real.
 
 <a id="d20"></a>
 ### D20 — Forma de la respuesta con N archivos (diseño, cierra el hueco de D19) `[F3]`
@@ -362,7 +405,7 @@ Tests: `tests/test_dimension_step_policy.py` (6 casos de la sesión original, in
 
 5. **Alcance de sesión — entregas separadas.** Esta sesión cierra el diseño de la respuesta (arriba). Implementación en dos tandas futuras, no en la misma sesión: primero backend (`ETLGenerateResponse` + conectar `_build_ktr_stage()` de verdad en `_build_response_from_two_ktr_data`/`_build_response_from_data` en vez de solo notificar), después frontend (consumo del nuevo shape + ZIP con carpetas).
 
-**Consecuencia sobre D19 y `03-plan.md`:** el hueco que D19 dejaba abierto (qué forma tiene la respuesta) queda **diseñado, no implementado**. F3 sigue "EN CURSO" — no cierra hasta que la implementación backend del punto 5 esté en código y probada end-to-end (ver "NO hecho" en `03-plan.md`; esos puntos no cambian de contenido, solo se resuelve la pregunta de diseño que bloqueaba empezarlos).
+**Consecuencia sobre D19 y `03-plan.md`:** el hueco que D19 dejaba abierto (qué forma tiene la respuesta) queda **diseñado, no implementado**. F3 sigue "EN CURSO" — no cierra hasta que la implementación backend del punto 5 esté en código y probada end-to-end (ver "Estado F3" en `03b-reportes.md`; esos puntos no cambian de contenido, solo se resuelve la pregunta de diseño que bloqueaba empezarlos).
 
 *Por qué D20 y no una edición directa de D19:* D19 documentó el hueco cuando apareció, a mitad de sesión, sin la información para cerrarlo. D20 es la sesión siguiente cerrando esa pregunta con datos del usuario — mismo patrón que D16→"resuelto 2026-07-23", se separa para que quede trazable qué se sabía en cada momento.
 
@@ -467,6 +510,124 @@ Tests: `tests/test_inferred_member.py` (13 casos — detección con FK NOT NULL/
 
 *Por qué D23 y no una fila más en `03-plan.md`:* mismo criterio que D14/D16/D20/D22 — fija scope que una sesión anterior dejó abierto, antes de tocar código.
 
+<a id="d24"></a>
+### D24 — Track A retomada; A0 (inventario) ejecutada `[Track A]`
+
+**Contexto (2026-07-25):** `03-plan.md` tenía a Track A pospuesta desde 2026-07-22, con la condición "se retoma cuando Track F esté suficientemente asentado" — sin criterio numérico, juicio a tomar en el momento.
+
+**Decisión:** Track F llegó a ese punto — F1, C.2, F1.5, F2, F2.5 y F5 cerrados; F3 con el algoritmo de corte y el wiring de servicio cerrados y probados end-to-end (D19/D20), solo pendiente el consumo de frontend (D20-punto5, sesión aparte); F4 con triage completo de los 8 ítems de intake y 3 gaps reales cerrados (D22). Lo que queda abierto de Track F (frontend F3, emisión de miembro inferido R5-b/R11, implementación del validador de contrato de D23, y los 9 residuales de `04-deuda-abierta.md`) es trabajo de código aislado y ortogonal a un inventario de arquitectura — sin conflicto de tocar los mismos archivos en la misma sesión, y `04-deuda-abierta.md` ya deja explícito que ninguno de esos residuales bloquea seguir con las fases.
+
+**Ejecutado:** A0 (Fase 0 — inventario), prompt `fase-0-inventario.md` (`Contexto Cambios/Arquitectura/`). Salida en `docs/auditoria/00-inventario.md` — árbol de directorios de `backend/app/`, tabla de endpoints con cadena de llamadas, recorrido completo del flujo de un step (incluida la lista exhaustiva de las 35 call-sites que leen/parsean/mutan `config`, sección 3.3), fuentes de datos externas, estructuras de datos que representan un step o su config (6 representaciones distintas coexistiendo, hallazgo central), e inventario de tests con sus dependencias externas. Sin modificación de código, según manda la fase.
+
+*Consecuencia sobre el plan:* A0.5 (censo de fallos silenciosos) queda desbloqueada — depende solo de A0 (`03-plan.md`).
+
+*Por qué D24 y no solo una nota en `03-plan.md`:* mismo criterio que D16/D19/D20/D22/D23 — la condición de reanudación era un juicio pendiente sin fecha ni dato; esta sesión lo cierra con la evidencia concreta de qué estado tenía Track F al momento de decidirlo.
+
+<a id="d25"></a>
+### D25 — A0.5 (censo de fallos silenciosos) ejecutada; hallazgo derivado (H29) toca Track F, no solo Track A `[Track A]`
+
+**Ejecutado (2026-07-25):** A0.5 (Fase 0.5 — censo de fallos silenciosos), sin prompt propio en `Contexto Cambios/Arquitectura/` (no existe ese archivo — confirmado por búsqueda en el repo y en `Escritorio`; alcance definido en esta sesión contra la doctrina ya vigente: D5, D15, D9/D13, R11 de `arquitectura-objetivo.md:70`). Salida en `docs/auditoria/00b-fallos-silenciosos.md` — grep sistemático de `except`/`continue` sobre `backend/app/` (114 + ~60 ocurrencias), clasificado en silencio total / logueado-sin-canal-de-usuario / notificado-correctamente, cruzado contra `01-hallazgos.md` para no reabrir H6/H12/H26. Sin modificación de código, según manda la fase.
+
+**Resultado más relevante — no es un hallazgo de Track A, es uno de Track F, en la pieza más nueva del propio refactor.** `services/ktr_builder/fragmentation.py` (escrito 2026-07-24 para resolver races/dobles-escritores, F3) tiene en su propia función central (`build_rw_matrix()`) el mismo defecto de fondo que motivó H6: un step puede volverse invisible para la matriz R/W sin dejar rastro — por una vía distinta a la que H6 cerró (acá el `config` sí parsea; el campo `table` específicamente viene vacío). Contradice el propio docstring del módulo, que promete notificación (D15) para ese caso y no la implementa. Mismo gap duplicado, de forma independiente, en `dimension_step_policy.py` y `fields_validate.py` — los tres módulos reaccionan cada uno por su cuenta ante "tabla no resuelta", sin avisar. Catalogado como **H29** en `01-hallazgos.md` — detalle completo ahí, no repetido acá.
+
+**Por qué se registra acá como decisión y no solo como hallazgo:** a diferencia de H24-H28 (triage de tests, hallazgos aislados), H29 nace directamente de una fase de Track A (A0.5) pero su remedio cae en Track F (mismo mecanismo de `notifications` que ya usa `compute_cut()`, mismo archivo que F3 todavía tiene abierto por el pendiente de frontend, D20-punto5). Se dejaría fuera de foco si solo viviera como una entrada más de hallazgos — esta decisión fija que **no bloquea F3** (D15 ya cubre "genera y notifica" como comportamiento por defecto; lo que falta es que ese "notifica" se cumpla en este caso puntual) y que no tiene dueño de track asignado todavía — a decidir junto con el resto de lo pendiente de F3.
+
+*Por qué D25 y no solo una entrada de hallazgo:* mismo criterio que D24 — deja explícito que A0.5 se ejecutó, y evita que el cruce Track A → Track F de H29 quede implícito solo en el hallazgo.
+
+<a id="d26"></a>
+### D26 — Suite roja no es "ruido aceptado": marcar known failures (xfail strict) + adelantar en chico un test de arquitectura ejecutable + separar tests por naturaleza `[Fundamento]`
+
+**Contexto (2026-07-27):** revisión del plan fuera de esta sesión (el usuario, con otra sesión de Claude) encontró un hueco en D13. D13 exige "dos tests verdes" para cerrar cualquier fase, pero la suite tiene una base de **45 fallos ya identificados y explicados** (D20: 2 en `test_ktr_xml_validator.py`/`test_structured_outputs.py`, 6 en `test_ktr_build_job_api.py` — H24 —, 37 en `test_api.py` por requerir servidor real en `localhost:8000`) que nadie marca como tal en el código — viven como texto explicativo en `02-decisiones.md`/`01-hallazgos.md`, no como estado ejecutable. Mientras esos 45 sigan rojos sin distinguirse del resto, una regresión nueva se esconde entre ellos. **Ya pasó una vez:** D19/D20 registra que conectar el corte de verdad encontró 2 bugs reales — invisibles mientras `compute_cut()` solo notificaba en vez de ejecutar — prueba de que "sabemos por qué estos tests fallan" no protege nada si el rojo no se distingue del rojo nuevo.
+
+**Decisión, en tres partes:**
+
+**1. Known failures marcados explícitos en el código, no solo documentados en prosa.**
+- Los 6 de `test_ktr_build_job_api.py` (H24, bug real y confirmado: `ConnectionsMapRequest` más estricto que `resolve_real_connections()`) y los 2 de `test_ktr_xml_validator.py`/`test_structured_outputs.py` (D20: "2 bugs no relacionados", sin H-number propio todavía — asignar uno al aplicar esto) se marcan `@pytest.mark.xfail(reason="H24", strict=True)` (o el H-number que corresponda). `strict=True` es la pieza que importa: si el test empieza a pasar sin que nadie haya tocado el fix, xfail-strict falla — fuerza a actualizar la decisión en vez de dejar un xfail obsoleto mintiendo sobre el estado real.
+- Los 37 de `test_api.py` **no son la misma categoría** — no son bug conocido, son "requiere un servidor HTTP real que CI no levanta". Marcarlos `xfail` sería incorrecto (xfail dice "código roto, se va a arreglar"; esto dice "entorno que este runner no tiene"). Reusar el patrón que ya existe en el repo: `@pytest.mark.integration` (ya usado en `test_structured_outputs.py` para llamadas reales al LLM, ver `00-inventario.md` sección 6) o un skip condicional equivalente, excluido de la corrida default de CI.
+- Resultado: suite en CI queda verde (pass + xfail esperado + skip documentado). Cualquier rojo nuevo, en cualquier archivo, es señal real — no hay que releer 45 explicaciones para saber si algo cambió.
+- Costo estimado por el usuario: una sesión. Protege D13 en todas las fases que quedan (Track A completo, F3 frontend, F4 validador de contrato).
+
+**2. Test de arquitectura ejecutable — versión aplicable HOY, acotada; no la versión completa de Track A.**
+- El pedido original ("20 líneas de pytest que caminan los imports y fallan si `domain`/`services` importan `infrastructure`") es literalmente **R1** de `arquitectura-objetivo.md:50` ("Ningún módulo de `domain` o `services` importa `infrastructure`. La conexión se hace por `ports` + inyección"), doctrina de Track A sobre la estructura de capas objetivo (`api/schemas/services/domain/ports/infrastructure/core`). Esa estructura **no existe en el código actual** — `CLAUDE.md` ya lo dice explícito: "No aplicada todavía — nada del código actual respeta esta estructura de carpetas". Un test que camine `domain/` y `infrastructure/` no tiene qué caminar todavía; escribirlo ahora sería un test que pasa trivialmente por ausencia de sujeto, falso verde.
+- **Lo que sí es ejecutable hoy, contra la estructura real** (`backend/app/routers|services|models|schemas|core`, ver estructura en `CLAUDE.md`): la versión reducida de **R3** (`arquitectura-objetivo.md:54`, "el service no importa `fastapi`. Si necesita fallar, lanza una excepción de dominio; `core` la traduce a HTTP") — chequeo AST/import estático: ningún módulo bajo `app/services/` importa `fastapi` ni `app.routers.*`. Es la pieza de R3 ya implícita en cómo están escritos D19/D20/D22/D23 (servicios devuelven `Validacion`/warnings, nunca `HTTPException`), pero sin señal automática que la sostenga si alguien la rompe sin querer.
+- **R1/R4 completos (`domain`/`infrastructure`/`ports`, no saltear capas) quedan atados a cuando Track A ejecute la migración de estructura de carpetas (A7-PASO1)** — no se adelantan acá, sería inventar carpetas vacías solo para que el test tenga contra qué correr. Cuando A7 mueva código a esa estructura, este test se reemplaza/extiende, no se duplica.
+- Convierte R3 (chico) de doctrina a señal automática ahora, sin esperar a A2 (Track A, "Cumplimiento por capas", no iniciada) — pero no reemplaza A2: A2 sigue siendo el audit completo y manual contra las 7 capas objetivo cuando Track A la ejecute. Esto es un adelanto parcial y barato, no un sustituto.
+
+**3. Tests separados por naturaleza, para que "dónde vive un test" sea obvio sin abrir el archivo.**
+- Hoy `backend/tests/` tiene 34 archivos `test_*.py` planos, sin `conftest.py`, sin agrupación (`00-inventario.md` sección 6 ya los clasificó por dependencia externa: HTTP-real / LLM-real-cuota / SQLite-en-memoria / unitarios-mock / filesystem-real / ZIP-mockeado — la taxonomía ya existe en prosa, no en la estructura de carpetas).
+- El test de arquitectura (punto 2) y los known-failures marcados (punto 1) necesitan vivir en un lugar predecible, no sumarse como archivo 35 sin criterio.
+- **Alcance de esta decisión:** fija el criterio de separación (la taxonomía que `00-inventario.md` ya usa: `unit/` mock-only, `integration/` DB-real o servidor-real, `manual/` — ya existe como `backend/tests_manual_llm/`, fuera de la colección de `pytest.ini` —), y que el test nuevo de arquitectura entra como archivo propio nombrado por lo que hace (`test_architecture_boundaries.py`), no mezclado en un archivo existente. **No decide todavía** si los 34 archivos existentes se mueven a esa estructura de subcarpetas — mover 34 archivos con imports relativos y sin `conftest.py` es trabajo de código con riesgo de romper la colección de `pytest.ini` sin necesidad, y no es lo que esta sesión de revisión de plan pidió resolver. Migrar los 34 queda como tarea aparte, candidata natural a Track A (A2/A3, que ya tocan bordes de test) o a una fase de testing propia si el usuario la quiere antes.
+
+**Consecuencia sobre D13 (`02-decisiones.md`) y el "Requisito transversal — D13" de `03-plan.md`:** "dos tests verdes" ahora presupone una suite donde verde es informativo — D13 no se reescribe, se apoya en que D26 exista. Ninguna fase que cierre de acá en adelante puede apoyarse en "ya sabíamos que esos fallan" sin que el fallo esté marcado por el mecanismo de punto 1.
+
+**No implementado todavía — solo decidido.** El usuario eligió cerrar el diseño primero (ver pregunta de esta sesión); código (marcar los 8 xfail/integration, escribir `test_architecture_boundaries.py`, mover el nuevo test a su carpeta) queda para una sesión de implementación aparte, con Track F o Track A activo en paralelo sin conflicto — es trabajo de test, no toca `backend/app/`.
+
+*Por qué D26 y no una fila más en `03-plan.md`:* mismo criterio que D14/D16/D20/D22/D23/D24/D25 — fija un criterio de scope (qué es "verde" para D13, qué versión de R1/R3 corre antes de Track A) que quedaba implícito y a punto de discutirse dos veces.
+
+---
+
+### D27 — Split `registry.py` en `step_types.py`(domain)/`step_emitters.py`(infra); `KNOWN_PDI_STEP_TYPES` borrado, no movido; `CanonicalType`/`FieldFormat`/`ColumnRole` a `domain/`; criterio "vocabulario PDI es dominio" `[Track A]`
+
+**Contexto (2026-07-27):** intercambio de dos sesiones fuera de esta conversación (`Contexto Cambios/deicsion-arq-refacto.md` → análisis → `Contexto Cambios/prompt-a-code-cierre.md` → decisión), aplicado en esta sesión. Punto de partida: la sesión de arquitectura previa (D26 parte 2, `arquitectura-objetivo.md` mapa E1) había etiquetado `registry.py` como "partido" (mitad `domain`, mitad `infrastructure/pentaho`) sin ejecutar el corte. Este intercambio decidió el corte real, verificó contra código (no contra hipótesis) y lo ejecutó.
+
+**Decisión, en cinco partes:**
+
+**1. `registry.py` se parte en dos módulos, dentro de `services/ktr_builder/` (sin mover a una carpeta `domain/` física para esta parte — ver punto 3 para la excepción).**
+- `step_types.py` (domain): `STEP_TYPE_ALIASES` (identidad de tipo) + `_CRITICAL_FIELDS` (completitud mínima — gate real en `build.py:194-219`, `raise KtrBuilderError`). Cero imports de proyecto, verificado.
+- `step_emitters.py` (infra): imports de `steps/*` + `STEP_BUILDERS` (tipo canónico → función XML) + `STEP_CONFIG_KEYS`/`unmapped_config_keys` — **reclasificados a infra en este mismo cierre** (sesión de arquitectura previa los había puesto en domain; verificado que auditan capacidad presente del builder — "qué claves SÍ mapea a XML" — no un invariante de dominio).
+- Migración en 4 pasos, cada uno con suite verde: (a) `registry.py` como shim de reexport mientras se actualizan consumidores, (b) `build.py`/`__init__.py`/`repair.py`/`validate.py` apuntan a los módulos nuevos, (c) los 4 tests que importaban `.registry` directo (`test_dimension_step_policy.py`, `test_fragmentation.py`, `test_fragmentation_wiring.py`, `test_ktr_integrity_repair.py`) se actualizan, (d) shim borrado. Verificado con grep antes de borrar: cero consumidores restantes.
+- Consecuencia real cerrada, no solo relocada: `validate.py` (domain) importaba `STEP_TYPE_ALIASES` de `registry.py` (etiquetado infra) — excepción congelada en `test_architecture_layers.py::FROZEN_R1`. Tras el split, `validate.py` importa `step_types.py` (domain→domain) — `FROZEN_R1` queda vacío (ver punto 4).
+
+**2. `KNOWN_PDI_STEP_TYPES` se borra. No se traslada a `step_types.py` ni a ningún lado.**
+- Verificado por grep exhaustivo: cero consumidores en todo el repo fuera de `registry.py` y su reexport en `__init__.py`. El gate real contra un `type` sin builder es `STEP_BUILDERS.get(canonical_type) is None → raise KtrBuilderError` (`build.py:347-351`), que no consulta la whitelist. El mecanismo que el docstring de la whitelist describía (degradar a `Dummy`) tampoco existe en el código — `contracts.py:1-3` lo lista como uno de los defectos que ese módulo fue escrito para cerrar. Ver **H30**.
+- El conocimiento que la whitelist pretendía capturar (coherencia entre lo que `system_etl.txt` promete al LLM y lo que el paquete puede construir) se re-expresa como `backend/tests/test_pdi_step_coherence.py` — tres direcciones verificadas por separado (prompt→builder, bloqueante, hoy vacía; alias→builder y builder→prompt, informativas, listas congeladas — ver **H31**/**H32**). Reemplaza documentación-sin-verificar por test ejecutado.
+- Lectura de `system_etl.txt` desde el test: sin tocar el archivo (es el system prompt real, cualquier marcador se lo mandaríamos al modelo). Se usa la estructura de párrafos que ya tiene (línea en blanco antes/después del bloque de nombres), con un assert de forma (`regex` de identifier) que falla explícito si la prosa se cuela adentro del bloque — no un parser que se rompe en silencio.
+
+**3. `CanonicalType`, `FieldFormat`, `ColumnRole` se mueven a `backend/app/domain/canonical_types.py` — primer archivo físico de la capa `domain/` en este repo.**
+- Los tres son value objects puros de stdlib (`str, Enum` / `Literal`), verificado leyendo `schemas/canonical.py` completo — cero dependencia de Pydantic.
+- `schemas/canonical.py` los reexporta con **excepción nombrada por símbolo, no por paquete** (mismo criterio que ya regía la dirección opuesta, domain→schemas): la fachada existe para no romper a los 16 consumidores existentes de `from app.schemas.canonical import CanonicalType`, no para que código nuevo la use — código de dominio nuevo importa `domain/canonical_types.py` directo.
+- Asimetría explícita sobre por qué esto no es "ampliar la regla" de forma insegura: la propiedad que sostiene la doctrina es que `domain` sea hoja (no dependa de nada del proyecto), no que `schemas` lo sea — `schemas/` importando un `Enum` de stdlib desde `domain/` no compromete esa propiedad.
+- `backend/tests/test_architecture_layers.py::DOMAIN_MODULES` gana `domain.canonical_types` y `services.ktr_builder.step_types`; documentado en comentario junto al set el motivo por el que un módulo de dominio futuro no puede colarse por la fachada de `schemas/canonical.py` sin que el test lo marque (nada de lo que hay en `DOMAIN_MODULES` es `schemas.*`, y ningún par de `FROZEN_R1` nombra `schemas.canonical` de forma genérica).
+
+**4. `type_mappings.py` se reclasifica de `domain/` a `infrastructure/db_inspection/`.**
+- Verificado: único consumidor real de `map_sql_type()` es `db_adapter.py` (otro adaptador); su input documentado (`type_mappings.py:4`) es `db_connector._format_type()`. Traduce vocabulario de un vendor concreto (Postgres/SQL Server) — es la definición de adaptador, no dominio, aunque sea código puro.
+- Import actualizado: `type_mappings.py` pasa a importar `CanonicalType`/`FieldFormat` directo de `domain/canonical_types.py` (no a través de la fachada de `schemas/`) — infra puede importar todo, sin necesidad de pasar por la fachada pensada para no romper compatibilidad.
+- `FROZEN_R1` pierde el par `("services.type_mappings", "schemas.canonical")` — no se relocaliza, se resuelve: `type_mappings.py` nunca estuvo en `DOMAIN_MODULES` (era una imprecisión del mapa anterior, no una excepción activa en el test R1), y ahora tampoco importa `schemas.canonical` en absoluto.
+
+**5. Criterio nuevo, explicitado por escrito (faltaba, quedaba implícito): "el dominio de esta aplicación es la generación de KTR."**
+- Vocabulario/reglas de PDI (`STEP_TYPE_ALIASES`, `_CRITICAL_FIELDS`, `STEP_CONTRACTS`) son dominio — son ciertos independientemente de qué DB origen o qué proveedor de LLM esté detrás. Lo que traduce desde un sistema externo *distinto de PDI* (BD origen vía `type_mappings.py`, proveedor de LLM vía `models/*_llm.py`) es infraestructura. Dentro de PDI: vocabulario y reglas son dominio, formato de serialización a XML es infraestructura.
+- Resuelve la aparente inconsistencia entre `STEP_TYPE_ALIASES` (domain, "traduce" nombres display de Spoon) y `type_mappings.py` (infra, "traduce" tipos SQL de vendor) — misma forma superficial, conclusión distinta, correcta bajo este criterio.
+- Documentado en `CLAUDE.md` junto a la regla marco direccional ("¿al importar este módulo en un intérprete limpio se carga algo que hable con el mundo exterior?" — el "solo stdlib" de la tabla de Capas es un proxy conservador de esa regla, no la regla misma; cuando difieren, gana la regla real, documentada como excepción razonada, nunca como ampliación silenciosa).
+- Consecuencia registrada, no resuelta: parte de `STEP_TYPE_ALIASES` no son nombres reales de Spoon sino patrones de alucinación conocidos del modelo (`AddConstants`, `SystemInfo`, `CSVInput`) — conocimiento de infra (comportamiento del LLM) mezclado en un símbolo de dominio. No se separa ahora (no vale la complejidad); es el criterio para partirlo si el archivo sigue creciendo por ese lado.
+
+**Verificación:** suite completa verde en cada uno de los 3 checkpoints de la migración (antes/durante/después del split), sin ningún cambio de comportamiento observable de `build_ktr()` — refactor puro, confirmado corriendo la suite contra el HEAD anterior a los cambios (mismos 8 fallos preexistentes, no relacionados, en ambos). Tests nuevos: `test_pdi_step_coherence.py` (3), `test_architecture_layers.py` actualizado (sin regresión).
+
+**Sesión de origen:** análisis en dos turnos (`deicsion-arq-refacto.md`, `prompt-a-code-cierre.md`) + ejecución en esta sesión, 2026-07-27.
+
+**Estado:** ejecutado. `H30` cerrado; `H31`/`H32` quedan abiertos (inofensivos, registrados). `D26` parte 2 queda parcialmente ampliada por este split (el test de arquitectura que D26 adelantó ahora cubre también `step_types.py`/`domain/canonical_types.py`).
+
+<a id="d28"></a>
+### D28 — D20-punto5 cerrado: frontend consume `etapas`/`kjb_master`; linaje recalculado se borra; datos viejos se rechazan explícitos; `EtapaOutput` gana `nombre`; Superset fuera de alcance `[F3]`
+
+**Contexto (2026-07-27):** D20 cerró el diseño y el backend del contrato N-ario (`etapas`/`kjb_master`) en 2026-07-24, dejando explícitamente D20-punto5 (frontend) para una sesión aparte. Al retomarla, 4 preguntas no estaban decididas en ningún D anterior — se resuelven acá.
+
+**1. Linaje — se borra el recálculo del front, no se generaliza el endpoint.** El backend ya manda `result.lineage` calculado N-ario (`stitch_lineage_many`, `etl_generator.py:658`/`:552`) en toda respuesta de generación. El único consumidor del recálculo del lado front, `frontend/src/api/lineage.js` → `POST /api/ai/lineage-from-ktr`, seguía cableado a exactamente 2 XML (`_KtrXmlBody`, `routers/ai.py:403-420`) y no tenía variante N-aria — `stitch_lineage_many_from_xml` nunca existió. Generalizar ese endpoint hubiera sido trabajo de contrato HTTP extra para un camino que el front no necesita (el backend ya entrega el linaje resuelto). Se borra `api/lineage.js` y el `useEffect` de recálculo en `EtlDetail.jsx`. El endpoint `/api/ai/lineage-from-ktr` **queda en el backend sin consumidores en este repo** — no se borra (fuera de alcance de esta sesión, podría tener otro consumidor futuro), pero se anota en `04-verificacion.md`.
+
+**2. Datos viejos (shape sin `etapas`) — rechazo explícito, sin shim de traducción.** Antes de esta sesión, un `result` en el shape viejo (`ktr_xml`/`ktr2_xml`/`kjb_xml`) producía fallos silenciosos: botón de descarga ausente sin explicación, items de menú deshabilitados sin tooltip, ZIP que nunca se generaba. Coherente con D4/D20-punto2 (sin período de convivencia) y con la doctrina de A0.5/D25 (fallos silenciosos son la clase de bug que este refactor existe para eliminar), se decide **no** escribir un traductor viejo→nuevo — sería reintroducir la convivencia que D20-punto2 descartó — sino detectar el shape viejo explícitamente y mostrar un mensaje accionable ("generado con un formato anterior, regenerar"). Aplica tanto a ETLs ya persistidos en la DB como a archivos `etl_full` exportados e importados de vuelta.
+
+**3. `EtapaOutput` gana el campo `nombre: str`.** D20-punto4 especificó que los KTR de una etapa partida van "en una carpeta nombrada por esa etapa/sub-job", pero el schema (`etl_schemas.py:77-89`) nunca expuso ese nombre — el backend lo conoce internamente (las etiquetas `"origen_stg"`/`"stg_dwh"`/`"proceso"` que ya usa `_build_job_plan`, `etl_generator.py:646`) pero lo descartaba al construir la respuesta. Se agrega el campo en vez de que el frontend infiera el nombre de carpeta por índice (acoplaría UI a un orden implícito) o del filename del `.kjb` (acoplaría a una convención de nomenclatura ajena).
+
+**4. Superset queda fuera de alcance del proyecto — ya no se lo considera al tocar el flujo de generación de ETL.** No se modifica `superset_client/`, `superset_export/` ni `utils/supersetExport.js`. Se corrigen únicamente los gates rotos que dependían del shape viejo (`EtlDetail.jsx` tenía su bloque de UI de Superset ya comentado desde antes de esta sesión — se terminó de retirar el código muerto asociado, `canExportSuperset`/`handleExportSuperset`/`supersetBusy`/el import; `EtlCardMenu.jsx` tenía el item **activo** gateado por `ktr_xml` — se corrigió el gate a `supersetBusy`, sin quitar la función, porque el pedido fue sacar la dependencia rota, no retirar la feature).
+
+**Implementación (esta sesión):**
+- Backend: `nombre` en `EtapaOutput` (`etl_schemas.py`), poblado en `_etapa_output()`/`etl_generator.py`. Único cambio de backend de esta sesión.
+- Frontend: módulo nuevo `frontend/src/utils/etlArtifacts.js` (`readEtlArtifacts`/`buildZipEntries`) — único punto de lectura de `result.etapas`/`kjb_master` o del shape viejo; normaliza a 3 estados (`ok`/`legacy`/`none`) con mensaje accionable en los dos últimos. Migrados sobre este módulo: `etlCardActions.js`, `EtlDetail.jsx`, `EtlCardMenu.jsx`, `etlImport.js` (rechazo en el import). Nueva sección "Archivos generados" en `ResultView.jsx` para el caso de etapa partida.
+- Tests (D13): infraestructura de test de frontend inexistente hasta esta sesión — se agregó vitest (`frontend/package.json`, script `test`), sin jsdom/testing-library (los dos tests exigidos apuntan al módulo puro). `etlArtifacts.test.js`: 12 casos, con fixtures espejo de `backend/tests/test_etl_generate_response_shape.py` para que el test del front falle si el backend cambia el shape.
+
+**Verificación:** `pytest backend/tests/test_etl_generate_response_shape.py` (5/5) + suite completa sin regresión (mismos 8 fallos preexistentes de D20/D26, cero nuevos). `npm run test` (12/12), `npm run lint` (sin errores nuevos en archivos tocados), `npm run build` limpio.
+
+**Estado:** ejecutado. **F3 cierra** con esta sesión — ver `ESTADO.md`.
+
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido
 
@@ -547,3 +708,24 @@ El material de fragmentación es un **autorreporte de sesión**, no evidencia in
 Falta hacerlo hacia atrás: por cada commit que tocó generación de KTR, comparar el mensaje del commit y lo declarado en la documentación contra el diff canónico (mismo método de D9, aplicado retroactivamente, mecánico). **Falta acotar el alcance** — hasta qué commit hacia atrás tiene sentido ir.
 
 *Evidencia de que hace falta un chequeo así:* ya apareció un caso de afirmación no verificada en el material acumulado — se documentó que `_TABLE_FIELD_KEYS` vivía "suelto en `dimension_step_policy.py`"; verificado contra el repo, vive en `ktr_default_validator.py:54` (ver H4 en `01-hallazgos.md`).
+
+<a id="c7"></a>
+### C.7 — `ConnectionsMapRequest.conn_dwh/conn_staging` no acepta `connection_id` string `[sin track]`
+
+**Origen:** H24 (`01-hallazgos.md`), triage de H17. Movido acá desde `04-deuda-abierta.md` (disuelto, T4) — ninguna fase lo tiene asignado y necesita una elección de producto, no trabajo.
+
+`resolve_real_connections()` soporta reusar una `Connection` guardada como destino (rama string), pero `ConnectionsMapRequest` solo acepta `InlineConnection` — la rama string queda inalcanzable desde HTTP para `conn_dwh`/`conn_staging`. Decisión pendiente: (a) `ConnectionsMapRequest` pasa a aceptar `Union[str, InlineConnection]` (restaura el caso), o (b) se borra la rama string del service (y se reescriben/borran los tests que la ejercitan). **Nota:** mientras no se decida, produce 6 tests rojos permanentes en `test_ktr_build_job_api.py`, ya contados como ruido conocido (D26).
+
+<a id="c8"></a>
+### C.8 — `_CRITICAL_FIELDS["GetSystemInfo"]` vuelve inalcanzable su propio fallback `[sin track]`
+
+**Origen:** H25 (`01-hallazgos.md`), triage de H17. Movido acá desde `04-deuda-abierta.md` (disuelto, T4).
+
+`_CRITICAL_FIELDS["GetSystemInfo"]` aborta el build si falta `fields`, antes de que `_step_GetSystemInfo` pueda aplicar su default documentado (`fecha_carga`). Fix aparente trivial (sacar `"fields"` de `_CRITICAL_FIELDS`), pero es un cambio de comportamiento de validación ya en producción — no se toca sin decisión explícita de que el fallback debe ganar sobre el chequeo crítico.
+
+<a id="c9"></a>
+### C.9 — `documentacion`: ¿resto sin limpiar o campo olvidado en el schema? `[sin track]`
+
+**Origen:** H26 (`01-hallazgos.md`), triage de H17. Movido acá desde `04-deuda-abierta.md` (disuelto, T4).
+
+`ETL_OUTPUT_SCHEMA` no declara `documentacion` (`additionalProperties: false`), pero `ETLGenerateResponse.documentacion`/`etl_generator.py` la esperan con default vacío. Ambiguo a propósito: (a) feature vieja sacada del contrato LLM, restos sin limpiar — el campo de respuesta y el `.get()` con default sobran; o (b) olvido real al escribir el schema — debería declararse como property opcional, y hoy el usuario nunca recibe documentación generada por el LLM aunque el código esté listo para mostrarla. No se decide acá.

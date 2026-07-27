@@ -12,6 +12,8 @@
  *     Use this when the UI accepts both file types from a single input.
  */
 
+import { readEtlArtifacts } from "./etlArtifacts";
+
 const SUPPORTED_VERSIONS = ["1.0"];
 const SCHEMA_VERSION = "1.0";
 
@@ -67,6 +69,20 @@ function checkSchemaVersion(formData) {
         "Re-exportá desde una versión actualizada del sistema."
       );
     }
+  }
+}
+
+/**
+ * D28 (docs/refactor/02-decisiones.md) — rechazo explícito de result en el
+ * shape viejo (ktr_xml/ktr2_xml/kjb_xml, pre-D20). Un result "none" (build
+ * fallido nuevo) sí se importa — el detalle ya explica que no hay .ktr.
+ */
+function checkResultShape(result) {
+  if (readEtlArtifacts(result).status === "legacy") {
+    throw new Error(
+      "El archivo trae un resultado en el formato anterior (ktr_xml/kjb_xml). " +
+      "Regenerá el ETL y volvé a exportarlo."
+    );
   }
 }
 
@@ -134,6 +150,7 @@ export async function importEtlFull(file) {
       "Si solo querés importar el esqueleto, usá importEtlSkeleton."
     );
   }
+  checkResultShape(etl.result);
 
   validateFormData(etl.formData);
 
@@ -165,6 +182,7 @@ export async function parseEtlFile(file) {
   if (data.type === "etl_full") {
     const etl = data.etl;
     if (!etl?.result) throw new Error("Archivo etl_full sin result");
+    checkResultShape(etl.result);
     validateFormData(etl.formData);
     return {
       type: "full",

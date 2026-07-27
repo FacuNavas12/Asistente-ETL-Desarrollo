@@ -1,18 +1,25 @@
 """
-Registro central de step types soportados por el KTR builder:
+Emisores XML por tipo de step PDI — infraestructura: traduce el tipo canónico
+(step_types.py) al `<step>` XML concreto de Kettle, y audita la fidelidad de
+esa traducción.
 
-  STEP_TYPE_ALIASES   — nombres "display" de Spoon (con espacios) o internos
-                         alternativos -> nombre canónico usado por STEP_BUILDERS.
-  STEP_BUILDERS        — nombre canónico -> función que serializa <step><...></step>.
-  KNOWN_PDI_STEP_TYPES — whitelist de todo `type` que build_ktr() acepta emitir tal
-                         cual; cualquier otro valor se fuerza a Dummy (ver build.py).
-  _CRITICAL_FIELDS     — campos de config sin los cuales el step no tiene sentido
-                         funcional (usado por build.py solo para logging de diagnóstico,
-                         no bloquea el build).
+  STEP_BUILDERS      — nombre canónico -> función que serializa <step><...></step>.
+  STEP_CONFIG_KEYS    — claves de config que ese step SÍ mapea a XML (incluidos
+                         alias que el builder acepta). build.py resta este set
+                         de las claves presentes en el config real y loguea WARN
+                         por cada sobrante — clave que el modelo declaró pero
+                         el builder ignora deja rastro en vez de perderse en
+                         silencio. Es auditoría de CAPACIDAD PRESENTE del
+                         builder, no invariante de dominio — por eso vive acá
+                         y no en step_types.py (split de registry.py, sesión
+                         de arquitectura).
+  unmapped_config_keys() — función pública sobre STEP_CONFIG_KEYS.
 
-Mantener este archivo como ÚNICO lugar donde se ensamblan estos tres mapeos —
+Mantener este archivo como ÚNICO lugar donde se ensambla STEP_BUILDERS —
 agregar un step nuevo implica: escribir el builder en steps/<familia>.py,
-importarlo acá y sumarlo a STEP_BUILDERS (+ alias si aplica).
+importarlo acá y sumarlo a STEP_BUILDERS (+ alias en step_types.STEP_TYPE_ALIASES
+si aplica, + entrada en STEP_CONFIG_KEYS si el builder acepta claves que valga
+la pena auditar).
 """
 from __future__ import annotations
 
@@ -78,78 +85,6 @@ from app.services.ktr_builder.steps.control import (
 )
 
 
-# ─── Alias map ────────────────────────────────────────────────────────────────
-# El modelo a veces devuelve los nombres "display" de Spoon (con espacios) y otras
-# veces los nombres "internos" (camelCase). Este mapa normaliza ambos a la forma
-# canónica usada por STEP_BUILDERS antes de buscar el builder.
-
-STEP_TYPE_ALIASES = {
-    # Entrada
-    "Table Input":               "TableInput",
-    "CSV file input":            "CsvInput",
-    "CSVInput":                  "CsvInput",
-    "Text File Input":           "TextFileInput",
-    "Microsoft Excel Input":     "ExcelInput",
-    "Excel Input":               "ExcelInput",
-    "JSON Input":                "JsonInput",
-    "Generate Rows":             "RowGenerator",
-    "Row Generator":             "RowGenerator",
-    "GenerateRows":              "RowGenerator",
-    "XML input stream (SAX)":    "GetXMLData",
-    "REST Client":               "Rest",
-    # Transformación
-    "Select values":             "SelectValues",
-    "Filter rows":                "FilterRows",
-    "Sort rows":                  "SortRows",
-    "Group by":                   "GroupBy",
-    "Memory Group by":            "MemoryGroupBy",
-    "Unique rows":                "Unique",
-    "Unique rows (HashSet)":      "UniqueRowsByHashSet",
-    "Calculator":                 "Calculator",
-    "String operations":          "StringOperations",
-    "Replace in string":          "ReplaceString",
-    "Concat fields":              "ConcatFields",
-    "Split fields":               "SplitFieldToRows",
-    "Value mapper":               "ValueMapper",
-    "Null if...":                 "IfNull",
-    "If field value is null":     "IfNull",
-    "Add constants":              "Constant",
-    "AddConstants":               "Constant",
-    "Number range":               "NumberRange",
-    "Regex evaluation":           "RegexEval",
-    "Row Normaliser":             "Normaliser",
-    "Row denormaliser":           "Denormaliser",
-    # Joins / lookups
-    "Database lookup":            "DBLookup",
-    "Database Lookup":            "DBLookup",
-    "DatabaseLookup":             "DBLookup",
-    "Stream lookup":               "StreamLookup",
-    "Merge rows (diff)":           "MergeRows",
-    "Merge join":                  "MergeJoin",
-    "Merge Join":                  "MergeJoin",
-    # Salida
-    "Table Output":               "TableOutput",
-    "Insert / Update":            "InsertUpdate",
-    "Update":                     "Update",
-    "Delete":                     "Delete",
-    "Microsoft Excel Writer":     "MicrosoftExcelWriter",
-    "Text file output":           "TextFileOutput",
-    "JSON output":                "JsonOutput",
-    # Dimensiones / DWH
-    "Dimension lookup/update":    "DimensionLookup",
-    "Combination lookup/update":  "CombinationLookup",
-    # Calidad / logging
-    "Field meta data validation": "FieldMetaDataValidation",
-    "Data validator":             "DataValidator",
-    "Write to log":               "WriteToLog",
-    # Control de flujo
-    "Mapping (sub-transformation)": "Mapping",
-    "Transformation executor":    "TransExecutor",
-    "Get System Info":            "GetSystemInfo",
-    "SystemInfo":                  "GetSystemInfo",
-}
-
-
 STEP_BUILDERS = {
     # Entrada
     "TableInput":          _step_TableInput,
@@ -211,46 +146,6 @@ STEP_BUILDERS = {
     "BlockingStep":        _step_BlockingStep,
     "Dummy":               _step_Dummy,
     "GetSystemInfo":       _step_GetSystemInfo,
-}
-
-
-# ─── Master whitelist: IDs válidos de plugin PDI 9.x ──────────────────────────
-# Debe reflejar la lista "NOMBRES DE PLUGIN PDI" de system_etl.txt 1:1. Un
-# `type` que el modelo devuelva fuera de este set no es un plugin real de
-# Kettle — abrir ese .ktr en Spoon falla con "plugin missing". build_ktr()
-# corrige cualquier type fuera de lista a Dummy antes de serializar, en vez
-# de depender de que el modelo nunca alucine un id.
-KNOWN_PDI_STEP_TYPES = set(STEP_BUILDERS.keys()) | set(STEP_TYPE_ALIASES.values()) | {
-    "AddSequence", "Formula", "RegexEval", "JoinRows", "ExecSQL",
-    "SetVariable", "GetVariable", "Abort", "BlockingStep",
-    "TextFileInput", "TextFileOutput", "ExcelInput", "ExcelOutput",
-    "JsonInput", "JsonOutput", "ScriptValueMod", "AnalyticQuery",
-}
-
-
-# Campos críticos por tipo de step: sin ellos el step no cumple su función
-# aunque el XML sea válido. build.py aborta el build si alguno falta.
-_CRITICAL_FIELDS: dict[str, list[str]] = {
-    "TableInput":        ["sql"],
-    "WriteToLog":        ["message"],
-    "GroupBy":           ["group_fields"],
-    "MemoryGroupBy":     ["group_fields"],
-    "SortRows":          ["fields"],
-    "Constant":          ["fields"],
-    "GetSystemInfo":     ["fields"],
-    "TableOutput":       ["table"],
-    "InsertUpdate":      ["table"],
-    "Update":            ["table"],
-    "Delete":            ["table"],
-    # "return_field" es la clave canónica post-normalize_config() (ver
-    # contracts.py) — returnfield/sk_field/surrogate_key son alias que ya
-    # se resolvieron a esta antes de llegar acá.
-    "DimensionLookup":   ["table", "return_field"],
-    "CombinationLookup": ["table", "return_field"],
-    "DBLookup":          ["table"],
-    "MergeRows":         ["step1", "step2"],
-    "MergeJoin":         ["step1", "step2"],
-    "ValueMapper":       ["field_to_use"],
 }
 
 

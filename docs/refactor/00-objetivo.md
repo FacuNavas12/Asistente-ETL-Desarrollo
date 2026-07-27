@@ -1,5 +1,7 @@
 # Objetivo — Refactor de fragmentación
 
+**Mutable, poco frecuente.** Se edita solo si cambia el objetivo mismo del refactor, no su estado de avance (eso vive en `ESTADO.md`).
+
 **Última actualización:** 2026-07-22
 
 Este archivo expande el objetivo de [`02-decisiones.md`](02-decisiones.md). No lo contradice — si algo acá choca con ese archivo, gana `02-decisiones.md` y esto queda obsoleto en ese punto.

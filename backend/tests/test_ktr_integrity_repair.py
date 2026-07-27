@@ -17,7 +17,7 @@ import asyncio
 from app.services.ktr_builder import build_ktr
 from app.services.ktr_builder.contracts import missing_required_keys
 from app.services.ktr_builder.fields_validate import validate_field_resolution
-from app.services.ktr_builder.registry import STEP_TYPE_ALIASES
+from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 from app.services.ktr_builder.repair import repair_integrity_gaps
 
 

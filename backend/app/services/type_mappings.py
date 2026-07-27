@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from app.schemas.canonical import CanonicalType, FieldFormat
+from app.domain.canonical_types import CanonicalType, FieldFormat
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
 

@@ -5,7 +5,7 @@ de estado al pie de fragmentation.py)."""
 from __future__ import annotations
 
 from app.services.ktr_builder.fragmentation import build_rw_matrix, compute_cut
-from app.services.ktr_builder.registry import STEP_TYPE_ALIASES
+from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 
 
 def _err1_like_ktr():

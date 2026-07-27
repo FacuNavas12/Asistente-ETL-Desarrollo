@@ -50,8 +50,8 @@ class KtrBuildJob(Base):
     build_status: Mapped[KtrBuildStatus] = mapped_column(
         SAEnum(KtrBuildStatus, name="ktr_job_build_status_enum"), default=KtrBuildStatus.awaiting_model
     )
-    # ETLGenerateResponse.model_dump() completo (proceso_etl, ktr_xml, lineage,
-    # advertencias con los warnings de conexión, etc.) — lo que devuelve /status.
+    # ETLGenerateResponse.model_dump() completo (proceso_etl, etapas, kjb_master,
+    # lineage, advertencias con los warnings de conexión, etc.) — lo que devuelve /status.
     result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

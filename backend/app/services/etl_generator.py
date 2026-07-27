@@ -347,17 +347,21 @@ def _build_ktr_stage(
 def _etapa_output(
     files: list[tuple[dict, str, str]],
     sub_kjb: tuple[str, str] | None,
+    nombre: str,
 ) -> EtapaOutput:
     """D20: empaqueta 1..N archivos ya construidos (_build_ktr_stage) en el
     shape de ETLGenerateResponse.etapas. sub_kjb viene de _build_job_plan()
     para la misma etapa — None cuando len(files)==1 (nada que orquestar),
-    (kjb_xml, kjb_filename) cuando compute_cut() partió esa etapa en N."""
+    (kjb_xml, kjb_filename) cuando compute_cut() partió esa etapa en N.
+    nombre (D28): etiqueta de la etapa, expuesta para que el frontend nombre
+    la carpeta del ZIP cuando tipo="kjb"."""
     if sub_kjb is None:
         _, xml, filename = files[0]
-        return EtapaOutput(tipo="ktr", archivo=ArchivoKtr(xml=xml, filename=filename))
+        return EtapaOutput(tipo="ktr", nombre=nombre, archivo=ArchivoKtr(xml=xml, filename=filename))
     kjb_xml, kjb_filename = sub_kjb
     return EtapaOutput(
         tipo="kjb",
+        nombre=nombre,
         kjb=ArchivoKtr(xml=kjb_xml, filename=kjb_filename),
         archivos=[ArchivoKtr(xml=xml, filename=filename) for _, xml, filename in files],
     )
@@ -532,7 +536,7 @@ def _build_response_from_data(
     if len(built) > 1:
         _, sub_kjbs = _build_job_plan([("proceso", built)], process_name)
         sub_kjb = sub_kjbs[0]
-    etapa = _etapa_output(built, sub_kjb)
+    etapa = _etapa_output(built, sub_kjb, nombre="proceso")
 
     advertencias, integridad_validaciones = _split_integrity_warnings([
         *data.get("advertencias_buenas_practicas", []),
@@ -652,8 +656,8 @@ def _build_response_from_two_ktr_data(
     )
 
     sub_kjb_iter = iter(sub_kjbs)
-    etapa_1 = _etapa_output(built_1, next(sub_kjb_iter) if len(built_1) > 1 else None)
-    etapa_2 = _etapa_output(built_2, next(sub_kjb_iter) if len(built_2) > 1 else None)
+    etapa_1 = _etapa_output(built_1, next(sub_kjb_iter) if len(built_1) > 1 else None, nombre="origen_stg")
+    etapa_2 = _etapa_output(built_2, next(sub_kjb_iter) if len(built_2) > 1 else None, nombre="stg_dwh")
 
     lineage = stitch_lineage_many([
         *(sub for sub, _, _ in built_1),

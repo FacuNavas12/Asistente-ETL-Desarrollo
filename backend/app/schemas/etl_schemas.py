@@ -82,8 +82,13 @@ class EtapaOutput(BaseModel):
     - "kjb": compute_cut() encontró señal estructural de corte (C1/C1-bis,
       err1.ktr/err2.ktr, H21) y la fase se partió en N — kjb (el .kjb
       intermedio que las orquesta) + archivos (los N .ktr, en orden de
-      ejecución)."""
+      ejecución).
+    nombre (D28): la etiqueta de la etapa ("origen_stg"/"stg_dwh"/"proceso")
+    que _build_job_plan ya usa internamente — expuesta para que el consumidor
+    (frontend, D20-punto5) pueda nombrar la carpeta del ZIP cuando tipo="kjb"
+    (D20-punto4), sin inferirla por índice."""
     tipo: Literal["ktr", "kjb"]
+    nombre: str
     archivo: Optional[ArchivoKtr] = None
     kjb: Optional[ArchivoKtr] = None
     archivos: List[ArchivoKtr] = []

@@ -187,22 +187,6 @@
   flex-direction: column;
 }
 
-.etl-lineage-loading {
-  padding: 60px 0;
-  text-align: center;
-  color: var(--text-3);
-  font-size: 14px;
-}
-
-.etl-lineage-error {
-  padding: 24px 20px;
-  border-radius: 10px;
-  background: #ef444418;
-  border: 1px solid #ef444440;
-  color: #ef4444;
-  font-size: 14px;
-}
-
 /* ── Generic section card (Result + futuras pestañas) ────────────────────── */
 .etl-section {
   background: var(--surface);

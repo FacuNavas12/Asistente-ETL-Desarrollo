@@ -6,7 +6,7 @@ import difflib
 import re
 
 from app.services.ktr_builder.contracts import parse_cfg as _parse_cfg
-from app.services.ktr_builder.registry import STEP_TYPE_ALIASES
+from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 
 
 def _select_column_names(sql: str) -> list[str]:

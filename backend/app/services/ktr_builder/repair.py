@@ -21,7 +21,7 @@ import logging
 from app.models.llm_base import BaseLLM
 from app.services.ktr_builder.contracts import missing_required_keys, normalize_config, parse_cfg
 from app.services.ktr_builder.fields_validate import find_missing_field_producers, find_nearest_source_table_name
-from app.services.ktr_builder.registry import STEP_TYPE_ALIASES
+from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 
 logger = logging.getLogger(__name__)
 

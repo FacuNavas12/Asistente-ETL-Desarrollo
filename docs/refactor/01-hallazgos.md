@@ -1,10 +1,53 @@
 # Hallazgos — Refactor de fragmentación
 
-**Última actualización:** 2026-07-24
+**Cuerpo append-only, índice mutable.** Cada H se escribe una vez y no se reescribe — una actualización nueva se agrega como párrafo nuevo dentro de la misma entrada, con fecha. El índice al tope sí se edita en el momento en que el estado de un hallazgo cambia.
+
+**Última actualización:** 2026-07-27 (H30-H32)
 
 Cada entrada: qué se encontró, evidencia (`archivo:línea`), de qué sesión salió, y estado. Estado se evalúa contra [`02-decisiones.md`](02-decisiones.md) — si una decisión ya cerró el hallazgo, dice cuál.
 
 Todas las líneas de código citadas fueron re-verificadas contra el repo en esta sesión (HEAD `149b836`, rama `run-pentaho`), salvo donde se marca explícitamente "no verificable sin ejecutar".
+
+---
+
+## Índice — el estado de un hallazgo vive únicamente acá
+
+El cuerpo de cada H es evidencia, no repite estado por fuera de lo ya escrito en su momento. `Clase` es orientativa (taxonomía S/G/D/Env de `03-plan.md` cuando aplica, o una etiqueta corta si no). `Toca` son las fases que lo tocan, `—` si ninguna tiene dueño.
+
+| # | Qué es | Estado | Clase | Toca |
+|---|---|---|---|---|
+| H1 | Partición fija en 2 KTR | Desinflado — diseño esperado (D1) | estructural | F1, F2, F3 |
+| H2 | `config` string doble-encodeado | Abierto, alcance no decidido | borde-entrada | Track A, deliberadamente-no-decidido |
+| H3 | 5 parseos duplicados de `config` | Cerrado 2026-07-24 | duplicación | F1.5 |
+| H4 | Alias de tabla divergentes | Cerrado 2026-07-22 | duplicación | F1.5 |
+| H5 | Acoplamiento temporal linaje | Cerrado — D15 (documentado, no bloqueante) | acoplamiento | F2 |
+| H6 | Fallo silencioso en `_parse_config` | Cerrado 2026-07-24 | fail-fast | F1.5 |
+| H7 | Sin soporte `JobEntryJob` | Cerrado 2026-07-24 | estructural | F2.5 |
+| H8 | Infra de validación existente a reusar | Decidido | validación | F2, F3 |
+| H9 | E3/E14/key vacía en output fresco | E3 cerrado (código); E14 abierto; key vacía no reproducida | contenido-LLM | F4 |
+| H10 | E1/V4, E2/V5 no ejercitados | Cerrado — ejercitados sin defecto | contenido-LLM | F4 |
+| H11 | `DBLookup` fuera del linaje | Cerrado 2026-07-22 | linaje | F1.5 |
+| H12 | Docstring `etl_output.py` desactualizado | Cerrado 2026-07-25 | docstring | F5 |
+| H13 | Compat. con ETLs guardados | Cerrado por D3 | fundamento | — |
+| H14 | Colisión con `dim_contracts` (149b836) | Cerrado — D11, es precedente | dim_contracts | — |
+| H15 | D6 pendiente de re-verificación en frío | Cerrado — D6/D6-bis | fundamento | F2 |
+| H16 | `sk_producto` puede no generarse | Abierto, acotado | contenido-LLM | F4 |
+| H17 | 12 tests en rojo sin triage | Cerrado 2026-07-24 — triage completo | triage-tests | → H24/H25/H26 |
+| H18 | Auditoría retroactiva sin acotar | Abierto, alcance sin acotar | auditoría | Fundamento (C.4) |
+| H19 | Matriz tipo_step → {R,W} | Entregable — insumo F2 | estructural | F1, F2 |
+| H20 | Punto de inserción del corte | Entregable — insumo F2 | estructural | F1, F2 |
+| H21 | Análisis `err1.ktr`/`err2.ktr` (E4/E5/E6) | Entregable — caso de prueba | caso-real | F2, F3 |
+| H22 | `dim_contracts` no deriva step solo-lectura | Cerrado — D16 camino 1 (código) | dim_contracts | F3 |
+| H23 | `DBLookup` falla introspección pooler Supabase | Cerrado 2026-07-24 (prompt, D22) | entorno | F4 |
+| H24 | `ConnectionsMapRequest` más estricto que el service | Abierto, sin dueño — decisión de producto | schema/producto | — |
+| H25 | `_CRITICAL_FIELDS["GetSystemInfo"]` inalcanza su propio fallback | Abierto, sin dueño — fix simple, cambia validación en producción | validación | — |
+| H26 | `ETL_OUTPUT_SCHEMA` no declara `documentacion` | Abierto, ambiguo — feature perdida vs. resto sin limpiar | schema/producto | — |
+| H27 | B17 (BigNumber operandos) sin verificar contra Kettle real | Abierto, no bloqueante | verificación | F4 |
+| H28 | `FIELD_TYPE_SOURCES` armado por inspección propia, 2 huecos | Abierto — (a) `Constant` trivial, (b) exhaustividad sin confirmar | verificación | F4 |
+| H29 | `build_rw_matrix()` excluye steps sin `table` sin notificar | Abierto — no bloquea F3 (D15), sin dueño | transversal | F3, A3 |
+| H30 | `KNOWN_PDI_STEP_TYPES` era código muerto, docstring describía un mecanismo (whitelist→Dummy) que el código ya no tenía | Cerrado 2026-07-27 — D27 (borrado, reemplazado por test de coherencia) | docstring/muerto | A2 |
+| H31 | 7 alias de `STEP_TYPE_ALIASES` sin builder en `STEP_BUILDERS` | Abierto, inofensivo hoy — el prompt no ofrece los display names que resuelven a estos | contenido-LLM | — |
+| H32 | 4 builders en `STEP_BUILDERS` que el prompt nunca ofrece (capacidad desperdiciada) | Abierto, inofensivo — registro nomás | prompt | — |
 
 ---
 
@@ -407,6 +450,8 @@ Los 37 de `test_api.py` (requieren servidor local en `localhost:8000`) y el flak
 
 **Estado:** abierto, sin dueño de track — no es F3. Arreglo aparente simple (sacar `"fields"` de `_CRITICAL_FIELDS["GetSystemInfo"]`, dejar que `_step_GetSystemInfo` inyecte el default) pero es cambio de comportamiento de validación ya en producción — no se tocó sin decisión explícita.
 
+**Actualización 2026-07-27 (D27):** `registry.py` se borró (split en `step_types.py`/`step_emitters.py`, ver D27). `_CRITICAL_FIELDS["GetSystemInfo"]` vive ahora en `services/ktr_builder/step_types.py` (sin cambio de línea de contenido, solo de archivo — el refactor fue mecánico, no tocó esta entrada a propósito). El hallazgo sigue abierto tal cual, mismo test rojo.
+
 ---
 
 ## H26 — `ETL_OUTPUT_SCHEMA` no declara `documentacion` como property top-level; `ETLGenerateResponse`/`etl_generator.py` sí la esperan
@@ -447,6 +492,66 @@ Los 37 de `test_api.py` (requieren servidor local en `localhost:8000`) y el flak
 
 ---
 
+## H29 — `build_rw_matrix()` excluye steps sin `table` resuelto de la matriz R/W sin notificar, contradiciendo el propio docstring del módulo
+
+**Qué:** `build_rw_matrix()` (`backend/app/services/ktr_builder/fragmentation.py:55-68`) — el productor de la matriz que alimenta `compute_cut()` (motor de corte, F3) — descarta en silencio cualquier step cuyo `cfg.get("table")` resuelva vacío (`fragmentation.py:61-63`) o cuyo tipo no sea clasificable como R/W (`ExecSQL`, vía `_step_rw` devolviendo `None`, `fragmentation.py:42,64-66`). Ninguna de las dos ramas agrega nada a `notifications` — leído `compute_cut()` completo (`fragmentation.py:121-253`, único productor de `notifications` en el módulo), ninguna de sus tres fuentes de aviso (V2/lookup-sin-productor, self-lookup/patológico, ciclo de orden) cubre este caso.
+
+**Contradice al propio módulo:** el docstring de cabecera (`fragmentation.py:12-14`) afirma explícitamente *"ExecSQL y steps sin tabla no participan (D15: notifica, no bloquea)"* — la mitad "no bloquea" es cierta, la mitad "notifica" no está implementada.
+
+**Por qué es más que un docstring desactualizado (H12 es ese caso; este no):** es el mismo mecanismo que motivó H6 — un step que "desaparece" para el motor de corte sin dejar rastro — pero por una vía que el fix de H6 no cierra. H6 resolvió "el `config` no parsea → no degrada a `{}` en silencio, lanza `ConfigParseError`". Acá el `config` SÍ parsea bien (es un dict válido); el campo `table` específicamente viene vacío, ausente, o con una clave no cubierta por `contracts.STEP_CONTRACTS.key_aliases` para ese tipo de step. Mismo síntoma (step invisible para la matriz R/W que decide dónde hay una race o un doble escritor — exactamente D6-bis/D7, el caso real de `err1.ktr`/`err2.ktr`, H21), causa distinta, sin cobertura.
+
+**Duplicado de forma independiente en otros dos módulos que también resuelven "step → tabla" (mismo patrón `if not table: continue`, sin log ni warning):**
+- `dimension_step_policy.py:158-160` (`enforce_dimension_step_policy`) — un step que debería recibir su tipo SCD1/SCD2 (D16) queda sin corregir si su `table` no resuelve, sin ningún `logger.info` como los que sí existen dos ramas más abajo para el caso de override explícito (`dimension_step_policy.py:185-188`, `238-241`).
+- `fields_validate.py:418-425` (`validate_dimension_lookup_races`) — mismo gap en el chequeo de races de lookup de dimensión.
+
+Los tres módulos duplican, cada uno por su cuenta, la reacción ante "tabla no resuelta" — D8 ya centralizó *cómo* se resuelve el alias de tabla (H4, vía `contracts.normalize_config`), pero ninguna sesión centralizó *qué hacer* cuando esa resolución da vacío.
+
+**Evidencia (verificada, exacta):** `fragmentation.py:12-14,42,55-68,121-253`; `dimension_step_policy.py:156-160`; `fields_validate.py:418-425`. Confirmado además que no existe ningún otro productor de notificación para este caso: `grep "ExecSQL"` en todo `backend/app/` no encuentra ninguna función que agregue un warning por step no clasificable — el único resultado relacionado es un `logger.warning` server-side en `_step_ExecSQL` (`ktr_builder/steps/control.py:98`) que dispara solo si `sql` viene vacío, sin relación con el corte.
+
+**Sesión de origen:** A0.5 (`docs/auditoria/00b-fallos-silenciosos.md`, sección 3.1), 2026-07-25.
+
+**Estado:** abierto. No bloquea F3 bajo D15 (no bloquea, ya "genera y notifica" para todo lo demás) — pero la notificación específicamente prometida por el propio módulo no existe todavía. Sin dueño de track asignado — candidato natural a F3 (mismo archivo, mismo mecanismo de `notifications` que ya usa `compute_cut()` para sus otros tres casos) o a un fix chico y aislado, a decidir.
+
+---
+
+## H30 — `KNOWN_PDI_STEP_TYPES` era código muerto; su docstring describía un mecanismo (whitelist → Dummy) que el código ya había abandonado
+
+**Qué:** `registry.py:223-228` (ya borrado, ver D27) definía `KNOWN_PDI_STEP_TYPES = STEP_BUILDERS.keys() | STEP_TYPE_ALIASES.values() | {...}`, con un docstring que afirmaba: *"build_ktr() corrige cualquier type fuera de lista a Dummy antes de serializar, en vez de depender de que el modelo nunca alucine un id"*. Grep completo del repo (`app/`, `tests/`) confirmó **cero consumidores** del símbolo fuera del propio `registry.py` y su reexport en `ktr_builder/__init__.py`. El gate real contra un `type` no soportado es otro, en `build.py:347-351`: `STEP_BUILDERS.get(canonical_type) is None → raise KtrBuilderError`, sin ninguna referencia a la whitelist. Grep de "Dummy" en todo `backend/app` confirmó que no existe ninguna rama de degradación a `Dummy` — la única mención está en el docstring de `registry.py` y en `contracts.py:1-3`, que lista *"tipo no registrado degradado a Dummy"* como uno de los **defectos históricos que `contracts.py` fue escrito para cerrar** (fail-fast reemplazó la degradación silenciosa, consistente con D5/R11). El símbolo sobrevivió al cambio de diseño sin que nadie lo desconectara.
+
+**Consecuencia verificada, no solo teórica:** el docstring también afirmaba que `KNOWN_PDI_STEP_TYPES` "debe reflejar la lista NOMBRES DE PLUGIN PDI de `system_etl.txt` 1:1" — comparación real de los 49 nombres del prompt contra las 60 entradas de la whitelist encontró 11 divergentes (`DataValidator`, `Denormaliser`, `FieldMetaDataValidation`, `GetXMLData`, `Mapping`, `MicrosoftExcelWriter`, `Normaliser`, `Rest`, `SplitFieldToRows`, `SplitFieldToRows3`, `TransExecutor`). Sin consecuencia en runtime (nadie leía la whitelist), pero confirma que la divergencia entre documentación y código no era hipotética.
+
+**Evidencia:** `registry.py:5-8,217-228` (docstrings, ya borrado), `build.py:347-351` (gate real), `contracts.py:1-3` (defecto histórico ya cerrado), `system_etl.txt:7-18` (lista real del prompt).
+
+**Sesión de origen:** sesión de arquitectura, cierre del split de `registry.py`, 2026-07-27 (intercambio `deicsion-arq-refacto.md` → `prompt-a-code-cierre.md`, `Contexto Cambios/`).
+
+**Estado:** cerrado 2026-07-27 — D27. Símbolo borrado (no movido: no representaba nada que valiera la pena preservar). La coherencia real entre prompt/alias/builders que el símbolo prometía documentar sin verificar la cubre ahora `backend/tests/test_pdi_step_coherence.py`, que sí se ejecuta.
+
+---
+
+## H31 — 7 alias de `STEP_TYPE_ALIASES` resuelven a un canónico sin builder en `STEP_BUILDERS`
+
+**Qué:** `FieldMetaDataValidation`, `GetXMLData`, `Mapping`, `MicrosoftExcelWriter`, `Normaliser`, `Rest`, `TransExecutor` son targets de `step_types.STEP_TYPE_ALIASES` (antes `registry.py`) sin entrada en `step_emitters.STEP_BUILDERS`. Si el LLM alguna vez devuelve el nombre display que resuelve a uno de estos (ej. `"REST Client"` → `Rest`), `build.py:347-351` aborta el build entero con `KtrBuilderError`. Hoy es inofensivo porque `system_etl.txt` no ofrece ninguno de los nombres display que resuelven a estos 7 canónicos (verificado: `test_pdi_step_coherence.py::test_prompt_names_all_resolve_to_a_builder` da conjunto vacío) — pero el alias existe "por si acaso" sin que nadie decidiera si vale la pena.
+
+**Evidencia:** `step_types.py` (`STEP_TYPE_ALIASES`), `step_emitters.py` (`STEP_BUILDERS`) — diff calculado y congelado como lista fija en `test_pdi_step_coherence.py::test_alias_targets_without_builder_are_documented`.
+
+**Sesión de origen:** sesión de arquitectura, cierre del split de `registry.py`, 2026-07-27.
+
+**Estado:** abierto, sin dueño. No es un bug activo (el prompt no los alcanza), es un alias muerto a resolver más adelante: o se escribe el builder que falta, o se saca el alias. El test de coherencia lo mantiene visible si la lista cambia sin que alguien lo note.
+
+---
+
+## H32 — 4 builders de `STEP_BUILDERS` que `system_etl.txt` nunca ofrece al LLM
+
+**Qué:** `DataValidator`, `Denormaliser`, `SplitFieldToRows`, `SplitFieldToRows3` tienen builder registrado en `step_emitters.STEP_BUILDERS` pero no aparecen en la lista de `system_etl.txt:7-18` — capacidad de construcción que el modelo nunca va a pedir. Inofensivo (no genera ningún fallo), pero es la contraparte exacta de H31: acá sobra infraestructura, ahí sobra vocabulario.
+
+**Evidencia:** diff calculado y congelado en `test_pdi_step_coherence.py::test_builders_not_offered_in_prompt_are_documented`.
+
+**Sesión de origen:** sesión de arquitectura, cierre del split de `registry.py`, 2026-07-27.
+
+**Estado:** abierto, sin dueño — registro nomás. Candidato a resolverse el día que alguien decida si el prompt debería ofrecer estos tipos (probablemente sí para `DataValidator`/`Denormaliser`, dudoso para los `SplitFieldToRows*` que ya comparten builder).
+
+---
+
 ## Intake — `bitacora_etl_ventas.md` (R1-R12): clasificación y ruteo
 
 Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (2026-07-22) — evita que cada regla nueva de un test se acumule como un H-number suelto. Ver la sección "Intake de hallazgos de tests" en `03-plan.md` para el mecanismo completo; acá solo la aplicación concreta a R1-R12.
@@ -467,37 +572,8 @@ Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (20
 | R11 | D-integridad | Validar claves resueltas, rutear huérfanos antes del insert del hecho | F4, diseño resuelto (D21), código pendiente | Ver **C.6**/**D21** en `02-decisiones.md` |
 | R12 | D-dialecto | Dedup de staging vía `DISTINCT ON (...) ORDER BY ... DESC` + flag de auditoría | F4 (contenido) + D12/C.1 | Tercera ocurrencia real — nota en D12 (junto a R10). **Cerrado 2026-07-24 (prompt, D22)** — K19 + checklist-22 en `system_etl.txt` |
 
-**Excepción de corte (self-lookup/insert-new-only, sección 3 del `extracto_corte_F2.md`):** no es una regla R con número propio en la bitácora, pero es una tercera conclusión de corte junto a R3 y la reconciliación de C1-bis — documentada en **H21** (arriba) y en el reporte de F2 (`03-plan.md`).
+**Excepción de corte (self-lookup/insert-new-only, sección 3 del `extracto_corte_F2.md`):** no es una regla R con número propio en la bitácora, pero es una tercera conclusión de corte junto a R3 y la reconciliación de C1-bis — documentada en **H21** (arriba) y en el Reporte F2 (`03b-reportes.md`).
 
 ---
 
-## Resumen de estado
-
-| # | Hallazgo | Estado |
-|---|---|---|
-| H1 | Partición fija en 2 KTR | **Desinflado** — diseño esperado, coincide con D1, localización emerge sola |
-| H2 | `config` como string doble-encodeado | Abierto, alcance no decidido |
-| H3 | 5 parseos duplicados de `config` | **Resuelto 2026-07-24** — `validate.py`, `ktr_default_validator.py`, `lineage_builder.py` importan `contracts.parse_cfg`, 0 copias propias restantes |
-| H4 | Alias de tabla divergentes (`lineage_builder` vs `contracts`) | **Resuelto 2026-07-22** — centralizado vía `contracts.normalize_config` |
-| H5 | Acoplamiento temporal `build_lineage`/`stitch_lineage` | **Resuelto** — D15, riesgo documentado + notificado, no bloqueante |
-| H6 | Fallo silencioso en `_parse_config` | **Resuelto 2026-07-24** (F1.5) — `parse_cfg` lanza `ConfigParseError`; `normalize_step_configs()` (pre-pass único, 4 entry points de `etl_generator.py`) lo atrapa una vez, marca el step y emite warning accionable — D15 mejor-esfuerzo, no aborta. `build_ktr` tiene catch propio de respaldo. Tests: `test_config_parse_fail_fast.py` |
-| H7 | Sin soporte de `JobEntryJob` (jobs anidados) | **Resuelto 2026-07-24** (F2.5) — `JobEntry.entry_type` (`"trans"`\|`"job"`), `_job_entry()` en `job_analyzer.py` (shape verificado contra `JobEntryJob.getXML()`), `kjb_xml_validator._check_has_trans_entry` amplíado a TRANS-o-JOB. Tests: `test_job_entry_job.py` |
-| H8 | Infraestructura de validación existente a reusar | Decidido |
-| H9 | E3/E14/key vacía vivos en output fresco | Abierto, no verificable sin ejecutar |
-| H10 | E1/V4, E2/V5 no ejercitados | Abierto, pendiente de ejercitar |
-| H11 | `DBLookup` fuera del linaje | **Resuelto 2026-07-22** — agregado a `_TABLE_FIELD_TYPES` |
-| H12 | Docstring `etl_output.py` desactualizado | **Resuelto 2026-07-25** (F5) — docstring corregido: `config` documentado como `{"type":"string"}` real (no `object`), campo inexistente `proceso_etl.steps[*].configuracion` eliminado de la mención |
-| H13 | Compatibilidad con ETLs guardados | Cerrado por D3 |
-| H14 | Colisión con `dim_contracts` (149b836) | Resuelto — D11: no choca, es precedente |
-| H15 | D6 pendiente de re-verificación en frío | **Resuelto** — D6/D6-bis, backend determinístico, solo corrección |
-| H16 | `sk_producto` puede no generarse (`DimensionLookup`→`InsertUpdate`) | Abierto, acotado — DB confirma secuencia, riesgo es de contenido del step generado |
-| H17 | 12 tests en rojo sin triage | **Cerrado 2026-07-24** — triage completo: 4 obsoletos corregidos (+1 que ya pasaba por razón incorrecta), 8 rotos de verdad quedan abiertos como H24/H25/H26 |
-| H18 | Auditoría retroactiva de cambios no declarados | Abierto, alcance sin acotar |
-| H19 | Matriz tipo_step → {R,W} sobre tabla (Track F1 Q2) | Entregable — insumo de F2 |
-| H20 | Punto de inserción del corte + gap de orden por FK (Track F1 Q4/Q5) | Entregable — insumo de F2 |
-| H21 | Análisis de contenido `err1.ktr`/`err2.ktr`: confirma E4/E5 (`dim_producto`) y E6 (`dim_tiempo`); C1-bis reconciliado (no es fantasma); excepción self-lookup a C1 | Entregable — caso de prueba real de F2/F3 |
-| H22 | `dim_contracts` no deriva ningún step de solo lectura — prerrequisito externo real de F3 | **Parcialmente resuelto 2026-07-24** (D16 camino 1, código) — `role_of_dimension_step()` (BFS forward, ancla en escritor no-ambiguo) + `enforce_dimension_step_policy` Paso 4 fuerzan `DimensionLookup update=N` para el rol fact-lookup cuando `scd_type==2`. **Residual sin cerrar:** `scd_type` 0/1 (`CombinationLookup` esperado) no tiene mecanismo de solo-lectura seguro sin `date_from`/`date_to` conocidas — se reporta (tipo="error"), no se repara. Tests: `test_dimension_step_policy.py` |
-| H23 | Entorno: `DBLookup` falla introspección contra pooler de Supabase, preferir `StreamLookup` | **Cerrado 2026-07-24 (F4/D22)** — nota agregada en `system_etl.txt` junto al bloque `DBLookup` |
-| H24 | `ConnectionsMapRequest.conn_dwh/conn_staging` no acepta connection_id string, pese a que `resolve_real_connections()` sí lo soporta | Abierto, sin dueño de track — decisión de producto (extender schema vs. borrar la rama string del service) |
-| H25 | `_CRITICAL_FIELDS["GetSystemInfo"]` deja inalcanzable el fallback de field por defecto de `_step_GetSystemInfo` | Abierto, sin dueño de track — fix simple pero cambia validación ya en producción |
-| H26 | `ETL_OUTPUT_SCHEMA` no declara `documentacion`, pese a que `ETLGenerateResponse`/`etl_generator.py` la esperan | Abierto, ambiguo — feature perdida vs. resto de código sin limpiar |
+*(el resumen de estado por hallazgo vive en el índice, al tope de este archivo)*

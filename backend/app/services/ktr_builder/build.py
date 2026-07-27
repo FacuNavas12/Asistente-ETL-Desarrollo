@@ -31,12 +31,8 @@ from app.services.ktr_builder.fields_validate import (
     validate_row_sources,
 )
 from app.services.ktr_builder.layout import _auto_layout
-from app.services.ktr_builder.registry import (
-    _CRITICAL_FIELDS,
-    STEP_BUILDERS,
-    STEP_TYPE_ALIASES,
-    unmapped_config_keys,
-)
+from app.services.ktr_builder.step_emitters import STEP_BUILDERS, unmapped_config_keys
+from app.services.ktr_builder.step_types import _CRITICAL_FIELDS, STEP_TYPE_ALIASES
 from app.services.ktr_builder.validate import _validate_ktr
 from app.services.ktr_default_validator import (
     check_missing_required_fields,

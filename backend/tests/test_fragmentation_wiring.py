@@ -16,7 +16,7 @@ from xml.etree.ElementTree import fromstring
 from app.services import etl_generator
 from app.services.kjb_xml_validator import validate_kjb_xml
 from app.services.ktr_builder.fragmentation import split_ktr_by_cut
-from app.services.ktr_builder.registry import STEP_TYPE_ALIASES
+from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 from app.services.lineage_builder import stitch_lineage, stitch_lineage_many
 
 

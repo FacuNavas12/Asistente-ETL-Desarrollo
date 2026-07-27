@@ -6,11 +6,56 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 El sistema hoy fuerza todo ETL a 2 KTR fijos (Origen→STG, STG→DWH) + 1 KJB. Ese forzado está identificado como la causa raíz de una clase de errores (carreras lectura/escritura, dimensiones no cargadas, doble escritor) y se está desacoplando: la fase lógica queda, pero el backend decide de forma determinista cuántos archivos físicos la materializan.
 
-- **`docs/refactor/02-decisiones.md`** — fuente de verdad. Manda sobre cualquier análisis o plan que lo contradiga.
-- **`docs/refactor/00-objetivo.md`** — qué habilita el refactor y el estado final deseado.
-- **`docs/refactor/01-hallazgos.md`** — problemas estructurales detectados, con `archivo:línea` y estado.
-- **`docs/refactor/03-plan.md`** — fases derivadas, con dependencias.
-- **`docs/arquitectura-objetivo.md`** — doctrina de capas (Track A, migración aparte, hoy pospuesta) para cuando el backend se reorganice en `api/schemas/services/domain/ports/infrastructure/core`. No aplicada todavía — nada del código actual respeta esta estructura de carpetas.
+**Un archivo = una pregunta.** Tabla de ruteo — de acá se decide dónde va cualquier cosa nueva:
+
+| Pregunta | Archivo |
+|---|---|
+| ¿En qué estado está cada fase, ahora? | `docs/refactor/ESTADO.md` |
+| ¿Por qué hacemos esto? | `docs/refactor/00-objetivo.md` |
+| ¿Qué encontramos, y dónde exactamente? | `docs/refactor/01-hallazgos.md` |
+| ¿Qué elegimos, y por qué? | `docs/refactor/02-decisiones.md` — **fuente de verdad**, manda sobre cualquier análisis o plan que lo contradiga |
+| ¿Qué está sin decidir? | `docs/refactor/02-decisiones.md` § Abiertos |
+| ¿Qué falta hacer, y en qué orden? | `docs/refactor/03-plan.md` |
+| ¿Cómo llegamos hasta acá? | `docs/refactor/03b-reportes.md` |
+| ¿Qué quedó sin verificar contra una corrida real? | `docs/refactor/04-verificacion.md` |
+| ¿Qué falla en más de un módulo a la vez? | `docs/refactor/05-transversales.md` |
+| ¿Cuál es la arquitectura objetivo? | `docs/arquitectura-objetivo.md` (Track A, migración aparte, hoy mayormente pospuesta — la estructura `api/schemas/services/domain/ports/infrastructure/core` casi no está aplicada, con una excepción: `backend/app/domain/` existe físicamente desde D27, `02-decisiones.md`. El mapa capa↔directorio-actual vive en `arquitectura-objetivo.md`). Andamiaje ya escrito sin mover código: `backend/app/README.md` + un `README.md` por carpeta/subpaquete (capa, qué entra/sale, qué NO va ahí), y `backend/tests/test_architecture_layers.py` (test AST en modo "no empeorar" — R1/R3/R4 en un recorte acotado, ver su docstring) + `backend/tests/test_pdi_step_coherence.py` (coherencia prompt↔alias↔builder de PDI) |
+| ¿Qué es dominio y qué es infraestructura cuando no es obvio? | Ver "Criterio de capas: dominio vs. infraestructura" acá abajo — regla direccional + el criterio específico de este proyecto (vocabulario PDI es dominio) |
+
+---
+
+## Criterio de capas: dominio vs. infraestructura
+
+Amplía `arquitectura-objetivo.md` (tabla de Capas, R1). Escrito acá, no ahí, porque es un ajuste al proxy que la tabla usa, no una regla nueva — ver por qué abajo. Salió del cierre de D27 (`02-decisiones.md`).
+
+**Regla direccional (la regla real; "domain solo importa stdlib" es un proxy conservador de esto, no la regla misma):**
+
+> Si importo este módulo en un intérprete limpio, ¿se carga algo que hable con el mundo exterior (red, disco, DB, LLM, framework de I/O)? Si no, es candidato a `domain`. Las flechas apuntan hacia adentro: `domain` no conoce `services` ni `infrastructure`; los otros dos sí conocen `domain`.
+
+Cuando el proxy ("solo stdlib") y la regla real (direccional) coinciden, no hay nada que decidir. Cuando difieren — un `Enum` de stdlib que hoy vive en `schemas/`, por ejemplo — gana la regla real, **documentada como excepción razonada por símbolo, nunca como ampliación silenciosa del proxy a todo un paquete**. Ejemplo ya aplicado: `schemas/canonical.py` reexporta `CanonicalType`/`FieldFormat`/`ColumnRole` desde `domain/canonical_types.py` — excepción nombrada, con su motivo (value objects puros de stdlib) escrito al lado, no una regla general de "`schemas/` puede importar `domain/`".
+
+Segundo criterio, para desempatar los casos que pasan el primero:
+- **domain** — *define* el contrato y las reglas invariantes.
+- **infrastructure** — *implementa* el contrato o *traduce* desde/hacia un sistema externo concreto.
+- **services** — *orquesta* usando el contrato, sin saber qué implementación le tocó.
+
+**Criterio específico de este proyecto — por qué `STEP_TYPE_ALIASES` es dominio y `type_mappings.py` es infraestructura, pese a que los dos "traducen nombres externos":**
+
+> El dominio de esta aplicación es la generación de KTR. Por lo tanto **el vocabulario PDI es dominio** (nombres de step de Spoon/Kettle, qué campos necesita cada uno para tener sentido, cómo se relacionan) — y lo que viene de un sistema externo *distinto de PDI* (bases de datos origen, proveedores de LLM) es infraestructura. Dentro de PDI: vocabulario y reglas son dominio, formato de serialización a XML es infraestructura.
+
+Sin este criterio, `services/ktr_builder/step_types.py` (alias de nombres de step Spoon → canónico, domain) y `services/type_mappings.py` (tipos SQL de vendor → `CanonicalType`, infra) parecen la misma forma con conclusión contradictoria. Con él, no: uno traduce dentro del vocabulario del dominio de la app (PDI), el otro traduce desde un sistema externo a ese dominio.
+
+**Nota registrada, no resuelta:** parte de `STEP_TYPE_ALIASES` no son nombres reales de Spoon sino patrones de alucinación conocidos del modelo (`AddConstants`, `SystemInfo`, `CSVInput`). Es conocimiento de infraestructura (comportamiento del LLM) mezclado en un símbolo de dominio. No se separa todavía — no vale la complejidad con lo que hay hoy — pero es el criterio para partirlo si el archivo sigue creciendo por ese lado.
+
+---
+
+**Reglas de escritura** (evitan que la documentación vuelva a divergir):
+1. El estado de una fase vive en un solo lugar, `ESTADO.md`. Ningún otro documento lo repite — si necesita mencionarlo, cita `ESTADO.md`.
+2. Evidencia y decisiones son append-only. Una entrada H o D se escribe una vez y su cuerpo no se edita nunca más. Si una decisión cambia, se escribe una D nueva que supersede a la anterior, y la vieja queda marcada en el índice.
+3. Cada archivo declara arriba si es mutable o append-only, y quién lo escribe.
+4. Descubrir es libre; actuar necesita ruta. Un hallazgo fuera del alcance de la fase en curso se registra y se deja — no se arregla porque se lo vio.
+5. Presupuesto de lectura por sesión: este archivo + `ESTADO.md` + el archivo de la fase en curso + como mucho dos archivos de evidencia. Si una sesión necesita más, la fase está mal cortada, y eso mismo es un hallazgo.
+6. **Archivado frío, solo al cerrar una fase, nunca continuo.** Una entrada H/D se muda de `01-hallazgos.md`/`02-decisiones.md` a `01b-hallazgos-cerrados.md`/`02b-decisiones-cerradas.md` (crear si no existen) solo cuando se cumplen las tres, sin ambigüedad: está cerrada, su fase está cerrada, y ninguna otra entrada la referencia. Queda un stub de 1 línea en el índice caliente con el puntero. Ante la duda, se deja donde está — el archivo caliente denso es más barato que un link roto.
 
 **Toda sesión que tome una decisión sobre este refactor cierra actualizando `docs/refactor/02-decisiones.md` en el mismo turno** — no dejarla implícita en el código ni en el historial de chat.
 
@@ -108,6 +153,10 @@ app/
                                     POST /api/schema/from-ddl (DDL via sqlglot); requiere auth
     etl.py                        — CRUD /api/etls/*; requiere auth (sin ownership check todavía)
     job.py                        — CRUD /api/jobs/*; requiere auth (sin ownership check todavía)
+  domain/                          — primer paquete físico de esta capa (D27, 02-decisiones.md)
+    canonical_types.py             — CanonicalType/FieldFormat/ColumnRole: value objects puros de
+                                    stdlib, movidos desde schemas/canonical.py (que los reexporta,
+                                    excepción nombrada — ver "Criterio de capas" arriba)
   models/
     llm_base.py                   — BaseLLM ABC + LLMResponse dataclass (interfaz común)
     gemini_llm.py                 — GeminiLLM: retries 4× con backoff exponencial en 429/503
@@ -123,7 +172,8 @@ app/
                                     owner_id: String (mismo criterio que Connection) — resolve_real_connections
                                     lo usa para rechazar conn_id de otro owner.
   schemas/
-    canonical.py                  — CanonicalSchema, CanonicalField, CanonicalType (central)
+    canonical.py                  — CanonicalSchema, CanonicalField (central); reexporta CanonicalType
+                                    desde domain/canonical_types.py
     etl_schemas.py                — ETLRequest, TablaOrigen (con canonical_schema), ColumnaOrigen
     connection.py                 — ColumnInfo (DTO interno), ConnectionRead (password siempre "********"), etc.
                                     Create acepta `password` en el body (validado, nunca persistido);
@@ -142,7 +192,9 @@ app/
     masker.py                     — format-preserving masking de ejemplos antes de que entren al perfil
     etl_generator.py              — construye prompt(s), llama LLM, arma ETLGenerateResponse
                                     (etapas: list[EtapaOutput] + kjb_master — D20, docs/refactor/02-decisiones.md;
-                                    ya no ktr_xml/ktr2_xml/kjb_xml). Flujo 2-KTR: 2 llamadas al LLM
+                                    ya no ktr_xml/ktr2_xml/kjb_xml). Cada EtapaOutput trae nombre (D28: etiqueta
+                                    "origen_stg"/"stg_dwh"/"proceso" — el frontend la usa para nombrar la carpeta
+                                    del ZIP cuando tipo="kjb"). Flujo 2-KTR: 2 llamadas al LLM
                                     (origen→STG / STG→DWH), cada etapa pasa por _build_ktr_stage()
                                     (parte en N sub-transformaciones si compute_cut() lo exige, F3) +
                                     build_kjb_xml() (.kjb, N-ario si hubo corte) + stitch_lineage_many();
@@ -159,7 +211,13 @@ app/
     structure_inferrer.py         — inferencia de estructura
     job_analyzer.py               — análisis de jobs Pentaho (flujo CreateJob)
     superset_client/               — integración con API REST de Superset (login, get_or_create_database,
-                                    import_dashboard). Conexión real al DWH se configura A MANO en Superset
+                                    import_dashboard). FUERA DE ALCANCE del proyecto desde D28
+                                    (docs/refactor/02-decisiones.md) — quedó desplazado, no se lo toca ni se
+                                    lo considera al planear cambios al flujo de generación de ETL; solo se
+                                    corrigen gates rotos que dependan de él en código que sí está en alcance
+                                    (ej. frontend/src/utils/supersetExport.js) — mismo criterio para
+                                    services/superset_export/, no listado acá.
+                                    Conexión real al DWH se configura A MANO en Superset
                                     (Configuración → Conexiones a bases de datos) — no hay auto-provisioning
                                     con password real, mismo motivo que arriba.
     adapters/

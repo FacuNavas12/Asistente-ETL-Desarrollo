@@ -79,7 +79,7 @@ export function downloadEtlDetailSkeleton(etl) {
 
 /**
  * Export full ETL card from Home list.
- * Includes result (ktr_xml, kjb_xml, dwh_sample, etc.) so the card can be
+ * Includes result (etapas, kjb_master, dwh_sample, lineage, etc.) so the card can be
  * reconstructed verbatim in another browser / instance.
  *
  * @param {object} etl — full ETL object from EtlContext

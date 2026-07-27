@@ -12,7 +12,7 @@ from app.services.ktr_builder.dimension_step_policy import (
     enforce_dimension_step_policy,
     role_of_dimension_step,
 )
-from app.services.ktr_builder.registry import STEP_TYPE_ALIASES
+from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 
 
 class _FakeDimContract:

@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect } from "react";
 import { downloadKtrFromEtl, downloadAll } from "@/utils/etlCardActions";
+import { readEtlArtifacts } from "@/utils/etlArtifacts";
 import { exportEtlToSuperset } from "@/utils/supersetExport";
+import { useToast } from "@/components/ui/Toast";
 
 export default function EtlCardMenu({ etl, onDeletePermanent }) {
-  const [open, setOpen]               = useState(false);
+  const [open, setOpen]                 = useState(false);
   const [supersetBusy, setSupersetBusy] = useState(false);
-  const ref                           = useRef(null);
+  const ref                             = useRef(null);
+  const { addToast }                    = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -16,11 +19,28 @@ export default function EtlCardMenu({ etl, onDeletePermanent }) {
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
-  const hasKtr = Boolean(etl.result?.ktr_xml);
+  const art = readEtlArtifacts(etl.result);
 
   const handle = (e, fn) => {
     e.stopPropagation();
     fn();
+    setOpen(false);
+  };
+
+  const handleDownloadAll = async (e) => {
+    e.stopPropagation();
+    const message = await downloadAll(etl);
+    if (message) addToast(message);
+    setOpen(false);
+  };
+
+  const handleDownloadKtr = (e) => {
+    e.stopPropagation();
+    try {
+      downloadKtrFromEtl(etl);
+    } catch (err) {
+      addToast(err.message);
+    }
     setOpen(false);
   };
 
@@ -31,7 +51,7 @@ export default function EtlCardMenu({ etl, onDeletePermanent }) {
       await exportEtlToSuperset(etl);
       setOpen(false);
     } catch (err) {
-      alert(err?.message ?? "No se pudo importar el dashboard en Superset.");
+      addToast(err?.message ?? "No se pudo importar el dashboard en Superset.");
     } finally {
       setSupersetBusy(false);
     }
@@ -50,20 +70,21 @@ export default function EtlCardMenu({ etl, onDeletePermanent }) {
         <div className="etl-card-menu__dropdown">
           <button
             className="etl-card-menu__item"
-            onClick={(e) => handle(e, () => downloadAll(etl))}
+            onClick={handleDownloadAll}
           >
             Descargar todo
           </button>
           <button
             className="etl-card-menu__item"
-            disabled={!hasKtr}
-            onClick={(e) => handle(e, () => downloadKtrFromEtl(etl))}
+            disabled={art.status !== "ok"}
+            title={art.status !== "ok" ? art.message : undefined}
+            onClick={handleDownloadKtr}
           >
             Descargar .ktr
           </button>
           <button
             className="etl-card-menu__item"
-            disabled={!hasKtr || supersetBusy}
+            disabled={supersetBusy}
             onClick={handleExportSuperset}
           >
             {supersetBusy ? "Abriendo en Superset..." : "Abrir en Superset"}
