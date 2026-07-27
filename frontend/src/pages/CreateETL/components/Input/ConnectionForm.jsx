@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { createConnection, testConnection } from "@/api/connections";
+import { useState, useEffect } from "react";
+import { createConnection, testConnection, listConnections } from "@/api/connections";
 import "../../css/shared.css";
 import "../../css/inputConnection.css";
 
@@ -37,13 +37,53 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
   const [form, setForm]     = useState(EMPTY_FORM);
   const [status, setStatus] = useState("idle");
   const [error, setError]   = useState("");
+  // Conexiones guardadas (metadata sin password) para reusar sin re-ingresar todo.
+  const [savedConns, setSavedConns] = useState([]);
+  // id de la Connection reusada; null = se va a crear una nueva al conectar.
+  const [reuseId, setReuseId]       = useState(null);
 
+  useEffect(() => {
+    let alive = true;
+    listConnections()
+      .then(list => { if (alive) setSavedConns(Array.isArray(list) ? list : []); })
+      .catch(() => { /* sin conexiones guardadas o backend sin auth: se ignora */ });
+    return () => { alive = false; };
+  }, []);
+
+  // Editar cualquier campo de identidad invalida el reuso: pasa a crear una nueva
+  // Connection. El password no es identidad, así que no rompe el reuso.
   const set = (field, v) =>
     setForm(prev => ({ ...prev, [field]: v }));
+
+  const setIdentity = (field, v) => {
+    setReuseId(null);
+    set(field, v);
+  };
+
+  const handlePickSaved = (id) => {
+    if (!id) { setReuseId(null); setForm(EMPTY_FORM); return; }
+    const c = savedConns.find(x => String(x.id) === String(id));
+    if (!c) return;
+    setReuseId(c.id);
+    setError("");
+    setStatus("idle");
+    setForm({
+      db_type:  c.db_type,
+      name:     c.name ?? "",
+      host:     c.host ?? "",
+      port:     c.port ?? PORT_DEFAULTS[c.db_type] ?? "",
+      database: c.database ?? "",
+      username: c.username ?? "",
+      password: "",  // nunca llega del backend — se tipea a mano
+      ssl_mode: c.ssl_mode ?? "require",
+      trustServerCert: Boolean(c.extra_options?.trust_server_certificate),
+    });
+  };
 
   const handleDbType = (newType) => {
     const currentPort = Number(form.port);
     const isDefault = Object.values(PORT_DEFAULTS).includes(currentPort);
+    setReuseId(null);
     setForm(prev => ({
       ...prev,
       db_type: newType,
@@ -52,28 +92,34 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
   };
 
   const handleConnect = async () => {
-    setStatus("creating");
     setError("");
     try {
-      const base = {
-        db_type:  form.db_type,
-        name:     form.name,
-        host:     form.host,
-        port:     Number(form.port),
-        database: form.database,
-        username: form.username,
-        password: form.password,
-      };
+      let conn;
+      if (reuseId) {
+        // Conexión guardada reusada: la metadata ya existe, no se crea de nuevo.
+        conn = { id: reuseId };
+      } else {
+        setStatus("creating");
+        const base = {
+          db_type:  form.db_type,
+          name:     form.name,
+          host:     form.host,
+          port:     Number(form.port),
+          database: form.database,
+          username: form.username,
+          password: form.password,
+        };
 
-      const payload = form.db_type === "postgresql"
-        ? { ...base, ssl_mode: form.ssl_mode }
-        : {
-            ...base,
-            ssl_mode: form.ssl_mode,
-            ...(form.trustServerCert ? { extra_options: { trust_server_certificate: true } } : {}),
-          };
+        const payload = form.db_type === "postgresql"
+          ? { ...base, ssl_mode: form.ssl_mode }
+          : {
+              ...base,
+              ssl_mode: form.ssl_mode,
+              ...(form.trustServerCert ? { extra_options: { trust_server_certificate: true } } : {}),
+            };
 
-      const conn = await createConnection(payload);
+        conn = await createConnection(payload);
+      }
 
       setStatus("testing");
       const testResult = await testConnection(conn.id, form.password);
@@ -97,6 +143,32 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
 
   return (
     <div>
+      {/* Conexiones guardadas: reusar sin re-ingresar todo (solo se tipea el password) */}
+      {savedConns.length > 0 && (
+        <div className="form-grid form-grid--mb">
+          <div className="form-field">
+            <label>Conexiones guardadas</label>
+            <select
+              value={reuseId ?? ""}
+              onChange={e => handlePickSaved(e.target.value)}
+            >
+              <option value="">— Nueva conexión —</option>
+              {savedConns.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name} · {c.host}:{c.port}/{c.database} ({c.db_type})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {reuseId && (
+        <p className="conn-reuse-hint">
+          Conexión reusada — solo ingresá la contraseña. Si editás algún dato, se creará una conexión nueva.
+        </p>
+      )}
+
       {/* Motor y nombre */}
       <div className="form-grid form-grid--mb">
         <div className="form-field">
@@ -111,7 +183,7 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
           <input
             type="text"
             value={form.name}
-            onChange={e => set("name", e.target.value)}
+            onChange={e => setIdentity("name", e.target.value)}
             placeholder="Mi conexión"
           />
         </div>
@@ -124,7 +196,7 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
           <input
             type="text"
             value={form.host}
-            onChange={e => set("host", e.target.value)}
+            onChange={e => setIdentity("host", e.target.value)}
             placeholder="localhost"
           />
         </div>
@@ -133,7 +205,7 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
           <input
             type="number"
             value={form.port}
-            onChange={e => set("port", e.target.value)}
+            onChange={e => setIdentity("port", e.target.value)}
           />
         </div>
         <div className="form-field">
@@ -141,7 +213,7 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
           <input
             type="text"
             value={form.database}
-            onChange={e => set("database", e.target.value)}
+            onChange={e => setIdentity("database", e.target.value)}
           />
         </div>
       </div>
@@ -153,7 +225,7 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
           <input
             type="text"
             value={form.username}
-            onChange={e => set("username", e.target.value)}
+            onChange={e => setIdentity("username", e.target.value)}
           />
         </div>
         <div className="form-field">
@@ -167,7 +239,7 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
 
         <div className="form-field">
           <label>Modo SSL</label>
-          <select value={form.ssl_mode} onChange={e => set("ssl_mode", e.target.value)}>
+          <select value={form.ssl_mode} onChange={e => setIdentity("ssl_mode", e.target.value)}>
             {SSL_MODES.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
         </div>
@@ -178,7 +250,7 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
               <input
                 type="checkbox"
                 checked={form.trustServerCert}
-                onChange={e => set("trustServerCert", e.target.checked)}
+                onChange={e => setIdentity("trustServerCert", e.target.checked)}
               />
               Confiar en certificado del servidor
             </label>

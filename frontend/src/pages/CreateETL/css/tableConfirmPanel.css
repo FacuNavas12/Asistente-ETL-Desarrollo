@@ -27,6 +27,96 @@
   background-color: var(--accent-subtle, rgba(99, 102, 241, 0.12));
 }
 
+.tpc-row--selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent, #6366f1);
+}
+
+/* ── Toolbar: buscador + contador ─────────────────────────────────────────── */
+.tpc-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.tpc-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.tpc-search-icon {
+  position: absolute;
+  left: 10px;
+  font-size: 12px;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.tpc-search {
+  width: 100%;
+  padding: 8px 30px 8px 30px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.tpc-search:focus {
+  outline: none;
+  border-color: var(--accent, #6366f1);
+}
+
+.tpc-search-clear {
+  position: absolute;
+  right: 8px;
+  border: none;
+  background: none;
+  color: var(--text-2, var(--text));
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.6;
+}
+
+.tpc-search-clear:hover {
+  opacity: 1;
+}
+
+.tpc-counter {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2, var(--text));
+  white-space: nowrap;
+}
+
+/* ── Lista scrollable con cabecera fija ───────────────────────────────────── */
+.tpc-scroll {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.tpc-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-card, var(--bg));
+}
+
+.tpc-no-results {
+  text-align: center;
+  padding: 18px;
+  opacity: 0.6;
+  font-size: 13px;
+}
+
 .tpc-row-action {
   text-align: right;
   white-space: nowrap;
