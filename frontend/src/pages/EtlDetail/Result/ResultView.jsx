@@ -1,10 +1,29 @@
+import { useState } from "react";
 import ChartPanel from "@/components/ui/ChartPanel";
 import CollapsibleSection from "../components/CollapsibleSection";
 import { readEtlArtifacts } from "@/utils/etlArtifacts";
 import "../etlDetail-global.css";
+import "@/pages/CreateETL/css/inferenceReview.css";
 import "./ResultView.css";
 
 const VALIDATION_LABELS = { error: "Error", warning: "Advertencia", info: "Info" };
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <button className="infer-panel__copy-btn" onClick={handleCopy} title="Copiar al portapapeles">
+      {copied ? "✓ Copiado" : "Copiar"}
+    </button>
+  );
+}
 
 function ValidationItem({ v }) {
   return (
@@ -54,6 +73,7 @@ export default function ResultView({ result }) {
     validaciones = [],
     documentacion = "",
     advertencias_buenas_practicas = [],
+    dwh_ddl = "",
   } = result ?? {};
 
   const art = readEtlArtifacts(result);
@@ -81,6 +101,20 @@ export default function ResultView({ result }) {
         <CollapsibleSection title="Validaciones">
           <div className="etl-validations-list">
             {validaciones.map((v, i) => <ValidationItem key={i} v={v} />)}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {dwh_ddl && (
+        <CollapsibleSection title="DDL final del DWH">
+          <div className="infer-panel">
+            <div className="infer-panel__header">
+              <p className="etl-section__text" style={{ margin: 0 }}>
+                Este es el DDL contra el que se generó el proceso — creá las tablas en tu DWH antes de correr el .ktr.
+              </p>
+              <CopyButton text={dwh_ddl} />
+            </div>
+            <pre className="infer-panel__ddl">{dwh_ddl}</pre>
           </div>
         </CollapsibleSection>
       )}
