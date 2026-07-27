@@ -155,41 +155,6 @@
   flex-shrink: 0;
 }
 
-/* Respuesta cruda del modelo (fallback ante fallo de build_ktr) */
-.infer-review__raw-banner {
-  background: var(--accent-bg);
-  border: 1px solid var(--accent-border);
-  border-radius: 14px;
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.infer-review__raw-banner p {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text);
-  line-height: 1.5;
-}
-
-.infer-review__raw-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.infer-review__raw-import-link {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: 12px;
-  color: var(--accent);
-  cursor: pointer;
-  text-decoration: underline;
-}
-
 /* Corrección */
 .infer-review__correction {
   background: var(--surface);

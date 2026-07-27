@@ -110,6 +110,10 @@ class ETLGenerateResponse(BaseModel):
     kjb_master: Optional[ArchivoKtr] = None
     lineage: Optional["Lineage"] = None
     metadata: MetadataResponse
+    # DDL final del DWH (post validate_and_correct_ddl — Parte 3): el mismo
+    # contra el que se armó KTR_2 (STG→DWH), no el dwh_model crudo del request.
+    # None en el flujo monolítico legacy (build-from-raw sin auditoría).
+    dwh_ddl: Optional[str] = None
 
 
 class ETLValidateResponse(BaseModel):
@@ -189,6 +193,18 @@ class ETLFromInferenceRequest(BaseModel):
     # llamadas viejas; ver _dim_contracts_anomaly_warning() en etl_generator.py
     # para la señal explícita cuando esto llega vacío pero dwh_model sí declara dim_*.
     dim_contracts: List[DimContract] = []
+    # D31 (docs/refactor/02-decisiones.md): salida cruda del modelo para la
+    # etapa origen→STG de un intento anterior, tal como la devuelve
+    # GET /{job_id}/status en stages[].data. Si viene, generate_etl_async NO
+    # llama al modelo para esa etapa ni corre sus repairs — ya vienen
+    # aplicados en el checkpoint; solo corre normalize_step_configs como red
+    # defensiva barata (determinística, sin LLM). NO es salida que produzca
+    # el LLM en este request: es entrada del cliente, misma superficie de
+    # confianza que BuildFromRawRequest.raw_llm_data. validate_and_correct_ddl
+    # y la etapa STG→DWH SIGUEN corriendo — no se saltea todo, solo 3 de 5
+    # llamadas al modelo. Los tokens de la etapa reutilizada no se cuentan en
+    # MetadataResponse.
+    reuse_stage_1: Optional[Dict[str, Any]] = None
 
 
 class DdlValidationResponse(BaseModel):
@@ -257,15 +273,54 @@ class GenerateAsyncResponse(BaseModel):
     job_id: str
 
 
+class ProgressEvent(BaseModel):
+    """Un evento de la bitácora de progreso de un KtrBuildJob (D29,
+    docs/refactor/02-decisiones.md). seq es monotónico y denso dentro del
+    job — el cliente pide desde el último seq que ya mostró; nunca se
+    reordena ni se reescribe un evento ya emitido.
+
+    code es vocabulario cerrado (ver _PROGRESS_CODES en
+    app.services.job_progress) — no texto libre, para poder assertarlo
+    en tests sin acoplarse a la redacción exacta del mensaje."""
+    seq: int
+    ts: str                        # ISO-8601 UTC
+    stage: Literal["job", "ddl", "origen_stg", "stg_dwh", "build"]
+    code: str
+    level: Literal["info", "warning", "error"]
+    message: str                   # español, listo para mostrar, <= 240 chars
+
+
+class StageRawInfo(BaseModel):
+    """Estado y payload crudo de UNA de las dos llamadas de generación
+    (D30/D32, docs/refactor/02-decisiones.md). `data` se puebla SOLO
+    cuando el job está en estado terminal — durante el polling activo
+    viaja siempre None, porque mandarlo en cada tick de 1.2s sería del
+    orden de 10 MB por generación (payloads de cientos de KB)."""
+    nombre: Literal["origen_stg", "stg_dwh"]
+    status: Literal["pending", "running", "done", "failed", "reused"]
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
 class KtrJobStatusResponse(BaseModel):
     model_status: str
     build_status: str
     error: Optional[str] = None
     result: Optional[ETLGenerateResponse] = None
-    # Poblado solo cuando build_status == "failed": el modelo ya respondió pero
-    # build_ktr() falló. Le permite al frontend guardar/reutilizar esa respuesta
-    # sin pagar de nuevo la llamada al LLM.
+    # Poblado solo cuando build_status == "failed" o "built" (y ambas etapas
+    # están completas): el modelo ya respondió. Le permite al frontend
+    # guardar/reutilizar esa respuesta sin pagar de nuevo la llamada al LLM.
+    #
+    # D32: este campo NUNCA lleva una etapa en null — build_etl_from_raw()
+    # (etl_generator.py:758) discrimina el shape por presencia de clave
+    # ("ktr_1" in raw_llm_data), no por valor, así que un {"ktr_2": null}
+    # pasaría ese chequeo y explotaría con TypeError más abajo. Lo parcial
+    # (una sola etapa lista) va en `stages`, campo separado que ningún
+    # consumidor viejo mira.
     raw_llm_data: Optional[Dict[str, Any]] = None
+    progress: List[ProgressEvent] = []
+    # Siempre las 2 entradas, en orden D28 (origen_stg, stg_dwh) — ver D30/D32.
+    stages: List[StageRawInfo] = []
 
 
 # Resolve forward references.

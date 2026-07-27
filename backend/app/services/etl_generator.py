@@ -41,6 +41,7 @@ from app.services.ktr_builder import (
 from app.services.ktr_builder.build import _sanitize
 from app.services.ktr_builder.fields_validate import FIELD_INTEGRITY_PREFIX
 from app.services.lineage_builder import stitch_lineage_many
+from app.services.job_progress import ProgressSink, active_sink, current_sink
 
 
 def _split_integrity_warnings(warnings: list[str]) -> tuple[list[str], list[Validacion]]:
@@ -568,6 +569,7 @@ def _build_response_from_two_ktr_data(
     extra_warnings: list[str] | None = None,
     extra_validaciones: list[Validacion] | None = None,
     strict_connections: bool = False,
+    dwh_ddl: str | None = None,
 ) -> ETLGenerateResponse:
     """Construye la respuesta del flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH).
     No reusa _build_response_from_data() porque cada build_ktr() acá necesita
@@ -686,6 +688,7 @@ def _build_response_from_two_ktr_data(
         kjb_master=kjb_master,
         lineage=lineage,
         metadata=metadata,
+        dwh_ddl=dwh_ddl,
     )
 
 
@@ -1000,6 +1003,7 @@ async def generate_etl_from_inference(
             *business_rule_warnings,
         ],
         extra_validaciones=[*ddl_result.conflictos, *[Validacion(**r) for r in step_policy_results]],
+        dwh_ddl=dwh_ddl,
     )
 
 
@@ -1008,10 +1012,62 @@ async def generate_etl_from_inference(
 # el router apenas el usuario confirma) mientras el cliente completa el
 # formulario de conexiones destino. _try_build es la barrera: se llama tanto
 # al terminar el modelo como al recibir conexiones, sin importar el orden.
+#
+# D29/D30 (docs/refactor/02-decisiones.md): el pipeline de generación quedó
+# organizado por ETAPA (no por operación) para poder checkpointear entre la
+# etapa 1 y la etapa 2 — ver _stage_pipeline() y los dos bloques "CHECKPOINT"
+# más abajo en generate_etl_async(). Progreso emitido vía ProgressSink
+# (app.services.job_progress) en cada hito.
 
-def _try_build(job_id, db: Session) -> None:
+_STAGE_LABEL = {
+    "job": "la generación",
+    "ddl": "la auditoría del DDL",
+    "origen_stg": "Origen → Staging",
+    "stg_dwh": "Staging → DWH",
+    "build": "el armado de archivos",
+}
+
+
+async def _stage_pipeline(
+    stage: Literal["origen_stg", "stg_dwh"],
+    prompt: str,
+    system: str,
+    context_text: str,
+    llm: BaseLLM,
+    sink: ProgressSink,
+) -> tuple[dict, Optional[LLMResponse], list[str]]:
+    """Corre UNA etapa completa (llamada al modelo + normalize + los dos
+    repairs) y emite progreso en cada hito. Extraído de lo que antes era una
+    única secuencia intercalada por operación (D30) — esto es lo que permite
+    que generate_etl_async() checkpointee entre la etapa 1 y la etapa 2:
+    antes no existía un instante "etapa 1 terminada" al que engancharse."""
+    label = _STAGE_LABEL[stage]
+    sink.current_stage = stage
+    sink.emit(code="stage.llm.started", message=f"Pidiendo al modelo el KTR {label}")
+
+    resp = await llm.complete(prompt, system, schema=ETL_OUTPUT_SCHEMA)
+    data = resp.json_data
+    if data is None:
+        raise ValueError(f"El modelo no devolvió datos estructurados para {label}.")
+
+    n_steps = len(data.get("ktr", {}).get("steps", []))
+    sink.emit(code="stage.llm.done", message=f"El modelo respondió — {label} ({n_steps} steps)")
+
+    data["ktr"], cfg_warnings = normalize_step_configs(data["ktr"])
+
+    sink.emit(code="stage.repair.started", message=f"Revisando steps incompletos — {label}")
+    data["ktr"], repair_warnings = await repair_ktr_steps(data["ktr"], llm, context_text)
+    data["ktr"], integrity_warnings = await repair_integrity_gaps(data["ktr"], llm, context_text)
+    sink.emit(code="stage.repair.done", message=f"Steps revisados — {label}")
+
+    return data, resp, [*cfg_warnings, *repair_warnings, *integrity_warnings]
+
+
+def _try_build(job_id, db: Session, sink: Optional[ProgressSink] = None) -> None:
     from app.models.ktr_build_job import KtrBuildJob, ModelStatus, KtrBuildStatus
     from app.services.ktr_builder import resolve_real_connections
+
+    sink = sink or current_sink()  # None si nadie seteó un sink (p.ej. tests viejos) — todo emit() de abajo lo tolera
 
     job = db.get(KtrBuildJob, job_id)
     if job is None:
@@ -1032,7 +1088,22 @@ def _try_build(job_id, db: Session) -> None:
         # a diferencia de antes, ya no bloquea el build.
         job.build_status = KtrBuildStatus.awaiting_connections
         db.commit()
+        if sink:
+            sink.emit(stage="build", code="build.waiting_connections", message="Esperando las conexiones de destino")
         return
+
+    # Guarda defensiva: model_status solo llega a "done" al final de las dos
+    # etapas (ver generate_etl_async) así que esto no debería dispararse hoy
+    # — pero un model_status=done sin raw_data_2 por un bug futuro reventaría
+    # más abajo con un KeyError feo en vez de un build_status=failed claro.
+    if not job.model_json or "raw_data_2" not in job.model_json:
+        job.build_status = KtrBuildStatus.failed
+        job.model_error = "Estado inconsistente: model_status=done sin raw_data_2."
+        db.commit()
+        return
+
+    if sink:
+        sink.emit(stage="build", code="build.started", message="Armando los archivos .ktr/.kjb")
 
     real_connections, conn_warnings = resolve_real_connections(job.connections_map, db, owner=job.owner_id)
     metadata = MetadataResponse(**job.model_json["metadata"])
@@ -1056,25 +1127,33 @@ def _try_build(job_id, db: Session) -> None:
             # (resolve_real_connections arriba) — si algo queda placeholder acá
             # es un .ktr final roto, no un preview: abortar en vez de entregarlo.
             strict_connections=True,
+            dwh_ddl=job.model_json.get("dwh_ddl"),
         )
     except KtrBuildError as exc:
         job.build_status = KtrBuildStatus.failed
         job.model_error = str(exc.original_error)
         db.commit()
+        if sink:
+            sink.emit(stage="build", code="build.failed", level="error",
+                       message=f"Falló la construcción del .ktr: {exc.original_error}")
         return
     except Exception as exc:
         # Cualquier falla no anticipada (ej. bug en build_lineage) no debe dejar
         # el job colgado en un estado no terminal: el cliente polea /status
         # indefinidamente si build_status nunca llega a "failed".
-        _log.error("_try_build: fallo no anticipado — %s", exc, exc_info=True)
+        _log.error("_try_build: fallo no anticipado (job_id=%s) — %s", job_id, exc, exc_info=True)
         job.build_status = KtrBuildStatus.failed
         job.model_error = str(exc)
         db.commit()
+        if sink:
+            sink.emit(stage="build", code="build.failed", level="error", message=f"Falló la construcción del .ktr: {exc}")
         return
 
     job.result_json = result.model_dump(mode="json")
     job.build_status = KtrBuildStatus.built
     db.commit()
+    if sink:
+        sink.emit(stage="build", code="build.done", message="Archivos generados")
 
     # Superset a configuración manual (ver decisión de diseño de no-custodia
     # de credenciales): la conexión ETL_DWH ya no se auto-provisiona acá con
@@ -1087,106 +1166,188 @@ def _try_build(job_id, db: Session) -> None:
 async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM, session_factory) -> None:
     """Llama al modelo y persiste el resultado en ktr_build_jobs. Abre su propia
     sesión de DB porque corre en un asyncio.create_task separado del request
-    original — la sesión del request ya cerró para cuando esto se ejecuta."""
+    original — la sesión del request ya cerró para cuando esto se ejecuta.
+
+    D30: la etapa 1 se checkpointea apenas termina (model_json.raw_data_1),
+    con model_status todavía en "pending" — un checkpoint parcial nunca
+    dispara _try_build() (exige model_status == done). Si la etapa 2 falla,
+    el except hace MERGE sobre model_json en vez de reemplazo, así que
+    raw_data_1 sobrevive al fallo de la etapa 2.
+
+    D31: req.reuse_stage_1, si viene, saltea la llamada al modelo de la etapa
+    1 (y sus repairs) — pero NO saltea validate_and_correct_ddl(): su dwh_ddl
+    alimenta el prompt de la etapa 2, _required_columns_from_ddl() y
+    ddl_conflictos."""
     from app.models.ktr_build_job import KtrBuildJob, KtrBuildStatus, ModelStatus
 
     db = session_factory()
-    try:
+    sink = ProgressSink(job_id, session_factory)
+    with active_sink(sink):
         try:
-            # Parte 3: el .ktr se arma contra el DDL final que sale de esta
-            # auditoría, no contra req.dwh_model crudo — misma llamada que en
-            # generate_etl_from_inference.
-            ddl_result = await validate_and_correct_ddl(req.dwh_model, req.dim_contracts, llm)
-            dwh_ddl    = ddl_result.dwh_ddl
+            sink.emit(stage="job", code="job.started", message="Generación iniciada")
+            try:
+                # Parte 3: el .ktr se arma contra el DDL final que sale de esta
+                # auditoría, no contra req.dwh_model crudo — misma llamada que en
+                # generate_etl_from_inference. SIEMPRE corre, con o sin reuse_stage_1.
+                sink.current_stage = "ddl"
+                sink.emit(code="ddl.audit.started", message="Auditando el DDL del DWH")
+                ddl_result = await validate_and_correct_ddl(req.dwh_model, req.dim_contracts, llm)
+                dwh_ddl    = ddl_result.dwh_ddl
+                n_cambios  = len(ddl_result.cambios_aplicados)
+                n_conflictos = len(ddl_result.conflictos)
+                sink.emit(
+                    stage="ddl", code="ddl.audit.done",
+                    message=(
+                        f"DDL auditado — {n_cambios} ajuste(s), {n_conflictos} conflicto(s)"
+                        if n_conflictos else f"DDL auditado — {n_cambios} ajuste(s) aplicado(s)"
+                    ),
+                )
 
-            ctx            = context_builder.build_model_context(req.origenTables, db)
-            origen_txt     = context_builder.format_model_context_for_prompt(ctx)
-            staging_tables = _staging_table_names_from_ddl(req.stg_definition)
-            system         = _load_system("system_etl.txt")
+                ctx            = context_builder.build_model_context(req.origenTables, db)
+                origen_txt     = context_builder.format_model_context_for_prompt(ctx)
+                staging_tables = _staging_table_names_from_ddl(req.stg_definition)
+                system         = _load_system("system_etl.txt")
+                context_text   = f"{req.stg_definition}\n\n{dwh_ddl}"
 
-            prompt_1 = _build_prompt_from_inference(req, origen_txt, mode="origen_stg", staging_tables=staging_tables)
-            prompt_2 = _build_prompt_from_inference(req, "", mode="stg_dwh", staging_tables=staging_tables, dwh_ddl=dwh_ddl)
+                # ── Etapa 1 (origen→STG) — reuso o llamada real ────────────────
+                if req.reuse_stage_1 is not None:
+                    data_1 = req.reuse_stage_1
+                    # Red defensiva barata (determinística, sin LLM): el payload
+                    # puede venir de un archivo importado por el usuario, misma
+                    # superficie de confianza que build-from-raw.
+                    data_1["ktr"], stage_warnings_1 = normalize_step_configs(data_1["ktr"])
+                    resp_1 = None
+                    sink.current_stage = "origen_stg"
+                    sink.emit(
+                        code="stage.reused",
+                        message=f"{_STAGE_LABEL['origen_stg']} reutilizada de un intento anterior — sin llamar al modelo",
+                    )
+                else:
+                    prompt_1 = _build_prompt_from_inference(
+                        req, origen_txt, mode="origen_stg", staging_tables=staging_tables,
+                    )
+                    data_1, resp_1, stage_warnings_1 = await _stage_pipeline(
+                        "origen_stg", prompt_1, system, context_text, llm, sink,
+                    )
 
-            resp_1 = await llm.complete(prompt_1, system, schema=ETL_OUTPUT_SCHEMA)
-            resp_2 = await llm.complete(prompt_2, system, schema=ETL_OUTPUT_SCHEMA)
-            data_1 = resp_1.json_data
-            data_2 = resp_2.json_data
-            if data_1 is None or data_2 is None:
-                raise ValueError("El modelo no devolvió datos estructurados.")
+                # CHECKPOINT 1 (D30): model_status sigue en "pending" — _try_build()
+                # no se dispara con un checkpoint parcial.
+                job = db.get(KtrBuildJob, job_id)
+                if job is None:
+                    return  # el usuario abandonó y el TTL ya barrió la fila
+                job.model_json = {
+                    **(job.model_json or {}),
+                    "raw_data_1": data_1,
+                    "dwh_ddl": dwh_ddl,
+                    "stage_warnings_1": stage_warnings_1,
+                    "ddl_conflictos": [c.model_dump() for c in ddl_result.conflictos],
+                    "stages": {
+                        "origen_stg": {"status": "reused" if req.reuse_stage_1 is not None else "done"},
+                        "stg_dwh": {"status": "pending"},
+                    },
+                }
+                db.commit()
+                sink.emit(
+                    code="stage.checkpoint",
+                    message=f"Respuesta de {_STAGE_LABEL['origen_stg']} guardada",
+                )
 
-            data_1["ktr"], cfg_warnings_1 = normalize_step_configs(data_1["ktr"])
-            data_2["ktr"], cfg_warnings_2 = normalize_step_configs(data_2["ktr"])
-            context_text = f"{req.stg_definition}\n\n{dwh_ddl}"
-            data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
-            data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
-            data_1["ktr"], integrity_warnings_1 = await repair_integrity_gaps(data_1["ktr"], llm, context_text)
-            data_2["ktr"], integrity_warnings_2 = await repair_integrity_gaps(data_2["ktr"], llm, context_text)
+                # ── Etapa 2 (STG→DWH) — siempre llama al modelo ────────────────
+                prompt_2 = _build_prompt_from_inference(
+                    req, "", mode="stg_dwh", staging_tables=staging_tables, dwh_ddl=dwh_ddl,
+                )
+                data_2, resp_2, stage_warnings_2 = await _stage_pipeline(
+                    "stg_dwh", prompt_2, system, context_text, llm, sink,
+                )
+            except Exception as exc:
+                _log.error("generate_etl_async: etapa %s falló (job_id=%s) — %s",
+                           sink.current_stage, job_id, exc, exc_info=True)
+                sink.emit(
+                    code="stage.failed", level="error",
+                    message=f"Falló {_STAGE_LABEL.get(sink.current_stage, sink.current_stage)}: {exc}",
+                )
+                job = db.get(KtrBuildJob, job_id)
+                if job is not None:
+                    job.model_status = ModelStatus.failed
+                    # build_status default es "awaiting_model" — sin esto el frontend
+                    # nunca ve un build_status terminal y polea /status hasta el techo
+                    # de 30 min (POLL_MAX_ATTEMPTS) en vez de cortar apenas el modelo falla.
+                    job.build_status = KtrBuildStatus.failed
+                    job.model_error = str(exc)
+                    # MERGE, no reemplazo — D30: si la etapa 1 ya se checkpointeó
+                    # (bloque de arriba), raw_data_1 sobrevive al fallo de la etapa 2.
+                    prev_stages = (job.model_json or {}).get("stages", {})
+                    job.model_json = {
+                        **(job.model_json or {}),
+                        "stages": {**prev_stages, sink.current_stage: {"status": "failed", "error": str(exc)}},
+                    }
+                    db.commit()
+                return
+
+            metadata = MetadataResponse(
+                modelo_usado=resp_2.model,
+                tokens_input=(resp_1.input_tokens if resp_1 else 0) + (resp_2.input_tokens or 0),
+                tokens_output=(resp_1.output_tokens if resp_1 else 0) + (resp_2.output_tokens or 0),
+                region_inferencia=resp_2.provider,
+            )
+
+            type_warnings = _type_mismatch_warnings(req.stg_definition, dwh_ddl, data_2["ktr"])
+            dim_contract_warnings = _dim_contracts_anomaly_warning(dwh_ddl, req.dim_contracts)
+            inferred_member_warnings = _inferred_member_notifications(
+                _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
+            )
+            ddl_change_warnings = [f"DDL (Parte 3): {c}" for c in ddl_result.cambios_aplicados]
+            # Muta data_2["ktr"] in-place cuando corrige un downgrade seguro — tiene
+            # que correr ANTES de persistir raw_data_2, si no _try_build() reconstruye
+            # el .ktr contra el step viejo (sin corregir). Nota: esto corre DESPUÉS
+            # del checkpoint 2 de abajo — raw_data_2 en el commit final puede diferir
+            # del que se ve en un /status intermedio, a propósito (ver D30).
+            step_policy_results = enforce_dimension_step_policy(
+                data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
+            )
+
+            reuse_tokens_note = (
+                ["Origen → Staging reutilizada — sus tokens no se contabilizan arriba."]
+                if req.reuse_stage_1 is not None else []
+            )
+
+            job = db.get(KtrBuildJob, job_id)
+            if job is None:
+                return  # el usuario abandonó y el TTL ya barrió la fila
+            job.model_status = ModelStatus.done
+            prev_stages = (job.model_json or {}).get("stages", {})
+            job.model_json = {
+                **(job.model_json or {}),
+                "raw_data_2": data_2,
+                "metadata": metadata.model_dump(),
+                "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, dwh_ddl),
+                "repair_warnings": [
+                    *stage_warnings_1, *stage_warnings_2,
+                    *type_warnings, *dim_contract_warnings, *inferred_member_warnings,
+                    *ddl_change_warnings, *reuse_tokens_note,
+                ],
+                # Persistido para que _try_build() (que corre después, cuando el
+                # usuario confirma las conexiones) pueda incluirlos en la
+                # respuesta final sin volver a llamar a validate_and_correct_ddl /
+                # enforce_dimension_step_policy.
+                "ddl_conflictos": [c.model_dump() for c in ddl_result.conflictos],
+                "step_policy_conflictos": step_policy_results,
+                "stages": {**prev_stages, "stg_dwh": {"status": "done"}},
+            }
+            db.commit()
+            sink.emit(code="stage.checkpoint", message=f"Respuesta de {_STAGE_LABEL['stg_dwh']} guardada")
+
+            _try_build(job_id, db, sink=sink)
         except Exception as exc:
+            # Red de seguridad: cualquier falla no anticipada por fuera del try/except
+            # puntual de arriba (ej. build_model_context, _try_build) tampoco debe
+            # dejar el job colgado en "awaiting_model" para siempre.
+            _log.error("generate_etl_async: fallo no anticipado (job_id=%s) — %s", job_id, exc, exc_info=True)
             job = db.get(KtrBuildJob, job_id)
             if job is not None:
                 job.model_status = ModelStatus.failed
-                # build_status default es "awaiting_model" — sin esto el frontend
-                # nunca ve un build_status terminal y polea /status hasta el techo
-                # de 30 min (POLL_MAX_ATTEMPTS) en vez de cortar apenas el modelo falla.
                 job.build_status = KtrBuildStatus.failed
                 job.model_error = str(exc)
                 db.commit()
-            return
-
-        metadata = MetadataResponse(
-            modelo_usado=resp_2.model,
-            tokens_input=(resp_1.input_tokens or 0) + (resp_2.input_tokens or 0),
-            tokens_output=(resp_1.output_tokens or 0) + (resp_2.output_tokens or 0),
-            region_inferencia=resp_2.provider,
-        )
-
-        type_warnings = _type_mismatch_warnings(req.stg_definition, dwh_ddl, data_2["ktr"])
-        dim_contract_warnings = _dim_contracts_anomaly_warning(dwh_ddl, req.dim_contracts)
-        inferred_member_warnings = _inferred_member_notifications(
-            _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
-        )
-        ddl_change_warnings = [f"DDL (Parte 3): {c}" for c in ddl_result.cambios_aplicados]
-        # Muta data_2["ktr"] in-place cuando corrige un downgrade seguro — tiene
-        # que correr ANTES de persistir raw_data_2, si no _try_build() reconstruye
-        # el .ktr contra el step viejo (sin corregir).
-        step_policy_results = enforce_dimension_step_policy(
-            data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
-        )
-
-        job = db.get(KtrBuildJob, job_id)
-        if job is None:
-            return  # el usuario abandonó y el TTL ya barrió la fila
-        job.model_status = ModelStatus.done
-        job.model_json = {
-            "raw_data_1": data_1,
-            "raw_data_2": data_2,
-            "metadata": metadata.model_dump(),
-            "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, dwh_ddl),
-            "repair_warnings": [
-                *cfg_warnings_1, *cfg_warnings_2,
-                *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
-                *type_warnings, *dim_contract_warnings, *inferred_member_warnings, *ddl_change_warnings,
-            ],
-            # Persistido para que _try_build() (que corre después, cuando el
-            # usuario confirma las conexiones) pueda incluirlos en la
-            # respuesta final sin volver a llamar a validate_and_correct_ddl /
-            # enforce_dimension_step_policy.
-            "ddl_conflictos": [c.model_dump() for c in ddl_result.conflictos],
-            "step_policy_conflictos": step_policy_results,
-        }
-        db.commit()
-
-        _try_build(job_id, db)
-    except Exception as exc:
-        # Red de seguridad: cualquier falla no anticipada por fuera del try/except
-        # puntual de arriba (ej. build_model_context, _try_build) tampoco debe
-        # dejar el job colgado en "awaiting_model" para siempre.
-        _log.error("generate_etl_async: fallo no anticipado — %s", exc, exc_info=True)
-        job = db.get(KtrBuildJob, job_id)
-        if job is not None:
-            job.model_status = ModelStatus.failed
-            job.build_status = KtrBuildStatus.failed
-            job.model_error = str(exc)
-            db.commit()
-    finally:
-        db.close()
+        finally:
+            db.close()

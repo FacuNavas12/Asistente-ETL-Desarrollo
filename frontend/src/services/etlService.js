@@ -56,11 +56,22 @@ export async function generateFromInference({
 // COMPLETO acumulado hasta el momento (el endpoint reemplaza el mapa entero,
 // no hace merge). getJobStatus se polea hasta build_status "built"/"failed".
 
-export async function generateAsync({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio, dim_contracts }) {
+// reuse_stage_1 (D31, docs/refactor/02-decisiones.md): salida cruda del
+// modelo para origen→STG de un intento anterior, tal como llega en
+// stages[].data de un status previo. Si se pasa, el backend saltea la
+// llamada al modelo de esa etapa (y sus repairs) — pero NO saltea la
+// auditoría de DDL ni la etapa STG→DWH. null (default) = flujo normal.
+export async function generateAsync({
+  descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio,
+  dim_contracts, reuse_stage_1 = null,
+}) {
   return apiFetch("/api/v1/etl/generate-async", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio, dim_contracts }),
+    body: JSON.stringify({
+      descripcionObjetivo, origenTables, stg_definition, dwh_model, reglasNegocio,
+      dim_contracts, reuse_stage_1,
+    }),
   });
 }
 

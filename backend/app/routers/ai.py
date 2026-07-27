@@ -28,7 +28,9 @@ from app.schemas.etl_schemas import (
     InferRequest,
     InferResponse,
     KtrJobStatusResponse,
+    ProgressEvent,
     RefineRequest,
+    StageRawInfo,
 )
 from app.services.etl_generator import (
     build_etl_from_raw,
@@ -37,6 +39,7 @@ from app.services.etl_generator import (
     KtrBuildError,
     _try_build,
 )
+from app.services.job_progress import ProgressSink
 from app.services.validator import validate_etl
 from app.services.documenter import document_etl
 from app.services.structure_inferrer import infer_structures, refine_structures
@@ -192,6 +195,9 @@ def _job_or_404(job_id: str, db: Session, owner: Optional[str] = None) -> KtrBui
     return job
 
 
+_STAGE_KEYS = (("origen_stg", "raw_data_1"), ("stg_dwh", "raw_data_2"))
+
+
 def _status_response(job: KtrBuildJob) -> KtrJobStatusResponse:
     # build_status == "failed": el modelo ya respondió (job.model_json quedó
     # poblado en generate_etl_async) pero build_ktr() falló en _try_build.
@@ -201,12 +207,37 @@ def _status_response(job: KtrBuildJob) -> KtrJobStatusResponse:
     # TTL de _JOB_TTL_MINUTES: sin esto, una vez expirado el job no queda
     # forma de reconstruir el .ktr con una conexión destino distinta (ver
     # POST /api/v1/etl/{etl_id}/connections, que lee justo ese raw data).
+    #
+    # D32 (docs/refactor/02-decisiones.md): raw_llm_data NUNCA lleva una etapa
+    # en null — build_etl_from_raw() (etl_generator.py:758) discrimina el shape
+    # por presencia de clave, no de valor; un {"ktr_2": null} pasaría ese
+    # chequeo y explotaría con TypeError más abajo. La info parcial va en
+    # `stages`, campo separado.
+    mj = job.model_json or {}
     raw_llm_data = None
-    if job.build_status.value in ("failed", "built") and job.model_json:
-        data_1 = job.model_json.get("raw_data_1")
-        data_2 = job.model_json.get("raw_data_2")
+    if job.build_status.value in ("failed", "built"):
+        data_1 = mj.get("raw_data_1")
+        data_2 = mj.get("raw_data_2")
         if data_1 is not None and data_2 is not None:
             raw_llm_data = {"ktr_1": data_1, "ktr_2": data_2}
+
+    # D30/D32: stages siempre las 2 entradas, en orden D28. `data` solo en
+    # estado terminal del job — mandarlo en cada tick del polling activo
+    # (cada 1.2s, payloads de cientos de KB) sería del orden de 10 MB por
+    # generación.
+    terminal = job.build_status.value in ("failed", "built") or job.model_status.value == "failed"
+    stage_book = mj.get("stages") or {}
+    stages = [
+        StageRawInfo(
+            nombre=nombre,
+            status=(stage_book.get(nombre) or {}).get("status", "pending"),
+            error=(stage_book.get(nombre) or {}).get("error"),
+            data=mj.get(data_key) if terminal else None,
+        )
+        for nombre, data_key in _STAGE_KEYS
+    ]
+
+    prog_events = (job.progress_json or {}).get("events", [])
 
     return KtrJobStatusResponse(
         model_status=job.model_status.value,
@@ -214,6 +245,8 @@ def _status_response(job: KtrBuildJob) -> KtrJobStatusResponse:
         error=job.model_error,
         result=ETLGenerateResponse(**job.result_json) if job.result_json else None,
         raw_llm_data=raw_llm_data,
+        progress=[ProgressEvent(**e) for e in prog_events],
+        stages=stages,
     )
 
 
@@ -246,6 +279,7 @@ async def submit_job_connections(
     job_id: str,
     body: ConnectionsMapRequest,
     db: Session = Depends(get_db),
+    session_factory = Depends(get_session_factory),
     payload: Optional[dict] = Depends(require_auth),
 ):
     """Ata connection_id ya creados (vía POST /api/connections, mismo formulario
@@ -264,7 +298,14 @@ async def submit_job_connections(
     job = _job_or_404(job_id, db, get_current_owner(payload))
     job.connections_map = {**(job.connections_map or {}), **body.model_dump(exclude_none=True)}
     db.commit()
-    _try_build(job.id, db)
+    # D29: esta request no corre dentro del ContextVar que generate_etl_async
+    # setea (es un codepath distinto, sin active_sink activo) — se arma un
+    # ProgressSink propio con el mismo session_factory que ya inyecta el
+    # router, para que _try_build() pueda seguir emitiendo build.* acá
+    # también (es, de hecho, el disparador más común del build real: el
+    # modelo suele terminar antes de que el usuario complete el formulario
+    # de conexiones).
+    _try_build(job.id, db, sink=ProgressSink(job.id, session_factory))
     db.refresh(job)
     return _status_response(job)
 

@@ -120,3 +120,33 @@ export function downloadLlmRaw(rawLlmData, name) {
     `etl-llm-raw-${safeFilename(payload.name)}.json`,
   );
 }
+
+/**
+ * Export la respuesta cruda del modelo de UNA sola etapa (D31/D33,
+ * docs/refactor/02-decisiones.md) — origen_stg o stg_dwh, por separado.
+ *
+ * Envelope propio ("etl_llm_stage"), distinto de "etl_llm_raw": reusar
+ * downloadLlmRaw acá produciría un dict plano que build_etl_from_raw()
+ * interpretaría como el shape legacy monolítico (1 KTR), no como una etapa
+ * del flujo de 2 — se importaría sin error pero armaría algo distinto de lo
+ * que el usuario espera.
+ *
+ * @param {object} stageData — el dict crudo de esa etapa (stages[].data)
+ * @param {"origen_stg"|"stg_dwh"} stage
+ * @param {string} name — display name for the ETL
+ */
+export function downloadLlmStage(stageData, stage, name) {
+  const payload = {
+    type: "etl_llm_stage",
+    version: EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    name: name ?? "sin-nombre",
+    stage,
+    data: stageData,
+  };
+
+  triggerDownload(
+    serialize(payload),
+    `etl-llm-${stage}-${safeFilename(payload.name)}.json`,
+  );
+}

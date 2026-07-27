@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import logo from "@/assets/Logo_blanco_esp.png";
 import { useNavigate, useLocation, useBlocker } from "react-router-dom";
 import { useForm, useWatch } from "react-hook-form";
@@ -18,8 +18,9 @@ import {
   generateAsync, submitJobConnections, getJobStatus,
 } from "@/services/etlService";
 import { useToast } from "@/components/ui/Toast";
-import { downloadEtlSkeleton, downloadLlmRaw } from "@/utils/etlExport";
-import { importEtlSkeleton, importLlmRaw } from "@/utils/etlImport";
+import { downloadEtlSkeleton, downloadLlmRaw, downloadLlmStage } from "@/utils/etlExport";
+import { importEtlSkeleton, importModelResponse } from "@/utils/etlImport";
+import { stagesArrayToMap, mergeProgressLogs } from "./utils/progressLog";
 import CreateETLOptions from "./components/CreateETLOptions";
 import "./css/createETL.css";
 
@@ -85,14 +86,20 @@ export default function CreateETL() {
   const [isRefining,     setIsRefining]     = useState(false);
   const [etlPhase,       setEtlPhase]       = useState("waiting");
   const [ktrLogs,        setKtrLogs]        = useState([]);
-  // Raw LLM response saved when build_ktr() fails server-side, so the (expensive) model
-  // output isn't lost. null when there's nothing to reuse yet.
-  const [rawLlmData,     setRawLlmData]     = useState(null);
+  // D30/D32/D33 (docs/refactor/02-decisiones.md): respuesta cruda del modelo
+  // por etapa — { origen_stg: {status,data,error}|null, stg_dwh: {...}|null }.
+  // Poblado desde status.stages en cada tick del poll, sobrevive un fallo
+  // parcial (solo una etapa lista) a diferencia del rawLlmData de antes.
+  const [modelStages,    setModelStages]    = useState({ origen_stg: null, stg_dwh: null });
+  const [modelResponsesOpen, setModelResponsesOpen] = useState(false);
   // job_id del flujo async (generate-async): el modelo corre en background mientras
   // el usuario completa las conexiones destino en paralelo (ver handleConfirm).
   const [jobId,          setJobId]          = useState(null);
   const connectionsMapRef       = useRef({});
   const pollTimeoutRef          = useRef(null);
+  // D29: último seq de progreso ya volcado a ktrLogs — el poll solo agrega
+  // los eventos nuevos, no reconstruye la lista entera en cada tick.
+  const lastProgressSeqRef      = useRef(-1);
   const pendingNavigateRef      = useRef(null);
   const pendingClearStateRef    = useRef(false);
   const importInputRef          = useRef(null);
@@ -100,6 +107,15 @@ export default function CreateETL() {
   const currentEtlIdRef      = useRef(location.state?.etlId ?? null);
   // Track serialized tables to distinguish real changes from reference-only re-renders
   const origenTablesSerialRef = useRef(JSON.stringify(initSource?.origenTables ?? []));
+
+  // D32: derivado con el shape {ktr_1, ktr_2} completo (o null) que consumen
+  // buildFromRaw/_finishEtl/downloadLlmRaw — nunca una etapa en null. Solo
+  // "completo" cuando las DOS etapas están done/reused.
+  const rawLlmData = useMemo(() => {
+    const a = modelStages.origen_stg?.data;
+    const b = modelStages.stg_dwh?.data;
+    return (a && b) ? { ktr_1: a, ktr_2: b } : null;
+  }, [modelStages]);
 
   // Clear stale inferResult only when table content actually changes (not on reference-only re-renders).
   useEffect(() => {
@@ -109,7 +125,7 @@ export default function CreateETL() {
     if (inferResult) {
       setInferResult(null);
       setInferHistory([]);
-      setRawLlmData(null);
+      setModelStages({ origen_stg: null, stg_dwh: null });
     }
   }, [origenTables]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -215,7 +231,7 @@ export default function CreateETL() {
     setNameInputVal("Generar ETL");
     setInferResult(null);
     setInferHistory([]);
-    setRawLlmData(null);
+    setModelStages({ origen_stg: null, stg_dwh: null });
     clearDraft();
     setStep(STEP.FORM);
   };
@@ -250,7 +266,7 @@ export default function CreateETL() {
           : null
       );
       setInferHistory([]);
-      setRawLlmData(null);
+      setModelStages({ origen_stg: null, stg_dwh: null });
       setStep(STEP.FORM);
     } catch (err) {
       notifySystem(`Error al importar: ${err.message}`);
@@ -309,10 +325,10 @@ export default function CreateETL() {
       setInferResult(data);
       // Parte 4 (bloque B): un refinamiento que modifica el contrato de una
       // dimensión existente invalida cualquier respuesta cruda guardada de un
-      // intento anterior — reutilizarla (botón "Reutilizar respuesta") armaría
-      // el .ktr con steps pensados para el contrato viejo. Forzar regeneración.
+      // intento anterior — reutilizarla armaría el .ktr con steps pensados
+      // para el contrato viejo. Forzar regeneración de las dos etapas.
       if (data.assumptions?.some(a => a.startsWith("CONTRATO MODIFICADO"))) {
-        setRawLlmData(null);
+        setModelStages({ origen_stg: null, stg_dwh: null });
       }
     } catch (err) {
       notifySystem(`Error al aplicar corrección: ${err.message}`);
@@ -340,7 +356,7 @@ export default function CreateETL() {
       // (ver POST /api/etls/{id}/connections).
       rawLlmData: rawLlmDataUsed ?? null,
     }, apiResult, etlName);
-    setRawLlmData(null);
+    setModelStages({ origen_stg: null, stg_dwh: null });
     const dest = `/etl/${id}`;
     if (isDirty) {
       pendingNavigateRef.current = dest;
@@ -375,12 +391,30 @@ export default function CreateETL() {
         const status = await getJobStatus(job_id);
         if (status.model_status === "done") setEtlPhase("building");
 
+        // D29: solo los eventos nuevos desde el último tick — el spinner de
+        // "Esperando respuesta" pasa a mostrar hitos reales (auditoría de
+        // DDL, llamadas al modelo, reintentos, reparación de steps).
+        const events = status.progress ?? [];
+        const nuevos = events.filter(e => e.seq > lastProgressSeqRef.current);
+        if (nuevos.length) {
+          lastProgressSeqRef.current = events[events.length - 1].seq;
+          setKtrLogs(prev => mergeProgressLogs(prev, nuevos));
+        }
+
+        // D30/D32: se actualiza en CADA tick, no solo al terminar — así el
+        // drawer de respuestas ya muestra "origen_stg lista" apenas se
+        // checkpointeó, sin esperar a que la etapa 2 también termine.
+        const stagesMap = stagesArrayToMap(status.stages);
+        setModelStages(stagesMap);
+
         if (status.build_status === "built") {
-          await _finishEtl(status.result, status.raw_llm_data);
+          const raw = (stagesMap.origen_stg?.data && stagesMap.stg_dwh?.data)
+            ? { ktr_1: stagesMap.origen_stg.data, ktr_2: stagesMap.stg_dwh.data }
+            : null;
+          await _finishEtl(status.result, raw);
           return;
         }
         if (status.build_status === "failed") {
-          if (status.raw_llm_data) setRawLlmData(status.raw_llm_data);
           setStep(STEP.REVIEW);
           notifySystem(`Error al generar el ETL: ${status.error ?? "fallo desconocido"}`);
           return;
@@ -419,10 +453,17 @@ export default function CreateETL() {
   // de conexiones destino en paralelo — no se espera al modelo para empezar
   // a pedirlas. build_ktr() en el backend no arma nada hasta que el usuario
   // confirma el formulario (ver handleFinalizeConnections).
-  const handleConfirm = async () => {
+  //
+  // D31: reuseStage1, si viene (desde el drawer de respuestas), reenvía la
+  // respuesta cruda ya guardada de origen→STG — el backend saltea esa
+  // llamada al modelo (no la auditoría de DDL ni la etapa STG→DWH).
+  const handleConfirm = async ({ reuseStage1 = null } = {}) => {
     setEtlPhase("waiting");
     setKtrLogs([]);
-    setRawLlmData(null);
+    lastProgressSeqRef.current = -1;
+    setModelStages(prev => (
+      reuseStage1 ? { ...prev, stg_dwh: null } : { origen_stg: null, stg_dwh: null }
+    ));
     setJobId(null);
     connectionsMapRef.current = { conn_origen: _deriveOrigenConnectionId() };
     setStep(STEP.PROCESSING);
@@ -435,6 +476,7 @@ export default function CreateETL() {
         dwh_model:      inferResult.dwh_ddl,
         reglasNegocio,
         dim_contracts:  inferResult.dim_contracts ?? [],
+        reuse_stage_1:  reuseStage1,
       });
       setJobId(job_id);
 
@@ -445,8 +487,18 @@ export default function CreateETL() {
     }
   };
 
-  // ── DESDE REVISIÓN: reutilizar una respuesta del modelo ya guardada ──────
-  // Salta la llamada al LLM: reconstruye el .ktr en backend a partir de rawLlmData.
+  // ── DESDE EL DRAWER: reintentar reusando "Origen → STG" ──────────────────
+  // A diferencia de handleReuseResponse (cero LLM), esto SÍ llama al modelo
+  // — solo se salta la etapa 1 (D31/D33).
+  const handleRetryReusingStage1 = () => {
+    const stage1Data = modelStages.origen_stg?.data;
+    if (!stage1Data) return;
+    handleConfirm({ reuseStage1: stage1Data });
+  };
+
+  // ── DESDE EL DRAWER: reutilizar las dos respuestas ya guardadas ──────────
+  // Salta la llamada al LLM por completo: reconstruye el .ktr en backend a
+  // partir de rawLlmData (D33 — solo habilitado con las 2 etapas listas).
   const handleReuseResponse = async () => {
     if (!rawLlmData) return;
     setEtlPhase("building");
@@ -458,10 +510,23 @@ export default function CreateETL() {
       const apiResult = await buildFromRaw(rawLlmData, inferResult?.dim_contracts ?? []);
       await _finishEtl(apiResult, rawLlmData);
     } catch (err) {
-      if (err.rawLlmData) setRawLlmData(err.rawLlmData);
+      if (err.rawLlmData) {
+        setModelStages({
+          origen_stg: { status: "done", data: err.rawLlmData.ktr_1 ?? null, error: null },
+          stg_dwh:    { status: "done", data: err.rawLlmData.ktr_2 ?? null, error: null },
+        });
+      }
       setStep(STEP.REVIEW);
       notifySystem(`Error al reconstruir el .ktr: ${err.message}`);
     }
+  };
+
+  // Descarga una sola etapa (D31/D33) — distinto de "Descargar todo", que
+  // exporta el envelope etl_llm_raw completo y solo tiene sentido con las 2.
+  const handleDownloadStage = (nombre) => {
+    const data = modelStages[nombre]?.data;
+    if (!data) return;
+    downloadLlmStage(data, nombre, etlName);
   };
 
   const handleDownloadRaw = () => {
@@ -469,13 +534,25 @@ export default function CreateETL() {
     downloadLlmRaw(rawLlmData, etlName);
   };
 
-  const handleImportRaw = async (e) => {
+  // Acepta tanto un archivo completo (etl_llm_raw) como uno de una sola
+  // etapa (etl_llm_stage, D31) — un solo input de archivo para el drawer.
+  const handleImportModelResponse = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
     try {
-      const data = await importLlmRaw(file);
-      setRawLlmData(data);
+      const parsed = await importModelResponse(file);
+      if (parsed.kind === "full") {
+        setModelStages({
+          origen_stg: { status: "done", data: parsed.raw_llm_data.ktr_1 ?? null, error: null },
+          stg_dwh:    { status: "done", data: parsed.raw_llm_data.ktr_2 ?? null, error: null },
+        });
+      } else {
+        setModelStages(prev => ({
+          ...prev,
+          [parsed.stage]: { status: "done", data: parsed.data, error: null },
+        }));
+      }
     } catch (err) {
       notifySystem(`Error al importar respuesta del modelo: ${err.message}`);
     }
@@ -544,7 +621,7 @@ export default function CreateETL() {
               type="file"
               accept=".json"
               style={{ display: "none" }}
-              onChange={handleImportRaw}
+              onChange={handleImportModelResponse}
             />
           )}
 
@@ -627,8 +704,13 @@ export default function CreateETL() {
               onBack={() => setStep(STEP.FORM)}
               onGuardar={handleGuardarFromReview}
               isRefining={isRefining}
-              rawLlmData={rawLlmData}
+              modelStages={modelStages}
+              modelResponsesOpen={modelResponsesOpen}
+              onOpenModelResponses={() => setModelResponsesOpen(true)}
+              onCloseModelResponses={() => setModelResponsesOpen(false)}
               onReuseResponse={handleReuseResponse}
+              onRetryReusingStage1={handleRetryReusingStage1}
+              onDownloadStage={handleDownloadStage}
               onDownloadRaw={handleDownloadRaw}
               onImportRaw={() => importRawInputRef.current?.click()}
             />

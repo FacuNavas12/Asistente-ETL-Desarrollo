@@ -67,6 +67,21 @@
   opacity: 0;
 }
 
+/* D29: nivel del evento de progreso — info es el estilo base de
+   .checks-log-item de arriba; warning/error se destacan y nunca se
+   desvanecen (ver mergeProgressLogs en utils/progressLog.js). */
+.checks-log-item--warning {
+  border-color: #d99a00;
+  background: #d99a0014;
+  color: var(--text-h);
+}
+
+.checks-log-item--error {
+  border-color: #d9363e;
+  background: #d9363e14;
+  color: var(--text-h);
+}
+
 /* ── Spinner ─────────────────────────────────────────────────── */
 @keyframes spin {
   to { transform: rotate(360deg); }

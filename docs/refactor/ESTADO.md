@@ -21,5 +21,5 @@ Vocabulario cerrado: `pendiente` / `en curso` / `cerrada` / `bloqueada por <qué
 | F2 — Diseñar el corte | cerrada, aprobada por usuario (2026-07-23, D17) | — | `03b-reportes.md#reporte-f2` |
 | F2.5 — Soporte `JobEntryJob` | cerrada en código (2026-07-24) | — | H7 en `01-hallazgos.md` |
 | F3 — Implementar el corte | cerrada (2026-07-27) | — | `03b-reportes.md#estado-f3`, D19/D20/D28 en `02-decisiones.md` |
-| F4 — Track de errores | en curso | Validador de contrato (D23, sin código); business-rules validator (stub); ver `04-verificacion.md` para lo pendiente de re-correr | D21-D23 en `02-decisiones.md` |
+| F4 — Track de errores | en curso | Validador de contrato (D23, sin código); business-rules validator (stub); progreso observable + checkpoint por etapa del job async (D29-D33) en implementación; ver `04-verificacion.md` para lo pendiente de re-correr | D21-D23, D29-D33 en `02-decisiones.md` |
 | F5 — Limpieza de bajo costo | cerrada en código (2026-07-25) | — | H12 en `01-hallazgos.md` |

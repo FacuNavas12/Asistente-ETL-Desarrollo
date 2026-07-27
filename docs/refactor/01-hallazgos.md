@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Cada H se escribe una vez y no se reescribe — una actualización nueva se agrega como párrafo nuevo dentro de la misma entrada, con fecha. El índice al tope sí se edita en el momento en que el estado de un hallazgo cambia.
 
-**Última actualización:** 2026-07-27 (H30-H32)
+**Última actualización:** 2026-07-27 (H33-H34)
 
 Cada entrada: qué se encontró, evidencia (`archivo:línea`), de qué sesión salió, y estado. Estado se evalúa contra [`02-decisiones.md`](02-decisiones.md) — si una decisión ya cerró el hallazgo, dice cuál.
 
@@ -48,6 +48,8 @@ El cuerpo de cada H es evidencia, no repite estado por fuera de lo ya escrito en
 | H30 | `KNOWN_PDI_STEP_TYPES` era código muerto, docstring describía un mecanismo (whitelist→Dummy) que el código ya no tenía | Cerrado 2026-07-27 — D27 (borrado, reemplazado por test de coherencia) | docstring/muerto | A2 |
 | H31 | 7 alias de `STEP_TYPE_ALIASES` sin builder en `STEP_BUILDERS` | Abierto, inofensivo hoy — el prompt no ofrece los display names que resuelven a estos | contenido-LLM | — |
 | H32 | 4 builders en `STEP_BUILDERS` que el prompt nunca ofrece (capacidad desperdiciada) | Abierto, inofensivo — registro nomás | prompt | — |
+| H33 | `PasswordFilter` del logger root no redacta nada de `app.*` | Abierto, sin dueño — bug preexistente, no introducido por D29 | logging/seguridad | — |
+| H34 | `_try_build` puede correr concurrentemente desde dos sesiones sin lock | Abierto, sin dueño — preexistente, visible ahora por D29 | concurrencia | F4 |
 
 ---
 
@@ -549,6 +551,48 @@ Los tres módulos duplican, cada uno por su cuenta, la reacción ante "tabla no 
 **Sesión de origen:** sesión de arquitectura, cierre del split de `registry.py`, 2026-07-27.
 
 **Estado:** abierto, sin dueño — registro nomás. Candidato a resolverse el día que alguien decida si el prompt debería ofrecer estos tipos (probablemente sí para `DataValidator`/`Denormaliser`, dudoso para los `SplitFieldToRows*` que ya comparten builder).
+
+---
+
+## H33 — `PasswordFilter` del logger root no redacta nada de `app.*`
+
+**Qué:** `main.py:59` hace `logging.getLogger().addFilter(PasswordFilter())` — un filtro sobre el logger
+**root**. En el módulo `logging` de la stdlib, los filtros de un logger solo se aplican a los records **creados
+por ese logger** (`Logger.handle` llama `self.filter(record)` antes de propagar). En la propagación hacia
+arriba, `callHandlers` invoca los **handlers** de los loggers ancestros, pero no sus filtros. Todo el código de
+la app loguea contra loggers con nombre `app.*` (`logging.getLogger(__name__)`), nunca contra el root
+directamente — así que `PasswordFilter` nunca corre sobre esos records. La redacción de credenciales en
+`backend/logs/generaciones.log` está, en la práctica, inactiva para el código de la aplicación.
+
+**Evidencia:** `backend/app/main.py:59` (el `addFilter`), `backend/app/core/log_filters.py` (`PasswordFilter`).
+Comportamiento de `logging` verificado contra la documentación de la stdlib (`Logger.callHandlers` no consulta
+`self.filters` de los ancestros).
+
+**Sesión de origen:** diseño de D29 (progreso observable del job async), 2026-07-27 — encontrado al decidir
+dónde poner el filtro del `_ProgressLogHandler` nuevo.
+
+**Estado:** abierto, sin dueño. Fix correcto: mover `PasswordFilter` a los handlers concretos (`_file_handler`,
+`StreamHandler`) en vez del logger root. Fuera de alcance de D29 — el handler de progreso que introduce D29
+lleva su propio `PasswordFilter` explícito mientras tanto, sin depender de este.
+
+---
+
+## H34 — `_try_build` puede correr concurrentemente desde dos sesiones sin lock
+
+**Qué:** `_try_build(job_id, db)` (`etl_generator.py:1012-1077`) se invoca desde dos lugares con sesiones de DB
+distintas — al terminar el modelo (`generate_etl_async`, sesión propia del `asyncio.create_task`) y al llegar
+`POST /{job_id}/connections` (sesión del request, `ai.py:267`) — sin ningún lock (`SELECT ... FOR UPDATE` o
+equivalente) ni chequeo optimista. Si ambos disparadores caen cerca en el tiempo, `build_ktr()` puede correr dos
+veces y `result_json` se escribe dos veces desde sesiones distintas.
+
+**Evidencia:** `backend/app/services/etl_generator.py:1012-1077` (`_try_build`), llamado en `:1179` y en
+`backend/app/routers/ai.py:267`.
+
+**Sesión de origen:** diseño de D29/D30, 2026-07-27 — el progreso nuevo hace visible esta condición (dos
+eventos `build.started` seguidos serían la señal), pero no la introduce.
+
+**Estado:** abierto, sin dueño. Preexistente a esta sesión. Fix (lock optimista sobre `build_status`, o un
+`UPDATE ... WHERE build_status = ...` atómico) queda fuera de alcance de D29/D30.
 
 ---
 

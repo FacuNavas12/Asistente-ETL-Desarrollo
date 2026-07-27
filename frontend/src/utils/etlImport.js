@@ -216,3 +216,67 @@ export async function importLlmRaw(file) {
 
   return data.raw_llm_data;
 }
+
+const VALID_STAGES = ["origen_stg", "stg_dwh"];
+
+/**
+ * Import la respuesta cruda de UNA sola etapa (D31/D33, exportada por
+ * downloadLlmStage). Envelope "etl_llm_stage" — distinto de "etl_llm_raw".
+ *
+ * @param {File} file
+ * @returns {Promise<{stage: "origen_stg"|"stg_dwh", data: object}>}
+ */
+export async function importLlmStage(file) {
+  const data = await parseJSON(file);
+
+  checkType(data, "etl_llm_stage");
+  checkVersion(data);
+
+  if (!VALID_STAGES.includes(data.stage)) {
+    throw new Error(`Etapa desconocida en el archivo: "${data.stage}" (esperada: ${VALID_STAGES.join(" o ")}).`);
+  }
+  if (!data.data || typeof data.data !== "object") {
+    throw new Error("El archivo no contiene datos de la etapa");
+  }
+
+  return { stage: data.stage, data: data.data };
+}
+
+/**
+ * Import genérico para el drawer de respuestas del modelo (D33): acepta
+ * tanto un archivo completo ("etl_llm_raw", las dos etapas) como uno de una
+ * sola etapa ("etl_llm_stage", D31). Devuelve un shape uniforme para que el
+ * caller no tenga que distinguir el envelope de origen.
+ *
+ * @param {File} file
+ * @returns {Promise<
+ *   {kind: "full", raw_llm_data: {ktr_1: object, ktr_2: object}}
+ *   | {kind: "stage", stage: "origen_stg"|"stg_dwh", data: object}
+ * >}
+ */
+export async function importModelResponse(file) {
+  const data = await parseJSON(file);
+
+  if (data.type === "etl_llm_stage") {
+    checkVersion(data);
+    if (!VALID_STAGES.includes(data.stage)) {
+      throw new Error(`Etapa desconocida en el archivo: "${data.stage}" (esperada: ${VALID_STAGES.join(" o ")}).`);
+    }
+    if (!data.data || typeof data.data !== "object") {
+      throw new Error("El archivo no contiene datos de la etapa");
+    }
+    return { kind: "stage", stage: data.stage, data: data.data };
+  }
+
+  if (data.type === "etl_llm_raw") {
+    checkVersion(data);
+    if (!data.raw_llm_data || typeof data.raw_llm_data !== "object") {
+      throw new Error("El archivo no contiene raw_llm_data");
+    }
+    return { kind: "full", raw_llm_data: data.raw_llm_data };
+  }
+
+  throw new Error(
+    `Tipo de archivo no reconocido: "${data.type}". Esperado "etl_llm_raw" o "etl_llm_stage".`
+  );
+}

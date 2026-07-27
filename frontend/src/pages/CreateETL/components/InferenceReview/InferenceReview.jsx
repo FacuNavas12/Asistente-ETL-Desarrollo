@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "../../css/inferenceReview.css";
+import ModelResponsesDrawer from "./ModelResponsesDrawer";
 
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
@@ -20,9 +21,11 @@ function CopyButton({ text }) {
 
 export default function InferenceReview({
   inferResult, etlName, onConfirm, onRefine, onBack, onGuardar, isRefining,
-  rawLlmData, onReuseResponse, onDownloadRaw, onImportRaw,
+  modelStages, modelResponsesOpen, onOpenModelResponses, onCloseModelResponses,
+  onReuseResponse, onRetryReusingStage1, onDownloadStage, onDownloadRaw, onImportRaw,
 }) {
   const [correction, setCorrection] = useState("");
+  const stagesReady = ["origen_stg", "stg_dwh"].filter(k => modelStages?.[k]?.data).length;
 
   const handleRefine = () => {
     if (!correction.trim()) return;
@@ -58,6 +61,16 @@ export default function InferenceReview({
         </div>
 
         <div className="infer-review__header-side infer-review__header-side--right">
+          {stagesReady > 0 && (
+            <button
+              className="infer-btn infer-btn--secondary"
+              onClick={onOpenModelResponses}
+              disabled={isRefining}
+              title="Respuestas crudas del modelo guardadas por etapa"
+            >
+              Respuestas del modelo <span className="infer-btn__badge">{stagesReady}/2</span>
+            </button>
+          )}
           <button
             className="infer-btn infer-btn--secondary"
             onClick={onGuardar}
@@ -67,13 +80,25 @@ export default function InferenceReview({
           </button>
           <button
             className="infer-btn infer-btn--primary"
-            onClick={onConfirm}
+            onClick={() => onConfirm()}
             disabled={isRefining}
           >
             Confirmar y Generar
           </button>
         </div>
       </div>
+
+      <ModelResponsesDrawer
+        open={modelResponsesOpen}
+        onClose={onCloseModelResponses}
+        modelStages={modelStages ?? { origen_stg: null, stg_dwh: null }}
+        onDownloadStage={onDownloadStage}
+        onDownloadAll={onDownloadRaw}
+        onImportClick={onImportRaw}
+        onReuseBoth={onReuseResponse}
+        onRetryReusingStage1={onRetryReusingStage1}
+        disabled={isRefining}
+      />
 
       <div className="infer-review__panels">
         <div className="infer-panel">
@@ -105,27 +130,6 @@ export default function InferenceReview({
         </div>
       </div>
 
-      {rawLlmData ? (
-        <div className="infer-review__raw-banner">
-          <p>
-            El modelo ya respondió, pero la construcción del .ktr falló en un intento anterior.
-            Podés descargar esa respuesta para no perderla, o reutilizarla directamente sin volver a llamar al modelo.
-          </p>
-          <div className="infer-review__raw-actions">
-            <button className="infer-btn infer-btn--secondary" onClick={onDownloadRaw}>
-              ⬇ Descargar respuesta
-            </button>
-            <button className="infer-btn infer-btn--secondary" onClick={onImportRaw}>
-              ⬆ Importar otra respuesta
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button className="infer-review__raw-import-link" onClick={onImportRaw}>
-          ⬆ Importar una respuesta del modelo guardada anteriormente
-        </button>
-      )}
-
       <div className="infer-review__correction">
         <label className="infer-review__correction-label">¿Querés ajustar algo?</label>
         <div className="infer-review__correction-row">
@@ -146,16 +150,6 @@ export default function InferenceReview({
           >
             {isRefining ? "Aplicando corrección..." : "Aplicar corrección"}
           </button>
-          {rawLlmData && (
-            <button
-              className="infer-btn infer-btn--primary"
-              onClick={onReuseResponse}
-              disabled={isRefining}
-              title="Reconstruye el .ktr con la respuesta ya guardada, sin llamar al modelo de nuevo"
-            >
-              ↻ Reutilizar respuesta
-            </button>
-          )}
         </div>
       </div>
     </div>

@@ -53,6 +53,13 @@ class KtrBuildJob(Base):
     # ETLGenerateResponse.model_dump() completo (proceso_etl, etapas, kjb_master,
     # lineage, advertencias con los warnings de conexión, etc.) — lo que devuelve /status.
     result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Bitácora append-only de progreso del job (D29, docs/refactor/02-decisiones.md).
+    # Shape: {"next_seq": int, "truncated": bool, "events": [ProgressEvent, ...]}.
+    # Escritor único: app.services.job_progress — sesión propia y corta, NUNCA la
+    # sesión larga de generate_etl_async (evita clobber: SQLAlchemy solo hace
+    # UPDATE de atributos sucios, así que columnas distintas no chocan entre sí,
+    # pero dos escritores de ESTA columna sí se pisarían).
+    progress_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

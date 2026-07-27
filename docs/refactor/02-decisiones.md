@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-07-27 (D28)
+**Última actualización:** 2026-07-27 (D33)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -45,6 +45,11 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D26 | Suite roja marcada + test arquitectura + separación tests | Parte 2 (test de arquitectura) implementada 2026-07-27 como `backend/tests/test_architecture_layers.py` — no `test_architecture_boundaries.py` como decía el texto original, mismo objetivo. Partes 1 (xfail known failures) y 3 (separación unit/integration/manual) siguen sin implementar |
 | D27 | Split `registry.py` → `step_types.py`/`step_emitters.py`, borrado de `KNOWN_PDI_STEP_TYPES`, `CanonicalType`/`FieldFormat`/`ColumnRole` → `domain/`, criterio "vocabulario PDI es dominio" | Ejecutado, suite verde |
 | D28 | D20-punto5 cerrado: frontend consume `etapas`/`kjb_master`; linaje recalculado se borra del front; datos viejos se rechazan explícitos; `EtapaOutput` gana `nombre`; Superset fuera de alcance | Ejecutado, F3 cerrada |
+| D29 | Progreso observable del job async: bitácora persistida + polling existente, no SSE | Diseño cerrado |
+| D30 | Checkpoint por etapa de la salida del modelo; tensión con D3 resuelta a favor del checkpoint | Diseño cerrado |
+| D31 | Reanudación de la etapa 2 sin endpoint ni estado servidor nuevos (`reuse_stage_1`) | Diseño cerrado |
+| D32 | Contrato del status extendido: `raw_llm_data` inmutable, lo parcial va en `stages` | Diseño cerrado |
+| D33 | Superficie de acceso a las respuestas del modelo: botón de header + drawer, dos acciones distintas | Diseño cerrado |
 
 ---
 
@@ -68,7 +73,7 @@ Navegación rápida — clic para ir directo a la decisión. Grupos según la ta
 [D16](#d16) dependencia externa real: eje `dim_contracts` · [D19](#d19) wiring de servicio cerrado, HTTP en modo notificación · [D20](#d20) forma de la respuesta con N archivos
 
 **F4** — track de errores / contenido generado
-[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22)
+[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo
 
 **Track A** — auditoría de arquitectura
 [D24](#d24) Track A retomada, A0 ejecutada · [D25](#d25) A0.5 ejecutada (censo de fallos silenciosos), H29 · [D26](#d26) adelanta en chico una porción de A2/R1 (test de arquitectura), sin esperar a A7 · [D27](#d27) split `registry.py`, `KNOWN_PDI_STEP_TYPES` borrado, `CanonicalType` a `domain/`, criterio vocabulario-PDI-es-dominio
@@ -627,6 +632,140 @@ Tests: `tests/test_inferred_member.py` (13 casos — detección con FK NOT NULL/
 **Verificación:** `pytest backend/tests/test_etl_generate_response_shape.py` (5/5) + suite completa sin regresión (mismos 8 fallos preexistentes de D20/D26, cero nuevos). `npm run test` (12/12), `npm run lint` (sin errores nuevos en archivos tocados), `npm run build` limpio.
 
 **Estado:** ejecutado. **F3 cierra** con esta sesión — ver `ESTADO.md`.
+
+<a id="d29"></a>
+### D29 — Progreso observable del job async: bitácora persistida + polling existente, no SSE `[F4]`
+
+**Contexto (2026-07-27):** el pedido del usuario es ver progreso real durante `generate_etl_async` (5+ llamadas
+al LLM, minutos de duración) — hoy solo hay "Esperando respuesta" y al final "completo"/"error", incluidos los
+reintentos con backoff en 429/503 que hoy solo se ven en la terminal del backend. Ninguna D anterior decide esto
+(verificado por grep sobre este archivo).
+
+**Decisión:** el canal es el `GET /{job_id}/status` que el frontend ya polea cada 1.2 s
+(`CreateETL.jsx:367-401`) — no el endpoint SSE `/generate-from-inference/stream` (`ai.py:283-349`), que existe
+en el repo pero no tiene ningún consumidor en el frontend hoy y se corta con un F5. El progreso se persiste en
+una columna nueva `progress_json` en `ktr_build_jobs` (dict `{next_seq, truncated, events[]}`), escrita por un
+único módulo, `services/job_progress.py`, con sesión de DB propia y corta — nunca por la sesión larga de
+`generate_etl_async` (evita clobber entre columnas). `ProgressEvent` trae `seq/ts/stage/code/level/message`, con
+`code` de vocabulario cerrado (documentado en el módulo, no texto libre) para poder assertarlo en tests. Tope de
+120 eventos / 240 caracteres por mensaje.
+
+Los reintentos del modelo (`gemini_llm.py:131-135`, `anthropic_llm.py:120-124`) se capturan **sin tocar esos dos
+archivos**: un `logging.Handler` con whitelist de 3 loggers (`app.models.gemini_llm`, `app.models.anthropic_llm`,
+`app.services.ktr_builder.repair`), ruteado por un `contextvars.ContextVar` que `generate_etl_async` setea al
+arrancar. `ddl_validation` queda fuera de la whitelist — su información (cambios aplicados, conflictos) ya sale
+por los eventos explícitos `ddl.audit.started`/`.done` que `generate_etl_async` emite alrededor de la llamada a
+`validate_and_correct_ddl`; interceptar también su logger hubiera duplicado la misma información por dos
+caminos. Verificado antes de decidir: `gemini_llm.py:109` corre el backoff dentro de `asyncio.to_thread`, que
+copia el `contextvars.Context` al worker thread — el retry sincrónico de Gemini queda cubierto igual, sin
+bloquear el event loop (no era el riesgo que parecía). El handler nunca reenvía `record.getMessage()` crudo del
+proveedor (puede traer fragmentos de prompt); arma el mensaje en español a mano matcheando el template exacto de
+`record.msg` (no su render con `args`) contra un vocabulario cerrado, y lleva su propio `PasswordFilter` — ver
+el hallazgo nuevo sobre por qué no alcanza con el filtro del logger root.
+
+**Por qué no SSE:** ya existe una implementación (`_KtrLogHandler`, `ai.py:57-67`) y nadie la usa. Adoptarla
+ahora agrega un segundo canal a mantener, no sobrevive un refresh de página, y no deja historial — el usuario
+que vuelve a `REVIEW` tras un fallo pierde lo que pasó. El polling ya resuelve las tres cosas gratis.
+
+**Estado:** diseño cerrado, implementación en curso en esta misma sesión.
+
+<a id="d30"></a>
+### D30 — Checkpoint por etapa de la salida del modelo; tensión con D3 resuelta a favor del checkpoint `[F4]`
+
+**Contexto:** `generate_etl_async` hace las dos llamadas al modelo (origen→STG, STG→DWH) bajo un solo `try` con
+un único commit al final (`etl_generator.py:1095-1177`, antes de esta sesión). Si la segunda falla, el `except`
+descarta también la primera — el usuario reintenta desde cero y vuelve a pagar tokens y tiempo de una etapa que
+ya había salido bien.
+
+**Decisión:** commitear `raw_data_1` (con sus warnings y el `dwh_ddl` post-auditoría) apenas la etapa 1 termina
+sus tres pasos (llamada + repair + integrity), con `model_status` todavía en `pending` — `_try_build` no se
+dispara con un checkpoint parcial porque exige `model_status == done`. Si la etapa 2 falla, el `except` hace
+**merge** sobre `model_json` en vez de reemplazo, así que `raw_data_1` sobrevive. Esto exige reordenar
+`generate_etl_async` de "por operación" (las dos llamadas, después las dos normalizaciones, después los dos
+repairs...) a "pipeline por etapa" — se declara acá como reordenamiento intencional, no como refactor incidental
+colado en el mismo commit.
+
+**Tensión con D3** ("los datos guardados son descartables, regenerar desde datos base es preferible"): D3 asume
+que regenerar es barato. Acá no lo es — `origen_stg` cuesta tokens y minutos reales, y el dato base (el DDL) no
+cambió entre el primer intento y el reintento. El checkpoint no viola el espíritu de D3: sigue siendo
+descartable (muere con el TTL de 30 min del job, no se promueve a ninguna tabla nueva ni tiene backfill,
+no persiste nada que sobreviva al job). Lo que cambia es *cuándo* se descarta — no en el primer error de la
+etapa siguiente, sino cuando el job expira.
+
+**Trampa documentada:** `enforce_dimension_step_policy` muta `data_2` in-place *después* del checkpoint de la
+etapa 2 (el comentario ya existente en `etl_generator.py:1149-1151` lo advertía antes de esta sesión). El commit
+final reescribe `raw_data_2` con la versión post-policy — el checkpoint 2 y el `model_json` final pueden diferir
+en ese campo, y eso es correcto.
+
+**Estado:** diseño cerrado, implementación en curso en esta misma sesión.
+
+<a id="d31"></a>
+### D31 — Reanudación de la etapa 2 sin endpoint ni estado servidor nuevos `[F4]`
+
+**Decisión:** `ETLFromInferenceRequest` gana un campo opcional `reuse_stage_1: dict | None`. Si el cliente lo
+manda, `generate_etl_async` saltea la llamada al modelo de origen→STG y sus dos repairs, y arranca directo en la
+auditoría de DDL + etapa 2 (`validate_and_correct_ddl` **no** se saltea: su `dwh_ddl` alimenta `prompt_2`,
+`_required_columns_from_ddl` y `ddl_conflictos` — se ahorran 3 llamadas de 5, no todas). Corre igual
+`normalize_step_configs` sobre el dato reusado como red defensiva barata (determinística, sin LLM), porque puede
+venir de un archivo importado por el usuario — misma superficie de confianza que `build-from-raw`, que ya acepta
+salida de modelo desde el cliente.
+
+**Alternativas descartadas:**
+- **`POST /{job_id}/resume` server-side**, persistiendo el request original: pierde contra el TTL de 30 min del
+  job (`_JOB_TTL_MINUTES`, `ai.py:159`) — el usuario que revisa el fallo en el drawer y decide reintentar puede
+  tardar más que eso, y en ese momento el job ya no existe. Además persiste una superficie de entrada nueva sin
+  necesidad, en tensión con D3.
+- **Persistir el request completo en la fila:** mismo problema de D3, sin ganar nada sobre reenviar el payload
+  que el propio `/status` ya le entregó al cliente.
+
+Los tokens de la etapa reusada no se cuentan en `MetadataResponse`; se emite una advertencia (`stage.reused`)
+que lo dice explícito, para que el total de tokens mostrado no read como "toda la generación costó esto" cuando
+en realidad una etapa no se pagó de nuevo.
+
+**Estado:** diseño cerrado, implementación en curso en esta misma sesión.
+
+<a id="d32"></a>
+### D32 — Contrato del status extendido: `raw_llm_data` inmutable, lo parcial va en `stages` `[F4]`
+
+**Motivo técnico, no solo de estilo:** `build_etl_from_raw` (`etl_generator.py:758`, verificado antes de
+decidir) discrimina el shape con `if "ktr_1" in raw_llm_data and "ktr_2" in raw_llm_data` — chequeo de
+**presencia de clave**, no de valor. Si `/status` devolviera `{"ktr_1": {...}, "ktr_2": null}` (natural si se
+quisiera exponer ahí mismo el checkpoint parcial de D30), ese dict entra en la rama y explota con
+`TypeError: 'NoneType' object is not subscriptable`, que sube como 500 genérico.
+
+**Decisión:** `raw_llm_data` no cambia de forma ni de condición de aparición respecto de antes de esta sesión
+(`{ktr_1, ktr_2}` completo, o `None` — misma regla de `ai.py:205-209`). Lo parcial viaja en un campo **nuevo y
+separado**, `stages: List[StageRawInfo]`, con `nombre` en el vocabulario canónico de **D28**
+(`origen_stg`/`stg_dwh`). Ningún consumidor existente mira `stages` — `build_etl_from_raw`,
+`POST /api/etls/{id}/connections`, `_finishEtl → form_data.rawLlmData` y el envelope `etl_llm_raw` de
+`etlExport`/`etlImport` quedan sin tocar.
+
+`stages[].data` se puebla **solo en estado terminal** del job (`build_status in (built, failed)` o
+`model_status == failed`) — con `POLL_INTERVAL_MS = 1200` y payloads de cientos de KB, mandarlo en cada tick del
+polling activo serían del orden de 10 MB por generación.
+
+**Estado:** diseño cerrado, implementación en curso en esta misma sesión.
+
+<a id="d33"></a>
+### D33 — Superficie de acceso a las respuestas del modelo: botón de header + drawer, dos acciones distintas `[F4]`
+
+**Contexto:** hoy el acceso a la respuesta cruda guardada es un banner y un botón pegados al textarea de
+correcciones (`InferenceReview.jsx:108-127` y `:149-158`, antes de esta sesión), sin distinguir de qué etapa es
+cada cosa, y con una sola acción ("Reutilizar respuesta") que solo tiene sentido cuando las dos etapas están
+completas.
+
+**Decisión:** botón en el header de `InferenceReview` (`Respuestas del modelo · N/2`) que abre un drawer lateral
+— mismo patrón que `BusinessRulesDrawer` (`components/BussinesRules/BusinessRules.jsx`) — con una tarjeta por
+etapa. El banner y el botón viejos se borran; el bloque de corrección queda solo con el textarea y "Aplicar
+corrección".
+
+El drawer expone **dos acciones distintas, no una deshabilitada**, porque son operaciones semánticamente
+distintas (D31 las separó del lado del backend): con las dos etapas completas, "Reutilizar ambas y armar el
+.ktr" no llama al modelo (`build-from-raw`); con solo `origen_stg`, "Reintentar reusando Origen → STG" sí llama
+al modelo (DDL + etapa 2, vía `reuse_stage_1`). Colapsarlas en un solo botón con `disabled` habría escondido
+justo la funcionalidad pedida — reintentar sin perder lo que ya se generó.
+
+**Estado:** diseño cerrado, implementación en curso en esta misma sesión.
 
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido
