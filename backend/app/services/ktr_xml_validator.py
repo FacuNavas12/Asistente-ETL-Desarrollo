@@ -5,6 +5,14 @@ Spoon. Última barrera, después de ktr_builder.build_ktr() haber aplicado sus
 propias correcciones (conexión GENERIC con driver, GetSystemInfo con fields
 por defecto, etc.) — si algo se escapa igual, mejor fallar acá con un mensaje
 claro que entregar un .ktr que Spoon rechaza sin explicación.
+
+D15 (docs/refactor/02-decisiones.md) — "fail-fast en detección, no fail-hard
+en emisión": una conexión que quedó sin resolver (placeholder) NO es un .ktr
+roto, es un .ktr que el usuario completa a mano en Spoon antes de correr. Por
+eso ese caso puntual ya no está en `issues` (fatal, aborta) sino que
+`validate_ktr_xml` lo devuelve como warning — ver `_check_generic_connections`.
+Todo lo demás (GENERIC sin driver/URL, step vacío, hop huérfano) sigue siendo
+fatal: eso sí abre roto en Spoon, no hay nada que "completar" ahí.
 """
 from __future__ import annotations
 
@@ -37,8 +45,15 @@ def _attribute_value(attributes_el: Element | None, code: str) -> str | None:
     return None
 
 
-def _check_generic_connections(root: Element, strict_connections: bool = False) -> list[str]:
+def _check_generic_connections(
+    root: Element, strict_connections: bool = False
+) -> tuple[list[str], list[str]]:
+    """Devuelve (issues, warnings). issues son fatales (GENERIC sin driver/URL
+    embebido — Spoon no abre el .ktr). warnings son la conexión que quedó con
+    host/base placeholder bajo strict_connections=True — no es un .ktr roto,
+    es una capa que el usuario completa a mano en Spoon (D15)."""
     issues: list[str] = []
+    warnings: list[str] = []
     for conn in root.findall("connection"):
         conn_name = conn.findtext("name", "")
         conn_type = (conn.findtext("type") or "").strip().upper()
@@ -55,13 +70,12 @@ def _check_generic_connections(root: Element, strict_connections: bool = False) 
             server = (conn.findtext("server") or "").strip().upper()
             database = (conn.findtext("database") or "").strip().upper()
             if server == "PLACEHOLDER_HOST" or "PLACEHOLDER_" in database:
-                issues.append(
+                warnings.append(
                     f"Conexión '{conn_name}': quedó sin resolver (host/base de datos placeholder) "
-                    "después de intentar resolver las conexiones reales del job — no se puede "
-                    "entregar un .ktr final con credenciales de conexión sin completar. Verificar "
-                    f"que '{conn_name}' esté correctamente asociada en el paso de conexiones del job."
+                    "— el .ktr se entrega igual, pero hay que completar host/puerto/base/usuario a "
+                    f"mano en Spoon (conector '{conn_name}') antes de ejecutarlo."
                 )
-    return issues
+    return issues, warnings
 
 
 def _check_step_required_children(root: Element) -> list[str]:
@@ -97,21 +111,26 @@ def _check_hops_reference_existing_steps(root: Element) -> list[str]:
     return issues
 
 
-def validate_ktr_xml(ktr_xml: str, strict_connections: bool = False) -> None:
+def validate_ktr_xml(ktr_xml: str, strict_connections: bool = False) -> list[str]:
     """Levanta KtrXmlValidationError si el XML ya serializado viola alguna
-    invariante fatal. No hace nada (silencioso) si todo está OK.
+    invariante fatal (GENERIC sin driver/URL, step vacío, hop huérfano). Si
+    pasa, devuelve la lista de warnings no fatales (vacía si no hubo ninguno).
 
     strict_connections=True agrega el chequeo de conexiones sin resolver
-    (server/database placeholder) como error fatal — usar SOLO en el flujo
-    que ya intentó resolver conexiones reales (ver _try_build en
-    etl_generator.py); en los demás flujos (preview sin conexiones aún
-    elegidas) las conexiones placeholder son esperadas."""
+    (server/database placeholder) — usar SOLO en el flujo que ya intentó
+    resolver conexiones reales (ver _try_build en etl_generator.py); en los
+    demás flujos (preview sin conexiones aún elegidas) las conexiones
+    placeholder son esperadas y ni siquiera se revisan (strict_connections
+    queda en False). Una conexión sin resolver bajo strict_connections=True
+    NO aborta (D15) — sale como warning: se completa a mano en Spoon."""
     root = fromstring(ktr_xml)
 
+    conn_issues, conn_warnings = _check_generic_connections(root, strict_connections)
     issues: list[str] = [
-        *_check_generic_connections(root, strict_connections),
+        *conn_issues,
         *_check_step_required_children(root),
         *_check_hops_reference_existing_steps(root),
     ]
     if issues:
         raise KtrXmlValidationError(issues)
+    return conn_warnings

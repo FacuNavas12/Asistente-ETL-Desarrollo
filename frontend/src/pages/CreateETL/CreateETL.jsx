@@ -22,6 +22,7 @@ import { downloadEtlSkeleton, downloadLlmRaw, downloadLlmStage } from "@/utils/e
 import { importEtlSkeleton, importModelResponse } from "@/utils/etlImport";
 import { stagesArrayToMap, mergeProgressLogs } from "./utils/progressLog";
 import CreateETLOptions from "./components/CreateETLOptions";
+import { listConnections } from "@/api/connections";
 import "./css/createETL.css";
 
 // Estados de la máquina:
@@ -95,7 +96,27 @@ export default function CreateETL() {
   // job_id del flujo async (generate-async): el modelo corre en background mientras
   // el usuario completa las conexiones destino en paralelo (ver handleConfirm).
   const [jobId,          setJobId]          = useState(null);
+  // D-conexión-build-from-raw (docs/refactor/02-decisiones.md): "Reutilizar
+  // respuesta" (build-from-raw) también necesita conexiones antes de
+  // reconstruir — antes las ignoraba por completo y el .ktr salía con
+  // placeholder aunque el usuario ya las hubiera completado. null = no hay
+  // reconstrucción pendiente de conexiones; "raw" = esperando el formulario
+  // para llamar a buildFromRaw (en vez de submitJobConnections/jobId).
+  const [pendingRebuild, setPendingRebuild] = useState(null);
+  // Id de Connection derivado de las tablas de origen (_deriveOrigenConnectionId),
+  // ya verificado contra el backend (ver _resolveOrigenConnection) — null tanto
+  // si nunca hubo un id único como si el id ya no existe (fila borrada, de otro
+  // owner). Es lo que se pasa a DestinationConnections/ConnectionView, nunca la
+  // derivación cruda sin validar.
+  const [verifiedOrigenConnId,   setVerifiedOrigenConnId]   = useState(null);
+  // true cuando SÍ había un id derivado pero no resolvió — dispara el aviso de
+  // "conexión guardada ya no existe" en vez del mensaje genérico de origen sin conexión.
+  const [origenConnectionStale, setOrigenConnectionStale] = useState(false);
   const connectionsMapRef       = useRef({});
+  // true una vez que el usuario confirmó el formulario de conexiones en esta
+  // sesión de generación — permite que "Reutilizar respuesta" reconstruya
+  // directo con connectionsMapRef.current sin volver a pedirlas.
+  const connectionsDecidedRef   = useRef(false);
   const pollTimeoutRef          = useRef(null);
   // D29: último seq de progreso ya volcado a ktrLogs — el poll solo agrega
   // los eventos nuevos, no reconstruye la lista entera en cada tick.
@@ -338,6 +359,10 @@ export default function CreateETL() {
   };
 
   // ── Persiste el ETL generado y navega a su detalle ────────────────────────
+  // currentEtlIdRef.current ya apunta a la fila en_proceso que handleConfirm
+  // garantiza vía _saveSnapshot — addEtl la completa (status: done) en vez
+  // de crear una fila nueva, así el DDL guardado en Inferencia y el
+  // resultado final quedan en la misma fila.
   const _finishEtl = async (apiResult, rawLlmDataUsed) => {
     const id = await addEtl({
       etlName,
@@ -355,7 +380,7 @@ export default function CreateETL() {
       // reconstruir el .ktr con una conexión destino distinta más adelante
       // (ver POST /api/etls/{id}/connections).
       rawLlmData: rawLlmDataUsed ?? null,
-    }, apiResult, etlName);
+    }, apiResult, etlName, currentEtlIdRef.current);
     setModelStages({ origen_stg: null, stg_dwh: null });
     const dest = `/etl/${id}`;
     if (isDirty) {
@@ -368,6 +393,10 @@ export default function CreateETL() {
 
   // Si todas las tablas de origen comparten la misma conexión, se usa automático
   // (conn_origen) — el usuario no vuelve a cargarla en el paso de confirmación.
+  // null (CSV/Excel/DDL/formulario, o tablas con conexiones distintas) hace
+  // que DestinationConnections pida el origen con el mismo formulario de
+  // staging/DWH — antes quedaba sin pedir y sin key en connections_map, y
+  // el build fallaba duro (ver docs/refactor/02-decisiones.md, D-conexión-origen).
   const _deriveOrigenConnectionId = () => {
     const ids = [...new Set(
       (Array.isArray(origenTables) ? origenTables : [])
@@ -375,6 +404,30 @@ export default function CreateETL() {
         .filter(Boolean)
     )];
     return ids.length === 1 ? ids[0] : null;
+  };
+
+  // Verifica el id derivado contra las Connection guardadas del usuario ANTES
+  // de confiar en él: una fila borrada (o de otra sesión/owner) dejaba el
+  // origen en placeholder mudo sin forma de corregirlo desde la UI (el
+  // formulario se ocultaba apenas había un id, sin importar si resolvía —
+  // ver docs/refactor/02-decisiones.md). Si no resuelve (o la verificación
+  // falla), cae al mismo formulario inline que staging/DWH. Deja el resultado
+  // en connectionsMapRef.current.conn_origen — el caller solo espera esto y
+  // sigue (setStep(PROCESSING), etc.).
+  const _resolveOrigenConnection = async () => {
+    const rawId = _deriveOrigenConnectionId();
+    let verified = null;
+    if (rawId) {
+      try {
+        const conns = await listConnections();
+        verified = Array.isArray(conns) && conns.some(c => c.id === rawId) ? rawId : null;
+      } catch {
+        verified = null; // no se pudo confirmar — mejor pedirla a mano que arriesgar un placeholder mudo
+      }
+    }
+    setVerifiedOrigenConnId(verified);
+    setOrigenConnectionStale(Boolean(rawId) && !verified);
+    connectionsMapRef.current = { conn_origen: verified };
   };
 
   // Techo de polling alineado con _JOB_TTL_MINUTES del backend (30 min): si el
@@ -436,16 +489,44 @@ export default function CreateETL() {
 
   // Se llama una sola vez, cuando el usuario confirma el formulario de
   // conexiones destino en DestinationConnections (botón "Generar" — cada
-  // capa ya decidida como metadata completa o "Completar en Spoon"). Es la
-  // única llamada a /connections de todo el flujo: antes de esto
-  // connections_map es None y _try_build() nunca arma el .ktr, sin importar
-  // si el modelo ya terminó (ver gate en _try_build, backend).
-  const handleFinalizeConnections = (destMap) => {
+  // capa ya decidida como metadata completa o "Completar en Spoon"). Con
+  // jobId (flujo async normal) es la única llamada a /connections del flujo:
+  // antes de esto connections_map es None y _try_build() nunca arma el .ktr,
+  // sin importar si el modelo ya terminó (ver gate en _try_build, backend).
+  // Sin jobId pero con pendingRebuild==="raw" (D-conexión-build-from-raw):
+  // el modelo YA respondió (venimos de "Reutilizar respuesta" sin conexiones
+  // decididas todavía) — acá se llama a buildFromRaw directo, no hay job que
+  // registrar conexiones.
+  const handleFinalizeConnections = async (destMap) => {
     const fullMap = { ...connectionsMapRef.current, ...destMap };
     connectionsMapRef.current = fullMap;
-    submitJobConnections(jobId, fullMap).catch(err => {
-      notifySystem(`Error al registrar las conexiones: ${err.message}`);
-    });
+    connectionsDecidedRef.current = true;
+
+    if (jobId) {
+      submitJobConnections(jobId, fullMap).catch(err => {
+        notifySystem(`Error al registrar las conexiones: ${err.message}`);
+      });
+      return;
+    }
+
+    if (pendingRebuild === "raw") {
+      setPendingRebuild(null);
+      setEtlPhase("building");
+      setKtrLogs([]);
+      try {
+        const apiResult = await buildFromRaw(rawLlmData, inferResult?.dim_contracts ?? [], fullMap);
+        await _finishEtl(apiResult, rawLlmData);
+      } catch (err) {
+        if (err.rawLlmData) {
+          setModelStages({
+            origen_stg: { status: "done", data: err.rawLlmData.ktr_1 ?? null, error: null },
+            stg_dwh:    { status: "done", data: err.rawLlmData.ktr_2 ?? null, error: null },
+          });
+        }
+        setStep(STEP.REVIEW);
+        notifySystem(`Error al reconstruir el .ktr: ${err.message}`);
+      }
+    }
   };
 
   // ── DESDE REVISIÓN: confirmar y generar ETL ──────────────────────────────
@@ -465,8 +546,17 @@ export default function CreateETL() {
       reuseStage1 ? { ...prev, stg_dwh: null } : { origen_stg: null, stg_dwh: null }
     ));
     setJobId(null);
-    connectionsMapRef.current = { conn_origen: _deriveOrigenConnectionId() };
+    setPendingRebuild(null);
+    connectionsDecidedRef.current = false;
+    await _resolveOrigenConnection();
     setStep(STEP.PROCESSING);
+
+    // Asegura que exista una fila en_proceso ANTES de generar — sin esto
+    // currentEtlIdRef.current queda null si el usuario nunca tocó "Guardar"
+    // en Revisión, y _finishEtl termina creando una fila nueva en vez de
+    // completar esta (el DDL confirmado en Inferencia se pierde de la fila
+    // final, que es justo lo que se reportó como bug).
+    await _saveSnapshot();
 
     try {
       const { job_id } = await generateAsync({
@@ -501,24 +591,40 @@ export default function CreateETL() {
   // partir de rawLlmData (D33 — solo habilitado con las 2 etapas listas).
   const handleReuseResponse = async () => {
     if (!rawLlmData) return;
-    setEtlPhase("building");
-    setKtrLogs([]);
     setJobId(null); // reconstrucción directa desde JSON guardado — sin flujo async / conexiones paralelas
-    setStep(STEP.PROCESSING);
 
-    try {
-      const apiResult = await buildFromRaw(rawLlmData, inferResult?.dim_contracts ?? []);
-      await _finishEtl(apiResult, rawLlmData);
-    } catch (err) {
-      if (err.rawLlmData) {
-        setModelStages({
-          origen_stg: { status: "done", data: err.rawLlmData.ktr_1 ?? null, error: null },
-          stg_dwh:    { status: "done", data: err.rawLlmData.ktr_2 ?? null, error: null },
-        });
+    // Si las conexiones ya se decidieron en esta sesión (el usuario ya pasó
+    // por "Generar" o por este mismo camino antes), reconstruye directo con
+    // connectionsMapRef.current — no hace falta volver a pedirlas.
+    if (connectionsDecidedRef.current) {
+      setEtlPhase("building");
+      setKtrLogs([]);
+      setStep(STEP.PROCESSING);
+      try {
+        const apiResult = await buildFromRaw(rawLlmData, inferResult?.dim_contracts ?? [], connectionsMapRef.current);
+        await _finishEtl(apiResult, rawLlmData);
+      } catch (err) {
+        if (err.rawLlmData) {
+          setModelStages({
+            origen_stg: { status: "done", data: err.rawLlmData.ktr_1 ?? null, error: null },
+            stg_dwh:    { status: "done", data: err.rawLlmData.ktr_2 ?? null, error: null },
+          });
+        }
+        setStep(STEP.REVIEW);
+        notifySystem(`Error al reconstruir el .ktr: ${err.message}`);
       }
-      setStep(STEP.REVIEW);
-      notifySystem(`Error al reconstruir el .ktr: ${err.message}`);
+      return;
     }
+
+    // D-conexión-build-from-raw (docs/refactor/02-decisiones.md): antes este
+    // camino ignoraba las conexiones por completo y el .ktr salía siempre con
+    // placeholder — ahora pide el mismo formulario que "Generar" antes de
+    // reconstruir (ver handleFinalizeConnections, rama pendingRebuild==="raw").
+    await _resolveOrigenConnection();
+    setPendingRebuild("raw");
+    setEtlPhase("waiting");
+    setKtrLogs([]);
+    setStep(STEP.PROCESSING);
   };
 
   // Descarga una sola etapa (D31/D33) — distinto de "Descargar todo", que
@@ -677,10 +783,14 @@ export default function CreateETL() {
           </div>
         )}
 
-        {step === STEP.PROCESSING && jobId && (
+        {step === STEP.PROCESSING && (jobId || pendingRebuild) && (
           <div className="etl-processing etl-processing--split">
             <div className="etl-processing__connections">
-              <DestinationConnections onFinalize={handleFinalizeConnections} />
+              <DestinationConnections
+                onFinalize={handleFinalizeConnections}
+                origenConnectionId={verifiedOrigenConnId}
+                origenConnectionStale={origenConnectionStale}
+              />
             </div>
             <div className="etl-processing__checks">
               <EtlChecks phase={etlPhase} ktrLogs={ktrLogs} />
@@ -688,7 +798,7 @@ export default function CreateETL() {
           </div>
         )}
 
-        {step === STEP.PROCESSING && !jobId && (
+        {step === STEP.PROCESSING && !jobId && !pendingRebuild && (
           <div className="etl-processing">
             <EtlChecks phase={etlPhase} ktrLogs={ktrLogs} />
           </div>

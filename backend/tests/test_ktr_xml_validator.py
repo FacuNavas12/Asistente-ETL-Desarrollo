@@ -104,6 +104,50 @@ def test_hop_referencing_missing_step_rejected():
     assert "NoExiste" in str(exc.value)
 
 
+# ─── Conexión sin resolver bajo strict_connections (D15) ──────────────────────
+# No aborta — sale como warning devuelto por validate_ktr_xml, el .ktr se
+# completa a mano en Spoon. Único de los tres chequeos que cambió de
+# comportamiento; GENERIC sin driver/URL y hop huérfano (arriba) siguen fatales.
+
+_GENERIC_RESOLVED_XML = _VALID_XML.replace(
+    "<type>POSTGRESQL</type>",
+    "<type>GENERIC</type>",
+).replace(
+    "<attributes/>",
+    "<attributes>"
+    "<attribute><code>CUSTOM_DRIVER_CLASS</code><attribute>org.postgresql.Driver</attribute></attribute>"
+    "<attribute><code>CUSTOM_URL</code><attribute>jdbc:postgresql://${H}:${P}/${D}</attribute></attribute>"
+    "</attributes>",
+)
+
+
+def test_unresolved_connection_under_strict_mode_is_warning_not_error():
+    xml = _GENERIC_RESOLVED_XML.replace(
+        "<name>conn_origen</name>",
+        "<name>conn_origen</name><server>PLACEHOLDER_HOST</server><database>PLACEHOLDER_DATABASE</database>",
+    )
+    warnings = validate_ktr_xml(xml, strict_connections=True)  # no debe levantar
+    assert any("conn_origen" in w for w in warnings)
+
+
+def test_unresolved_connection_without_strict_mode_produces_no_warning():
+    xml = _GENERIC_RESOLVED_XML.replace(
+        "<name>conn_origen</name>",
+        "<name>conn_origen</name><server>PLACEHOLDER_HOST</server><database>PLACEHOLDER_DATABASE</database>",
+    )
+    warnings = validate_ktr_xml(xml)  # strict_connections=False (default): ni se revisa
+    assert warnings == []
+
+
+def test_resolved_connection_under_strict_mode_produces_no_warning():
+    xml = _GENERIC_RESOLVED_XML.replace(
+        "<name>conn_origen</name>",
+        "<name>conn_origen</name><server>db.real.internal</server><database>ventas</database>",
+    )
+    warnings = validate_ktr_xml(xml, strict_connections=True)
+    assert warnings == []
+
+
 # ─── Integración con build_ktr() ──────────────────────────────────────────────
 
 def _base_ktr_data(step_overrides=None):

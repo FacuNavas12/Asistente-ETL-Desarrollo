@@ -24,6 +24,7 @@ from app.services.ktr_builder import (
     _DB_TYPE_TO_KETTLE,
     _build_connection,
     build_ktr,
+    missing_layer_warnings,
     resolve_real_connections,
 )
 from xml.etree.ElementTree import Element, tostring
@@ -172,6 +173,37 @@ def test_resolve_skips_none_values(db):
     real, warnings = resolve_real_connections({"conn_origen": None}, db)
     assert real == {}
     assert warnings == []
+
+
+# ─── missing_layer_warnings ────────────────────────────────────────────────────
+# El caso que resolve_real_connections() no cubre: una capa que ni siquiera
+# llegó en connections_map (D15 — antes tumbaba el build entero, ver
+# docs/refactor/02-decisiones.md).
+
+def test_missing_layer_warnings_empty_map_warns_all_three_layers():
+    warnings = missing_layer_warnings({})
+    assert len(warnings) == 3
+    assert any("conn_origen" in w for w in warnings)
+    assert any("conn_staging" in w for w in warnings)
+    assert any("conn_dwh" in w for w in warnings)
+
+
+def test_missing_layer_warnings_full_map_warns_nothing():
+    real = {
+        "conn_origen":  {"host": "h1", "port": 5432, "database": "d1", "username": "u1", "password_var": "ORIGEN_DB_PASSWORD", "type": "POSTGRESQL", "access": "Native"},
+        "conn_staging": {"host": "h2", "port": 5432, "database": "d2", "username": "u2", "password_var": "STAGING_DB_PASSWORD", "type": "POSTGRESQL", "access": "Native"},
+        "conn_dwh":     {"host": "h3", "port": 5432, "database": "d3", "username": "u3", "password_var": "DWH_DB_PASSWORD", "type": "POSTGRESQL", "access": "Native"},
+    }
+    assert missing_layer_warnings(real) == []
+
+
+def test_missing_layer_warnings_partial_map_warns_only_missing():
+    real = {"conn_dwh": {"host": "h", "port": 5432, "database": "d", "username": "u", "password_var": "DWH_DB_PASSWORD", "type": "POSTGRESQL", "access": "Native"}}
+    warnings = missing_layer_warnings(real)
+    assert len(warnings) == 2
+    assert any("conn_origen" in w for w in warnings)
+    assert any("conn_staging" in w for w in warnings)
+    assert not any("conn_dwh" in w for w in warnings)
 
 
 # ─── _DB_TYPE_TO_KETTLE mapping ────────────────────────────────────────────────

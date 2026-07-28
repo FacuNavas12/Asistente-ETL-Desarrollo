@@ -75,14 +75,16 @@ export function EtlProvider({ children }) {
   };
 
   // ── ETLs ────────────────────────────────────────────────────────────────
-  const addEtl = async (formData, apiResult, name) => {
-    const record = await createEtl({
-      name: name || `ETL #${etls.length + 1}`,
-      status: "done",
-      formData,
-      result: apiResult,
-    });
-    setEtls(prev => [record, ...prev.filter(e => e.status !== "pending")]);
+  // existingId: la fila en_proceso que _saveSnapshot ya creó antes de generar
+  // (mismo id, se completa acá en vez de duplicar) — null = flujos sin
+  // snapshot previo (ej. importar ETL en Home.jsx), donde sí hace falta crear.
+  const addEtl = async (formData, apiResult, name, existingId = null) => {
+    const record = existingId
+      ? await updateEtl(existingId, { name: name || undefined, status: "done", formData, result: apiResult })
+      : await createEtl({ name: name || `ETL #${etls.length + 1}`, status: "done", formData, result: apiResult });
+    setEtls(prev => existingId
+      ? prev.map(e => e.id === existingId ? record : e)
+      : [record, ...prev.filter(e => e.status !== "pending")]);
     clearDraft();
     return record.id;
   };

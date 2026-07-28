@@ -203,7 +203,10 @@ app/
                                     serializa un ktr JSON → XML .ktr para Pentaho PDI (se llama 1x por KTR).
                                     resolve_real_connections() arma metadata real (host/port/db/user/tipo) pero
                                     el password SIEMPRE es variable de Kettle (${ORIGEN,STAGING,DWH}_DB_PASSWORD),
-                                    nunca embebido — ver "Credenciales de conexión".
+                                    nunca embebido — ver "Credenciales de conexión". missing_layer_warnings()
+                                    avisa (no aborta, D34 en docs/refactor/02-decisiones.md) la capa
+                                    (origen/staging/dwh) que ni siquiera llegó en connections_map — el .ktr sale
+                                    igual, con esa capa en placeholder para completar a mano en Spoon.
     lineage_builder.py            — build_lineage()/stitch_lineage() (dict KTR) y variantes _from_xml();
                                     stitch_lineage cose origen→STG→DWH matcheando tablas STG entre KTR_1 y KTR_2
     validator.py                  — validación de estructuras

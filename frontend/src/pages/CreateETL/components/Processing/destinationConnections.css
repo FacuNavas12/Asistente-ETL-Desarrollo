@@ -36,3 +36,15 @@
   color: var(--text);
   cursor: pointer;
 }
+
+.dest-connections__readonly {
+  font-size: 13px;
+  color: var(--text-muted, var(--text));
+  margin: 0;
+}
+
+.dest-connections__warning {
+  font-size: 13px;
+  color: #b45309;
+  margin: 0 0 10px;
+}

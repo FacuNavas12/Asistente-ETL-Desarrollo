@@ -40,6 +40,7 @@ from app.services.etl_generator import (
     _try_build,
 )
 from app.services.job_progress import ProgressSink
+from app.services.ktr_builder import missing_layer_warnings, resolve_real_connections
 from app.services.validator import validate_etl
 from app.services.documenter import document_etl
 from app.services.structure_inferrer import infer_structures, refine_structures
@@ -141,16 +142,38 @@ async def generate_from_inference(
 
 
 @router.post("/api/v1/etl/build-from-raw", response_model=ETLGenerateResponse)
-async def build_from_raw(req: BuildFromRawRequest):
+async def build_from_raw(
+    req: BuildFromRawRequest,
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
+):
     """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada previamente
-    por el frontend (descargada tras un fallo de build_ktr). No llama al LLM.
+    por el frontend (descargada tras un fallo de build_ktr, o "Reutilizar respuesta" del
+    drawer de respuestas). No llama al LLM.
 
     Repair loop (repair_ktr_steps) desconectado a propósito acá — ver discusión
     pendiente sobre si "Reutilizar respuesta" debe poder llamar al modelo.
 
     dim_contracts sí se usa siempre que venga (enforce_dimension_step_policy es
-    determinístico, no llama al modelo) — ver build_etl_from_raw()."""
-    return await _handle(build_etl_from_raw, req.raw_llm_data, None, req.dim_contracts)
+    determinístico, no llama al modelo) — ver build_etl_from_raw().
+
+    connections_map (opcional): antes este endpoint no tenía forma de recibir
+    conexiones y "Reutilizar respuesta" siempre entregaba el .ktr con
+    placeholder aunque el usuario ya las hubiera completado en el formulario
+    (docs/refactor/02-decisiones.md). Resuelto acá con el mismo par de
+    llamadas que _try_build (etl_generator.py) y POST /api/etls/{id}/connections
+    (etl.py) — no se reescribe la lógica de resolución, se reusa."""
+    real_connections: dict[str, dict] = {}
+    conn_warnings: list[str] = []
+    if req.connections_map is not None:
+        real_connections, conn_warnings = resolve_real_connections(
+            req.connections_map.model_dump(exclude_none=True), db, owner=get_current_owner(payload)
+        )
+        conn_warnings = [*conn_warnings, *missing_layer_warnings(real_connections)]
+    return await _handle(
+        build_etl_from_raw, req.raw_llm_data, None, req.dim_contracts,
+        real_connections or None, conn_warnings or None,
+    )
 
 
 # ── Flujo async: modelo + conexiones destino en paralelo ─────────────────────

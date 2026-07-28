@@ -90,6 +90,24 @@ def _password_var_name(logical_name: str) -> str:
     return _PASSWORD_VAR_NAMES.get(logical_name, f"{_generic_var(logical_name)}_PASSWORD")
 
 
+def missing_layer_warnings(real_connections: dict[str, dict]) -> list[str]:
+    """Una capa lógica (origen/staging/dwh) sin entrada en real_connections
+    sale como placeholder en el .ktr — se completa a mano en Spoon (D15,
+    docs/refactor/02-decisiones.md: se avisa, no aborta). Cubre TANTO la capa
+    que nunca se mandó en connections_map (el motivo original del bug de
+    'conn_origen quedó sin resolver' que tumbaba el build entero) COMO la que
+    se mandó pero resolve_real_connections() no pudo resolver (id inválido,
+    no encontrada, motor sin mapeo, ya avisado con más detalle en su propio
+    warning) — acá no se distingue el motivo porque desde el punto de vista
+    del .ktr final el resultado es el mismo: placeholder, completar en Spoon."""
+    return [
+        f"Conexión '{name}': sin resolver — se completa a mano en Spoon "
+        f"(host/puerto/base/usuario, variable de password ${{{var}}})."
+        for name, var in _PASSWORD_VAR_NAMES.items()
+        if name not in real_connections
+    ]
+
+
 def resolve_real_connections(
     connections_map: dict,
     db,

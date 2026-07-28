@@ -26,6 +26,10 @@
   color: var(--text-3);
 }
 
+.etl-section__text--warning {
+  color: #b45309;
+}
+
 .etl-connection-skip {
   display: flex;
   align-items: center;

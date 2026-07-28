@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 
 # ─── INPUT — Origen ───────────────────────────────────────────────────────────
@@ -219,6 +219,49 @@ class DdlValidationResponse(BaseModel):
     metadata: MetadataResponse
 
 
+# ─── CONEXIONES (inline, sin custodia de password) ────────────────────────────
+# Movido arriba de BuildFromRawRequest (antes vivía junto a "GENERATE ASYNC +
+# CONEXIONES EN PARALELO" más abajo) para que BuildFromRawRequest pueda usar
+# ConnectionsMapRequest sin forward ref — build-from-raw ahora también acepta
+# un mapa de conexiones (ver connections_map abajo).
+
+class InlineConnection(BaseModel):
+    """Metadata de conexión destino (staging/DWH) o de origen sin fila
+    Connection guardada, tal cual la completa el usuario en el formulario —
+    nunca se crea una fila Connection para esto (no es una conexión
+    reusable, es solo la metadata de ESTE ETL puntual) y NUNCA lleva
+    password: resolve_real_connections() la deja siempre como variable
+    Kettle, igual que para las conexiones por connection_id (ver
+    ktr_builder/connection.py)."""
+    db_type: Literal["postgresql", "sqlserver"]
+    host: str = Field(..., min_length=1, max_length=255)
+    port: int = Field(..., ge=1, le=65535)
+    database: str = Field(..., min_length=1, max_length=255)
+    username: str = Field(..., min_length=1, max_length=255)
+    ssl_mode: Optional[str] = None
+
+
+class ConnectionsMapRequest(BaseModel):
+    """conn_origen: id de una Connection ya creada (vía POST /api/connections,
+    string) cuando el origen vino del explorador de esquema en vivo — esa
+    fila sigue haciendo falta ahí porque el explorador conectó de verdad
+    contra ella. O metadata inline (InlineConnection) cuando el origen NO
+    vino de una conexión guardada (CSV/Excel/DDL/formulario) y el usuario la
+    completa a mano en el paso de conexiones del job, igual que staging/DWH.
+    None (o ausente) significa "completar en Spoon" — mismo criterio que
+    conn_staging/conn_dwh, resuelve a placeholder, ya no aborta el build
+    (D15, docs/refactor/02-decisiones.md).
+
+    conn_staging/conn_dwh: metadata inline (InlineConnection) o None. None
+    significa "completar en Spoon" — resolve_real_connections() lo deja como
+    placeholder, igual que hoy para una conexión no resuelta. Nunca se
+    persiste como fila Connection: es solo la metadata de destino de ESTE
+    ETL, no una conexión reusable."""
+    conn_origen: Optional[Union[str, InlineConnection]] = None
+    conn_staging: Optional[InlineConnection] = None
+    conn_dwh: Optional[InlineConnection] = None
+
+
 class BuildFromRawRequest(BaseModel):
     """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada
     previamente por el frontend (descargada tras un fallo de build_ktr). Sin llamada al LLM.
@@ -232,41 +275,16 @@ class BuildFromRawRequest(BaseModel):
     no de la salida del modelo que arma el KTR. Sin pasarlo acá aparte, este
     endpoint no tiene forma de correr enforce_dimension_step_policy() sobre el
     KTR reconstruido. Opcional (default vacío) por compatibilidad con datos
-    guardados antes de este campo — en ese caso no se corre el enforcement."""
+    guardados antes de este campo — en ese caso no se corre el enforcement.
+
+    connections_map: mismo shape que usa el flujo async (POST /{job_id}/connections)
+    — antes este endpoint no tenía forma de recibir conexiones y siempre entregaba
+    el .ktr con placeholder, aunque el usuario ya las hubiera completado en el
+    formulario (ver docs/refactor/02-decisiones.md). None (default) preserva el
+    comportamiento histórico: todo placeholder."""
     raw_llm_data: Dict[str, Any]
     dim_contracts: List[DimContract] = []
-
-
-# ─── GENERATE ASYNC + CONEXIONES EN PARALELO ─────────────────────────────────
-
-class InlineConnection(BaseModel):
-    """Metadata de conexión destino (staging/DWH) tal cual la completa el
-    usuario en el formulario — nunca se crea una fila Connection para esto
-    (no es una conexión reusable, es solo el destino de ESTE ETL) y NUNCA
-    lleva password: resolve_real_connections() la deja siempre como variable
-    Kettle, igual que para las conexiones por connection_id (ver
-    ktr_builder/connection.py)."""
-    db_type: Literal["postgresql", "sqlserver"]
-    host: str = Field(..., min_length=1, max_length=255)
-    port: int = Field(..., ge=1, le=65535)
-    database: str = Field(..., min_length=1, max_length=255)
-    username: str = Field(..., min_length=1, max_length=255)
-    ssl_mode: Optional[str] = None
-
-
-class ConnectionsMapRequest(BaseModel):
-    """conn_origen: id de una Connection ya creada (vía POST /api/connections)
-    — el origen sigue necesitando una fila real porque el explorador de
-    esquema conecta de verdad contra ella antes de este paso.
-
-    conn_staging/conn_dwh: metadata inline (InlineConnection) o None. None
-    significa "completar en Spoon" — resolve_real_connections() lo deja como
-    placeholder, igual que hoy para una conexión no resuelta. Nunca se
-    persiste como fila Connection: es solo la metadata de destino de ESTE
-    ETL, no una conexión reusable."""
-    conn_origen: Optional[str] = None
-    conn_staging: Optional[InlineConnection] = None
-    conn_dwh: Optional[InlineConnection] = None
+    connections_map: Optional[ConnectionsMapRequest] = None
 
 
 class GenerateAsyncResponse(BaseModel):

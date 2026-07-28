@@ -89,13 +89,14 @@ def build_ktr(
     (origen→STG y STG→DWH) — ver _resolve_connection(). None/None preserva el
     fallback de inferencia por prefijo de tabla ya existente.
 
-    strict_connections: si True, una conexión GENERIC que siga con
-    host/database placeholder tras aplicar real_connections aborta el build
-    (KtrXmlValidationError vía validate_ktr_xml) en vez de entregar un .ktr
-    con credenciales sin resolver. Usar SOLO cuando el caller ya intentó
-    resolver conexiones reales (ver _try_build en etl_generator.py) — en los
-    demás flujos (preview sin conexiones aún elegidas) el placeholder es
-    esperado y se documenta como advertencia + plantilla kettle.properties.
+    strict_connections: si True, revisa si alguna conexión GENERIC sigue con
+    host/database placeholder tras aplicar real_connections. Ya NO aborta el
+    build (D15, docs/refactor/02-decisiones.md) — la conexión sin resolver
+    se entrega igual, como warning en el tercer elemento de la tupla, para
+    completar a mano en Spoon. Usar SOLO cuando el caller ya intentó resolver
+    conexiones reales (ver _try_build en etl_generator.py) — en los demás
+    flujos (preview sin conexiones aún elegidas) el placeholder es esperado
+    y ni se revisa.
 
     Returns (ktr_xml_string, filename, warnings). Returns ("", "", []) if ktr_data is empty.
     """
@@ -397,7 +398,9 @@ def build_ktr(
     # Última barrera: si algo se escapó de las correcciones anteriores (conexión
     # GENERIC sin driver, step con configuración obligatoria vacía, hop
     # huérfano), rechazar acá con un mensaje claro en vez de entregar un .ktr
-    # que Spoon abre roto sin explicación.
-    validate_ktr_xml(ktr_xml, strict_connections=strict_connections)
+    # que Spoon abre roto sin explicación. Una conexión sin resolver (bajo
+    # strict_connections) ya NO está en esa lista de fatales (D15) — vuelve acá
+    # como warning y se anota junto con el resto en vez de abortar la emisión.
+    warnings.extend(validate_ktr_xml(ktr_xml, strict_connections=strict_connections))
 
     return ktr_xml, filename, warnings

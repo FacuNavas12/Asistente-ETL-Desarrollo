@@ -75,6 +75,12 @@ Orden: `KTR_A` antes que `KTR_B` (escritor de `dim_producto` antes que su lector
 
 **Nota:** este reporte fue el punto de aprobación (D17, 2026-07-23) — ver estado de implementación real en [Estado F3](#estado-f3) abajo y D19/D20 en `02-decisiones.md`.
 
+**Actualización 2026-07-27 (D34):** el punto `ktr_xml_validator.py` / `build.py` de la línea de arriba quedó
+**parcialmente** ejecutado — solo la conexión sin resolver (`_check_generic_connections` bajo
+`strict_connections`) pasó de `raise` a warning devuelto por `validate_ktr_xml`. Los otros dos chequeos del
+mismo módulo (`GENERIC` sin `CUSTOM_DRIVER_CLASS`/`CUSTOM_URL`, hop huérfano) siguen abortando con
+`KtrXmlValidationError` — decisión explícita de acotar el alcance, ver D34 en `02-decisiones.md`.
+
 ---
 
 <a id="estado-f3"></a>

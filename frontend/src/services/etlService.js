@@ -99,11 +99,16 @@ export async function rebuildEtlConnections(etlId, connections) {
   });
 }
 
-export async function buildFromRaw(raw_llm_data, dim_contracts = []) {
+// connections_map (D-conexión-build-from-raw, docs/refactor/02-decisiones.md):
+// antes este endpoint no tenía forma de recibir conexiones y "Reutilizar
+// respuesta" siempre entregaba el .ktr con placeholder aunque el usuario ya
+// las hubiera completado en el formulario. null (default) preserva el
+// comportamiento histórico — mismo shape que submitJobConnections.
+export async function buildFromRaw(raw_llm_data, dim_contracts = [], connections_map = null) {
   return apiFetch("/api/v1/etl/build-from-raw", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ raw_llm_data, dim_contracts }),
+    body: JSON.stringify({ raw_llm_data, dim_contracts, connections_map }),
   });
 }
 

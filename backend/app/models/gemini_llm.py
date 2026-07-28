@@ -151,7 +151,6 @@ class GeminiLLM(BaseLLM):
             system_instruction=system,
             temperature=self._temperature,
             max_output_tokens=self._max_tokens,
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
             # timeout en ms — evita que una respuesta colgada (sin datos, sin
             # error HTTP) bloquee el job indefinidamente (ver AnthropicLLM).
             http_options=types.HttpOptions(timeout=int(self._request_timeout_s * 1000)),
@@ -232,7 +231,6 @@ class GeminiLLM(BaseLLM):
                 temperature=self._temperature,
                 max_output_tokens=self._max_tokens,
                 response_mime_type="application/json",
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
                 http_options=types.HttpOptions(timeout=int(self._request_timeout_s * 1000)),
             ),
         )

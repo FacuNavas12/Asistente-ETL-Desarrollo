@@ -11,7 +11,7 @@ from app.schemas.etl import EtlCreate, EtlRead, EtlStatusUpdate, EtlUpdate
 from app.schemas.etl_schemas import ConnectionsMapRequest, ETLGenerateResponse, MetadataResponse
 from app.services import etl_service
 from app.services.etl_generator import KtrBuildError, _build_response_from_two_ktr_data
-from app.services.ktr_builder import resolve_real_connections
+from app.services.ktr_builder import missing_layer_warnings, resolve_real_connections
 
 router = APIRouter(prefix="/api/etls", tags=["ETLs"], dependencies=[Depends(require_auth)])
 
@@ -76,6 +76,9 @@ def update_etl_connections(
     real_connections, conn_warnings = resolve_real_connections(
         connections_map, db, owner=get_current_owner(payload)
     )
+    # Capa que ni siquiera llegó en el body (ej. "Completar en Spoon" sin marcar
+    # explícito, o conn_origen ausente) — mismo criterio que _try_build (D15).
+    conn_warnings = [*conn_warnings, *missing_layer_warnings(real_connections)]
 
     try:
         result = _build_response_from_two_ktr_data(
@@ -83,6 +86,10 @@ def update_etl_connections(
             real_connections=real_connections,
             connection_warnings=conn_warnings,
             strict_connections=True,
+            # sin esto, cada reconstrucción vía este endpoint (reconectar destino)
+            # pisa etl.result sin dwh_ddl porque raw_llm_data (ai.py) nunca lo
+            # guardó — ResultView oculta la sección de DDL apenas se llama acá.
+            dwh_ddl=(etl.result or {}).get("dwh_ddl"),
         )
     except KtrBuildError as exc:
         raise HTTPException(status_code=422, detail=str(exc.original_error))

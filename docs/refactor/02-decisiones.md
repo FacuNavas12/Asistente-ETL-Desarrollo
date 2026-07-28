@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-07-27 (D33)
+**Última actualización:** 2026-07-28 (D35)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -50,6 +50,8 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D31 | Reanudación de la etapa 2 sin endpoint ni estado servidor nuevos (`reuse_stage_1`) | Diseño cerrado |
 | D32 | Contrato del status extendido: `raw_llm_data` inmutable, lo parcial va en `stages` | Diseño cerrado |
 | D33 | Superficie de acceso a las respuestas del modelo: botón de header + drawer, dos acciones distintas | Diseño cerrado |
+| D34 | D15 ejecutado para conexiones: sin resolver ya no aborta el build; `conn_origen` acepta metadata inline | Ejecutado |
+| D35 | El mapa de conexiones es por-ETL y se aplica en todo camino de build (incluido `build-from-raw`); `conn_origen` derivado se valida antes de usarse | Ejecutado |
 
 ---
 
@@ -766,6 +768,102 @@ al modelo (DDL + etapa 2, vía `reuse_stage_1`). Colapsarlas en un solo botón c
 justo la funcionalidad pedida — reintentar sin perder lo que ya se generó.
 
 **Estado:** diseño cerrado, implementación en curso en esta misma sesión.
+
+<a id="d34"></a>
+### D34 — D15 ejecutado para conexiones: conexión sin resolver ya no aborta el build; `conn_origen` acepta metadata inline `[F3]`
+
+**Contexto:** un ETL con origen por CSV/Excel/DDL/formulario (sin `connection_id` de una `Connection` guardada)
+tumbaba el build entero al final, ya con el modelo respondido bien: `KtrXmlValidationError` — *"Conexión
+'conn_origen': quedó sin resolver... no se puede entregar un .ktr final"*. Dos causas encadenadas, reportadas por
+el usuario en sesión:
+
+1. `conn_origen` nunca se preguntaba — se auto-derivaba (`CreateETL.jsx:_deriveOrigenConnectionId`) solo si
+   TODAS las tablas de origen compartían un `connection_id`; si no, quedaba `null` y la clave nunca viajaba en
+   `connections_map`. El formulario que sí aparece durante el procesamiento (`DestinationConnections.jsx`) solo
+   pedía staging/DWH.
+2. `ktr_xml_validator._check_generic_connections` metía la conexión placeholder en la misma lista de `issues`
+   fatales que un `GENERIC` sin driver o un hop huérfano — línea 291 (arriba, D15) ya nombraba este `raise`
+   exacto como el comportamiento que D15 retira, alcance F3, pendiente en `03b-reportes.md`. Esta D lo ejecuta
+   para el caso de conexiones.
+
+**Decisión:**
+
+- **`validate_ktr_xml(strict_connections=True)` ya no aborta por conexión sin resolver.** Pasa de `-> None` a
+  `-> list[str]`: la conexión con host/database placeholder sale como warning (mensaje accionable: qué capa, qué
+  completar en Spoon), no como `issue`. `GENERIC` sin `CUSTOM_DRIVER_CLASS`/`CUSTOM_URL`, step vacío y hop
+  huérfano **siguen fatales** — eso abre roto en Spoon, no hay nada que "completar" ahí. Alcance acotado a
+  propósito: D15 completo (los otros dos chequeos) queda sin ejecutar, decisión explícita para no ampliar el
+  cambio más allá de lo pedido.
+- **`missing_layer_warnings()` nuevo** (`ktr_builder/connection.py`) cubre el caso que `resolve_real_connections`
+  no cubría: una capa (`conn_origen`/`conn_staging`/`conn_dwh`) que ni siquiera llegó en `connections_map` — la
+  causa raíz de este bug puntual. `_try_build` (`etl_generator.py`) y el rebuild (`routers/etl.py`) lo usan tras
+  `resolve_real_connections`, y emiten cada warning como evento de progreso `build.connection_unresolved` /
+  `level="warning"` (visible en la pantalla de generación sin cambios de frontend — `progressLog.js` nunca
+  desvanece `warning`/`error`) además de sumarlo a `advertencias_buenas_practicas` (canal ya existente, D13).
+- **`ConnectionsMapRequest.conn_origen` pasa a `Union[str, InlineConnection]`** (antes `Optional[str]`).
+  `resolve_real_connections` ya resolvía la rama dict de forma genérica por nombre lógico — no hizo falta tocar
+  el service. Frontend: `DestinationConnections.jsx` gana una sección "Conexión de Origen" (checkbox "Completar
+  en Spoon" + `DestinationConnectionForm`, igual que staging/DWH) que solo se muestra cuando
+  `_deriveOrigenConnectionId()` devuelve `null`; si devuelve un id, sigue sin preguntarse. `ConnectionView.jsx`
+  (EtlDetail) gana el mismo patrón para editar el origen de un ETL ya generado — antes era texto fijo.
+- **`conn_staging`/`conn_dwh` NO ganan la rama string** (aceptar `connection_id` reusado ahí) — eso es H24/C.7
+  (`01-hallazgos.md:433-441`, `02-decisiones.md` § C.7), decisión de producto aparte, no tocada acá.
+
+**Estado:** ejecutado, implementación en esta misma sesión. `docs/refactor/03b-reportes.md` pendiente
+correspondiente marcado como parcialmente cerrado (conexiones sí; `SystemInfo`/hop huérfano del validator,
+resto de D15, siguen sin ejecutar).
+
+<a id="d35"></a>
+### D35 — El mapa de conexiones es por-ETL y se aplica en todo camino de build; `conn_origen` derivado se valida antes de usarse `[F3]`
+
+**Contexto:** usuario reportó que un ETL recién generado salió con **todas** las conexiones (staging y DWH,
+completadas a mano en el formulario, misma base para ambas) en `type=GENERIC`/`PLACEHOLDER_HOST`/`port=0` — tuvo
+que reescribir todo en Spoon. Diagnóstico verificado con lectura read-only contra la DB real (no hipótesis):
+
+1. `form_data.connectionsMap` del ETL estaba bien guardado (`db_type`, host, port, database, username completos
+   para staging y DWH).
+2. `resolve_real_connections()` sobre ese mismo mapa, en replay directo, resuelve perfecto — `type: POSTGRESQL`
+   + metadata real. El backend de resolución (D34) no tiene el bug.
+3. El `.ktr` guardado no tenía ni un warning de conexión ni `dwh_ddl` — dos marcas que `_try_build()` siempre
+   deja. El resultado no lo construyó `_try_build()`: se construyó por **"Reutilizar respuesta del modelo"**
+   (`handleReuseResponse` → `POST /api/v1/etl/build-from-raw`), camino que **nunca tuvo campo de conexiones** —
+   `BuildFromRawRequest` no lo tenía, `build_etl_from_raw()` no lo aceptaba, y el frontend hacía
+   `setJobId(null)` explícito, lo que ocultaba el panel de `DestinationConnections` por completo.
+
+Causa independiente, misma sesión: `origenTables[].connection_id` de ese ETL apuntaba a un UUID que ya no existe
+en `connections` — `resolve_real_connections` ya avisaba ("no encontrada", D34), pero el frontend **ocultaba**
+el formulario de origen apenas derivaba un id, sin verificar que resolviera, dejando el origen sin forma de
+corregirse desde ninguna pantalla.
+
+**Decisión:**
+- `ConnectionsMapRequest`/`InlineConnection` se mueven antes de `BuildFromRawRequest` en `etl_schemas.py` (sin
+  cambio de forma) para que `BuildFromRawRequest` gane un campo opcional `connections_map`. `build_etl_from_raw()`
+  gana `real_connections`/`connection_warnings` y los propaga a `_build_response_from_two_ktr_data`/
+  `_build_response_from_data` con `strict_connections=bool(real_connections)` — mismo criterio que `_try_build`
+  (D34): revisa placeholder sin resolver, nunca aborta. `_build_response_from_data` (flujo monolítico legacy)
+  gana el parámetro `strict_connections` que no tenía. `POST /api/v1/etl/build-from-raw` resuelve el mapa con
+  el mismo par `resolve_real_connections` + `missing_layer_warnings` que ya usan `_try_build` y
+  `POST /api/etls/{id}/connections` — reusado, no reescrito.
+- Frontend (`CreateETL.jsx`): `handleReuseResponse` ahora pide conexiones (mismo panel `DestinationConnections`,
+  gate de render `jobId || pendingRebuild`) si todavía no se decidieron en la sesión (`connectionsDecidedRef`);
+  si ya se decidieron, reconstruye directo con `connectionsMapRef.current`. `handleFinalizeConnections` despacha
+  a `submitJobConnections` (con `jobId`) o a `buildFromRaw` (con `pendingRebuild === "raw"`).
+- `_deriveOrigenConnectionId()` ya no se usa cruda: `_resolveOrigenConnection()` la verifica contra
+  `listConnections()` antes de escribirla en `connectionsMapRef.current.conn_origen` — un id que no resuelve
+  (o que la verificación no pudo confirmar) cae a `null`, lo que hace que `DestinationConnections` muestre el
+  formulario inline en vez de darlo por bueno en silencio. Mismo criterio en `ConnectionView.jsx` (ETL ya
+  generado): `origenIsSavedId` ya no confía ciegamente en el string guardado, lo valida en un efecto y cae al
+  formulario editable si no resuelve — es lo que permite reparar un ETL ya generado sin regenerarlo (ese
+  endpoint ya resolvía bien, solo faltaba poder reemplazar el id muerto).
+
+**No se crean filas `Connection` reusables para staging/DWH** — sigue valiendo D34/decisión original: no son
+conexiones reusables, es la metadata de destino de *ese* ETL puntual.
+
+**Fuera de alcance, registrado:** el prompt (`system_etl.txt` K7) permite al modelo declarar una sola conexión
+cuando dos capas comparten base — si lo hace, la capa colapsada no recibe metadata (el match es por nombre
+lógico declarado). No se reprodujo en esta sesión; no se toca el prompt acá.
+
+**Estado:** ejecutado, implementación en esta misma sesión.
 
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido

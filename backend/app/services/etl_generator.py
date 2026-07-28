@@ -468,6 +468,7 @@ def _build_response_from_data(
     connection_warnings: list[str] | None = None,
     required_columns_by_table: dict[str, list[str]] | None = None,
     extra_warnings: list[str] | None = None,
+    strict_connections: bool = False,
 ) -> ETLGenerateResponse:
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_data = data.get("ktr", {})
@@ -524,6 +525,7 @@ def _build_response_from_data(
             ktr_data, process_name,
             real_connections=real_connections,
             required_columns_by_table=required_columns_by_table,
+            strict_connections=strict_connections,
         )
     except Exception as e:
         _log.error("build_ktr failed: %s — conservando raw_data para reintento manual", str(e))
@@ -720,6 +722,8 @@ async def build_etl_from_raw(
     raw_llm_data: dict,
     llm: BaseLLM | None = None,
     dim_contracts: list | None = None,
+    real_connections: dict[str, dict] | None = None,
+    connection_warnings: list[str] | None = None,
 ) -> ETLGenerateResponse:
     """Reconstruye el ETL a partir de una respuesta cruda del modelo guardada previamente
     (p. ej. tras un fallo de build_ktr).
@@ -750,7 +754,16 @@ async def build_etl_from_raw(
     determinístico, no llama al modelo, y hoy era la única fase de las tres de
     la serie dim_contracts que este camino se saltaba por completo. Sin
     dim_contracts (llamadas viejas, o datos guardados antes de este parámetro)
-    se omite sin error — comportamiento histórico preservado."""
+    se omite sin error — comportamiento histórico preservado.
+
+    real_connections/connection_warnings (opcional): mismo shape que arma
+    resolve_real_connections() (ver ktr_builder/connection.py) — antes este
+    camino no tenía forma de recibir conexiones y el .ktr salía siempre con
+    placeholder, aunque el usuario ya las hubiera completado (ver
+    docs/refactor/02-decisiones.md). None (default) preserva el comportamiento
+    histórico. strict_connections se activa solo cuando real_connections llega
+    (mismo criterio que _try_build): revisa placeholder sin resolver y lo deja
+    como warning, nunca aborta (D15)."""
     metadata = MetadataResponse(
         modelo_usado="(respuesta reutilizada)",
         tokens_input=0,
@@ -776,7 +789,11 @@ async def build_etl_from_raw(
             )
             raw_llm_data["ktr_2"].setdefault("validaciones", []).extend(step_policy_results)
         return _build_response_from_two_ktr_data(
-            raw_llm_data["ktr_1"], raw_llm_data["ktr_2"], metadata, extra_warnings=extra_warnings,
+            raw_llm_data["ktr_1"], raw_llm_data["ktr_2"], metadata,
+            real_connections=real_connections,
+            connection_warnings=connection_warnings,
+            extra_warnings=extra_warnings,
+            strict_connections=bool(real_connections),
         )
     if raw_llm_data.get("ktr"):
         raw_llm_data["ktr"], extra_warnings = normalize_step_configs(raw_llm_data["ktr"])
@@ -792,7 +809,13 @@ async def build_etl_from_raw(
                 raw_llm_data.get("validaciones", []),
             )
             raw_llm_data.setdefault("validaciones", []).extend(step_policy_results)
-    return _build_response_from_data(raw_llm_data, metadata, extra_warnings=extra_warnings)
+    return _build_response_from_data(
+        raw_llm_data, metadata,
+        real_connections=real_connections,
+        connection_warnings=connection_warnings,
+        extra_warnings=extra_warnings,
+        strict_connections=bool(real_connections),
+    )
 
 
 def _build_prompt_from_inference(
@@ -1065,7 +1088,7 @@ async def _stage_pipeline(
 
 def _try_build(job_id, db: Session, sink: Optional[ProgressSink] = None) -> None:
     from app.models.ktr_build_job import KtrBuildJob, ModelStatus, KtrBuildStatus
-    from app.services.ktr_builder import resolve_real_connections
+    from app.services.ktr_builder import missing_layer_warnings, resolve_real_connections
 
     sink = sink or current_sink()  # None si nadie seteó un sink (p.ej. tests viejos) — todo emit() de abajo lo tolera
 
@@ -1106,6 +1129,13 @@ def _try_build(job_id, db: Session, sink: Optional[ProgressSink] = None) -> None
         sink.emit(stage="build", code="build.started", message="Armando los archivos .ktr/.kjb")
 
     real_connections, conn_warnings = resolve_real_connections(job.connections_map, db, owner=job.owner_id)
+    # Capas que ni siquiera llegaron en connections_map (ej. conn_origen cuando
+    # el origen no vino de una Connection guardada) — resolve_real_connections
+    # solo avisa de lo que llegó y falló resolver, no de lo que nunca llegó.
+    conn_warnings = [*conn_warnings, *missing_layer_warnings(real_connections)]
+    if sink:
+        for w in conn_warnings:
+            sink.emit(stage="build", code="build.connection_unresolved", level="warning", message=w)
     metadata = MetadataResponse(**job.model_json["metadata"])
 
     try:
@@ -1124,8 +1154,10 @@ def _try_build(job_id, db: Session, sink: Optional[ProgressSink] = None) -> None
                 ]
             ],
             # Este es el único caller que ya intentó resolver conexiones reales
-            # (resolve_real_connections arriba) — si algo queda placeholder acá
-            # es un .ktr final roto, no un preview: abortar en vez de entregarlo.
+            # (resolve_real_connections arriba) — strict_connections activa el
+            # chequeo de conexión sin resolver. Ya no aborta (D15): sale como
+            # warning en el resultado y como evento build.connection_unresolved
+            # arriba, y el .ktr se entrega con placeholder para completar en Spoon.
             strict_connections=True,
             dwh_ddl=job.model_json.get("dwh_ddl"),
         )

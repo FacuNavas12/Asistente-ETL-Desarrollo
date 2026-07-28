@@ -18,6 +18,7 @@ from app.services.ktr_builder.connection import (
     _DB_TYPE_TO_KETTLE,
     _GENERIC_DRIVER_CLASS,
     _resolve_connection,
+    missing_layer_warnings,
     resolve_real_connections,
 )
 from app.services.ktr_builder.dimension_step_policy import (
@@ -35,6 +36,7 @@ from app.services.ktr_builder.validate import _validate_ktr
 __all__ = [
     "build_ktr",
     "resolve_real_connections",
+    "missing_layer_warnings",
     "STEP_TYPE_ALIASES",
     "STEP_BUILDERS",
     "repair_ktr_steps",
