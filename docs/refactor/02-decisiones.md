@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-07-28 (D35)
+**Última actualización:** 2026-07-28 (D37)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -52,6 +52,8 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D33 | Superficie de acceso a las respuestas del modelo: botón de header + drawer, dos acciones distintas | Diseño cerrado |
 | D34 | D15 ejecutado para conexiones: sin resolver ya no aborta el build; `conn_origen` acepta metadata inline | Ejecutado |
 | D35 | El mapa de conexiones es por-ETL y se aplica en todo camino de build (incluido `build-from-raw`); `conn_origen` derivado se valida antes de usarse | Ejecutado |
+| D36 | H27/H28 cerrados con evidencia real (Kettle fuente + auditoría de `STEP_BUILDERS`); B17 reescrita, `FIELD_TYPE_SOURCES` +6 entradas | Ejecutado |
+| D37 | Criterio determinista de SCD1 vs SCD2 — pre-check en `domain/scd.py` + criterio escrito en `system_inference.txt` | Ejecutado |
 
 ---
 
@@ -75,7 +77,7 @@ Navegación rápida — clic para ir directo a la decisión. Grupos según la ta
 [D16](#d16) dependencia externa real: eje `dim_contracts` · [D19](#d19) wiring de servicio cerrado, HTTP en modo notificación · [D20](#d20) forma de la respuesta con N archivos
 
 **F4** — track de errores / contenido generado
-[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo
+[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo · [D36](#d36) B17 reescrita + `FIELD_TYPE_SOURCES` +6 entradas (cierra H27/H28)
 
 **Track A** — auditoría de arquitectura
 [D24](#d24) Track A retomada, A0 ejecutada · [D25](#d25) A0.5 ejecutada (censo de fallos silenciosos), H29 · [D26](#d26) adelanta en chico una porción de A2/R1 (test de arquitectura), sin esperar a A7 · [D27](#d27) split `registry.py`, `KNOWN_PDI_STEP_TYPES` borrado, `CanonicalType` a `domain/`, criterio vocabulario-PDI-es-dominio
@@ -830,6 +832,20 @@ que reescribir todo en Spoon. Diagnóstico verificado con lectura read-only cont
    `BuildFromRawRequest` no lo tenía, `build_etl_from_raw()` no lo aceptaba, y el frontend hacía
    `setJobId(null)` explícito, lo que ocultaba el panel de `DestinationConnections` por completo.
 
+<a id="d36"></a>
+### D36 — H27/H28 cerrados con evidencia real (código fuente de Kettle + auditoría del universo real de steps); B17 reescrita, `FIELD_TYPE_SOURCES` gana 6 entradas nuevas además de `Constant` `[F4]`
+
+**Contexto:** H27 y H28 (`01-hallazgos.md`, sesión 2026-07-25) dejaron dos puntos de la regla B17 (`system_etl.txt`, campos monetarios mal tipados en Kettle, catálogo E14/`v11_monetario_sin_bignumber`) sin verificar contra fuente real — escritos por inferencia. El usuario aportó, en esta sesión, un documento con investigación externa contra `pentaho/pentaho-kettle` (GitHub, branch `master`) que responde ambos puntos con archivo:línea real. Regla del proyecto respetada: no se copió código del documento a ciegas — se contrastó cada afirmación contra el estado actual de `system_etl.txt`/`error_catalog_checks.py`/`steps/*.py` antes de aplicar nada (ver H35/H36 para el detalle verificado).
+
+**Decisión:**
+
+- **B17 (`system_etl.txt`) reescrita**, no solo confirmada. La conclusión práctica no cambia — "todos los operandos y la salida en `BigNumber`" seguía siendo la regla segura — pero la explicación del mecanismo estaba mal: el texto viejo atribuía la misma causa ("el cálculo pierde precisión en la operación misma") a `Calculator` y a `Formula` por igual. Verificado que son mecanismos distintos: en `Calculator` el tipo de la operación lo fija el primer operando (`field_a`, vía `switch(metaA.getType())` en `ValueDataUtil.java`) — asimétrico, depende del orden; en `Formula` el cálculo ya se hace en `BigDecimal` sin importar el orden (motor libformula), y la fuga está en el `value_type` de salida y en campos de origen ya `Number` (garbage-in). Se agregó además una nota nueva, sin código E asignado: `Calculator` con `DIVIDE` en `BigNumber` sin `value_precision` puede lanzar `ArithmeticException` en runtime (`MathContext.UNLIMITED` por defecto en divisiones no exactas).
+- **`FIELD_TYPE_SOURCES` (`error_catalog_checks.py`) gana 7 entradas** (`Constant` — ya conocida desde H28 — más `FieldSplitter`, `Denormaliser`, `RegexEval`, `DBLookup`, `StreamLookup`, `DataValidator`), encontradas auditando los `steps/*.py` reales de este proyecto, no la lista de Kettle completo que traía el documento del usuario (la mayoría de sus ~24 steps sugeridos — User Defined Java Class, LDAP/YAML/SAP/etc. — no existen en `STEP_BUILDERS` de este proyecto; auditarlos habría sido trabajo sin efecto). El criterio de inclusión/exclusión (qué es un value-type real de Kettle vs. otro vocabulario bajo el mismo nombre de tag — `GroupBy`/`AnalyticQuery`/`FilterRows`/`GetSystemInfo`/`DimensionLookup` punch-through quedan afuera a propósito) quedó documentado como comentario en el propio archivo, al lado de la tupla, para que la próxima sesión no vuelva a investigar lo mismo.
+- **Alcance de "exhaustividad" redefinido**: ya no es "cubrir Kettle completo" (pregunta sin límite natural, la razón de que H28(b) quedara abierta) sino "cubrir `STEP_BUILDERS` de este proyecto" (~45 entradas, `step_emitters.py:88-149`), que sí es una lista cerrada y verificable. Riesgo residual aceptado explícitamente: si `STEP_BUILDERS` gana un step nuevo con value-type por campo, `FIELD_TYPE_SOURCES` no lo detecta solo — hace falta una auditoría manual nueva, no hay mecanismo automático que los mantenga sincronizados. No se decide acá cerrar ese riesgo (ej. un test de coherencia como `test_pdi_step_coherence.py` pero para `FIELD_TYPE_SOURCES` vs. `STEP_BUILDERS`) — queda como candidato a hallazgo futuro si se justifica.
+- Verificado con los tests existentes (`test_error_catalog_checks.py` 13/13, `test_pdi_step_coherence.py` 3/3) que el cambio no rompió nada — no se agregaron tests nuevos para las 7 entradas (fuera de alcance de esta sesión, que fue verificación + corrección de documentación/prompt/catálogo, no una tarea de cobertura de tests).
+
+**Estado:** ejecutado, esta misma sesión (2026-07-28). Cierra H27/H28 vía H35/H36.
+
 Causa independiente, misma sesión: `origenTables[].connection_id` de ese ETL apuntaba a un UUID que ya no existe
 en `connections` — `resolve_real_connections` ya avisaba ("no encontrada", D34), pero el frontend **ocultaba**
 el formulario de origen apenas derivaba un id, sin verificar que resolviera, dejando el origen sin forma de
@@ -864,6 +880,69 @@ cuando dos capas comparten base — si lo hace, la capa colapsada no recibe meta
 lógico declarado). No se reprodujo en esta sesión; no se toca el prompt acá.
 
 **Estado:** ejecutado, implementación en esta misma sesión.
+
+<a id="d37"></a>
+### D37 — Criterio determinista de SCD1 vs SCD2: pre-check en `domain/scd.py` + criterio escrito en `system_inference.txt`
+
+**Contexto:** el usuario reportó errores recurrentes en la decisión SCD1/SCD2, con la expectativa de que ya existiera un criterio claro. No existía. `system_inference.txt` mencionaba SCD nueve veces, pero todas eran consecuencias de un `scd_type` ya elegido (contrato DDL D4, índice D3, `fecha_fin` NULLABLE I6) — ninguna decía **cuándo** elegir 1 vs 2. Lo único que le llegaba al modelo sobre el significado era la descripción del JSON Schema (`inference_output.py`): define *qué es* cada valor, nunca *cuándo* corresponde. El único texto con criterio real del repo vivía en `promptfoo/prompts/inference.yaml` — una copia congelada que no corre.
+
+Esto no es una omisión menor: un `scd_type` mal elegido no queda como advertencia, destruye trabajo correcto río abajo. `dimension_step_policy.py::enforce_dimension_step_policy` hace downgrade `DimensionLookup`→`CombinationLookup` **reescribiendo el config entero**, tirando `fields`/`date_from`/`date_to` — historización legítima borrada en silencio (H9, "así se perdió esa vez").
+
+**No hay una fuente autorizada que el prompt estuviera omitiendo por descuido.** Ni Pentaho tiene criterio propio: adopta Kimball y delega. Su única prescripción propia es negativa y sobre volatilidad de *esquema*, no de datos:
+
+> "Introducing changes to the dimensional model in Type 2 could be very expensive database operation so it is not recommended to use it in dimensions where a new attribute could be added in the future." — Pentaho Academy, *SCDs* [F1]
+
+Ver H37 para el hallazgo completo.
+
+**Decisión — dos decisiones distintas que se trataban como una sola:**
+
+| | Decisión | Dueño | Estado antes de D37 |
+|---|---|---|---|
+| A | `scd_type` (0/1/2) por dimensión | LLM, etapa inferencia | sin criterio escrito |
+| B | Qué step PDI la implementa | Backend, `derive_dimension_step_type` (D11) | ya resuelto |
+
+D37 ataca A sin tocar B. SCD2 vs SCD1 es un requisito de negocio ("¿un reporte del pasado debe mostrar el atributo como era entonces?"), no una propiedad derivable de datos crudos — el backend no puede inventar esa intención sola (D6: "la línea divisoria es dónde ya vive la información"). Lo que sí puede es descartar los casos donde SCD2 es mecánicamente imposible o ya está declarado por evidencia estructural, y acotar el residuo de juicio de negocio — mismo patrón que D16/D21 (backend acota, el modelo decide el resto y justifica).
+
+**Qué se construyó:**
+
+1. **`backend/app/domain/scd.py`** (nuevo, capa `domain`, solo stdlib — R1): `classify_scd_candidates()` con precedencia fija:
+   - **Regla 0** — sin clave natural durable *confirmada* → `NO_HISTORY_POSSIBLE`, forzado a 1. Mecánica de la herramienta, no criterio de modelado: *"Both the prior and new rows contain as attributes the natural key (or another durable identifier)"* [F1]. **Vinculante incluso sobre una declaración explícita del usuario.**
+   - **Regla 1** — sin atributos mutables (todo lo no-clave es la propia clave) → `NO_HISTORY_POSSIBLE`, forzado a 1.
+   - **Regla 2** — dimensión de calendario (nombre + única clave de tipo fecha) → `NO_HISTORY_POSSIBLE`, forzado a **0** (Type 0 de Kimball, "Design Tip #152": atributo fijo).
+   - **Regla 3** — intención declarada explícitamente (`TableSemantics.dwh_intent.scd_type`, forma ya reservada en `canonical.py`, hoy sin lógica) → `HISTORY_DECLARED` si pide 2.
+   - **Regla 3-bis** — el propio origen ya trae columnas de historial (`valid_from`/`fecha_desde`/`current_flag`/`version`/...) → `HISTORY_DECLARED`. D6 puro: la información ya vive en el origen, es lectura, no inferencia. Respaldo: *"Also 'effective date' and 'current indicator' columns are used in this method"* [F1].
+   - Resto → `UNDECIDED`, con `scd2_candidates` (atributos mutables ni casi-únicos por fila ni constantes — proxy de churn, declarado como tal) como techo de lo que el modelo puede versionar.
+   - `derive_dimension_step_type()` (la pieza de D11) se **movió** acá desde `dimension_step_policy.py`, que la reexporta — vocabulario SCD compartido entre inferencia y KTR, R7.
+
+2. **Corrección de alcance, decidida antes de escribir código** (ver `respuesta-code-scd-d37.md` del usuario, revisión externa con fuentes citables): `business_rules`/`process_goal` son texto de **proyecto**; el veredicto de `classify_scd_candidates` es **por entidad**. Si la señal de prosa alimentara directamente el veredicto por entidad, una sola aparición de "histórico" inclinaría *toda* dimensión del modelo hacia SCD2 — y "histórico" es de las palabras más sobrecargadas del dominio ("carga histórica de 5 años" es volumen de hechos, no versionado de un atributo). Por eso `detect_history_intent()` devuelve un `ProjectHistorySignal` separado, de alcance de proyecto, y el prompt instruye al modelo a decidir a qué dimensión específica aplica — nunca a todas por default. Ese residuo de asignación es exactamente el juicio que le corresponde al modelo bajo D16/D21.
+
+3. **Bug encontrado durante la verificación end-to-end, no en el diseño:** la regla 0, tal como se implementó primero, leía `key_columns=[]` (sin metadata de PK/UNIQUE) como "confirmado que no hay clave". Pero Formulario/CSV/Excel (el camino más común) **nunca** declaran esa metadata — solo BD (`db_adapter`) y DDL (`ddl_adapter`) la resuelven de verdad. Sin distinguir "confirmado sin clave" de "no se sabe", la regla 0 forzaba `scd_type=1` en casi cualquier ETL armado a mano. Se encontró porque `test_refine_untouched_dimension_preserves_dim_contracts` (real, contra LLM) empezó a fallar: el modelo, correctamente instruido por el nuevo criterio, degradó un `dim_contract` legítimo `scd_type=2` a 1 con `"CONTRATO MODIFICADO"` porque el fixture de la prueba usa entrada tipo Formulario. Fix: `classify_scd_candidates` gana `key_columns_trusted: bool`, `True` solo cuando todos los campos de la tabla tienen `inferred_by` en `{"database", "ddl"}`; con `False`, la regla 0 se salta y el veredicto cae a `UNDECIDED` sin forzar nada. Registrado acá porque es la clase de error que D37 mismo previene en el resto del sistema — un default determinista que confunde "sin evidencia" con "evidencia de ausencia".
+
+4. **`scd_rationale`** — nuevo campo en `DimContract` (default `""`, no rompe contratos ya persistidos) y **required** en `INFERENCE_OUTPUT_SCHEMA`: la razón del `scd_type` elegido queda como artefacto persistido, no prosa suelta (R12 — la razón es entidad de dominio).
+
+5. **`attributes_scd1`/`attributes_scd2` ahora llegan al prompt de ETL** (`etl_generator._format_dim_contracts`) — se le exigían al LLM de inferencia y llegaban al validador de DDL, pero la fase que arma los steps nunca los veía. El juicio "qué atributos versionan" se calculaba y se tiraba.
+
+**Limitación registrada, no arreglada — la forma binaria es provisoria.** `attributes_scd1`/`attributes_scd2` es binario; el step de Pentaho es **ternario por campo**: `Insert` / `Update` (Type 1) / `Punch through` —
+
+> "**Punch through:** [...] instead of only updating the matched dimension row, it will update all versions of the row in a Type II slowly changing dimension." — Pentaho Academy, *SCDs* [F1]
+
+— y mezclarlos está soportado explícitamente ("If you mix Insert, Punch Through and Update options in this step, this algorithm acts like a Hybrid Slowly Changing Dimension" [F1]). `punch_through` es cómo se corrige un error en un atributo de una dimensión **ya historizada** — el uso propio de Type 1 según Pentaho. Con la forma binaria ese caso no tiene cómo expresarse. Se registra ahora porque el punto 5 de arriba es el que hace que estos campos empiecen a alimentar generación real de steps — el momento en que la forma binaria deja de ser decorativa. No bloquea (el binario es un subconjunto válido) pero no se cierra en silencio.
+
+**Por qué D37 y no ampliar D11:** D11 fijó que el **step** se deriva de `scd_type` — asumía que `scd_type` ya estaba decidido. D37 fija de dónde sale `scd_type`, que D11 daba por dado. Son capas distintas de la misma cadena de decisión; ampliar D11 habría mezclado "cómo deriva el step" con "cómo se elige el tipo", que es exactamente la confusión que motivó esta sesión.
+
+**Verificado:** `backend/tests/test_scd_policy.py` (nuevo, puro/sin LLM/sin DB) cubre las 5 reglas + `key_columns_trusted` + `detect_history_intent` como señal de proyecto (nunca veredicto por entidad). `test_architecture_layers.py` verde con `domain.scd` en `DOMAIN_MODULES`, `FROZEN_R1` sin crecer. Suite completa corrida contra el repo real (no solo unitarios): la única regresión real que apareció fue el bug de `key_columns_trusted` de arriba, encontrada y cerrada en la misma sesión — el resto de las fallas preexistentes (`test_api.py` sin servidor vivo, `test_ktr_build_job_api.py`, `test_ktr_xml_validator.py::test_build_ktr_get_system_info_without_fields_gets_default_field`, `test_etl_schema_validates_minimal`) se confirmaron independientes de este cambio vía `git stash` antes/después.
+
+**Estado:** ejecutado, esta misma sesión (2026-07-28).
+
+**Fuentes** (citas textuales, verificadas — no juicio propio):
+
+| ID | Documento | URL |
+|---|---|---|
+| F1 | Pentaho Academy — *SCDs* (Dimension Lookup/Update, workshop oficial) | https://academy.pentaho.com/pentaho-data-integration/data-integration/data-sources/databases/scds/scds |
+| F2 | Kimball Group — *Slowly Changing Dimensions* (Type 1, Ralph Kimball, 2008) | https://www.kimballgroup.com/2008/08/slowly-changing-dimensions/ |
+| F3 | Kimball Group — *Design Tip #152: Slowly Changing Dimension Types 0, 4, 5, 6, 7* | https://www.kimballgroup.com/2013/02/design-tip-152-slowly-changing-dimension-types-0-4-5-6-7/ |
+
+Default SCD1 respaldado por F2: *"most data warehouses start out with Type 1 as the default"*. Excepción incorporada al prompt: F2 marca el único caso donde SCD1 está prohibido, no solo desaconsejado — *"In financial reporting environments with month end close processes and in any environment subject to regulatory or legal compliance, Type 1 changes may be outlawed. In these cases, the Type 2 technique must be used."*
 
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido

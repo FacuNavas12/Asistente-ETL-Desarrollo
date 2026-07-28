@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Cada H se escribe una vez y no se reescribe — una actualización nueva se agrega como párrafo nuevo dentro de la misma entrada, con fecha. El índice al tope sí se edita en el momento en que el estado de un hallazgo cambia.
 
-**Última actualización:** 2026-07-27 (H33-H34)
+**Última actualización:** 2026-07-28 (H37)
 
 Cada entrada: qué se encontró, evidencia (`archivo:línea`), de qué sesión salió, y estado. Estado se evalúa contra [`02-decisiones.md`](02-decisiones.md) — si una decisión ya cerró el hallazgo, dice cuál.
 
@@ -42,14 +42,17 @@ El cuerpo de cada H es evidencia, no repite estado por fuera de lo ya escrito en
 | H24 | `ConnectionsMapRequest` más estricto que el service | Abierto, sin dueño — decisión de producto | schema/producto | — |
 | H25 | `_CRITICAL_FIELDS["GetSystemInfo"]` inalcanza su propio fallback | Abierto, sin dueño — fix simple, cambia validación en producción | validación | — |
 | H26 | `ETL_OUTPUT_SCHEMA` no declara `documentacion` | Abierto, ambiguo — feature perdida vs. resto sin limpiar | schema/producto | — |
-| H27 | B17 (BigNumber operandos) sin verificar contra Kettle real | Abierto, no bloqueante | verificación | F4 |
-| H28 | `FIELD_TYPE_SOURCES` armado por inspección propia, 2 huecos | Abierto — (a) `Constant` trivial, (b) exhaustividad sin confirmar | verificación | F4 |
+| H27 | B17 (BigNumber operandos) sin verificar contra Kettle real | Cerrado — ver H35 (D36) | verificación | F4 |
+| H28 | `FIELD_TYPE_SOURCES` armado por inspección propia, 2 huecos | Cerrado — ver H36 (D36) | verificación | F4 |
 | H29 | `build_rw_matrix()` excluye steps sin `table` sin notificar | Abierto — no bloquea F3 (D15), sin dueño | transversal | F3, A3 |
 | H30 | `KNOWN_PDI_STEP_TYPES` era código muerto, docstring describía un mecanismo (whitelist→Dummy) que el código ya no tenía | Cerrado 2026-07-27 — D27 (borrado, reemplazado por test de coherencia) | docstring/muerto | A2 |
 | H31 | 7 alias de `STEP_TYPE_ALIASES` sin builder en `STEP_BUILDERS` | Abierto, inofensivo hoy — el prompt no ofrece los display names que resuelven a estos | contenido-LLM | — |
 | H32 | 4 builders en `STEP_BUILDERS` que el prompt nunca ofrece (capacidad desperdiciada) | Abierto, inofensivo — registro nomás | prompt | — |
 | H33 | `PasswordFilter` del logger root no redacta nada de `app.*` | Abierto, sin dueño — bug preexistente, no introducido por D29 | logging/seguridad | — |
 | H34 | `_try_build` puede correr concurrentemente desde dos sesiones sin lock | Abierto, sin dueño — preexistente, visible ahora por D29 | concurrencia | F4 |
+| H35 | H27 verificado contra código fuente real de Kettle — Calculator/Formula pierden precisión por mecanismos distintos, regla B17 confirmada correcta | Cerrado — D36 | verificación | F4 |
+| H36 | `FIELD_TYPE_SOURCES` auditado contra los ~45 steps reales de `STEP_BUILDERS` (no contra Kettle completo) — 6 huecos nuevos además de `Constant` | Cerrado — D36 | verificación | F4 |
+| H37 | Ningún prompt vivo declara cuándo SCD1 vs SCD2 — y Pentaho tampoco tiene criterio propio (adopta Kimball y delega) | Cerrado — D37 | contenido-LLM / dim_contracts | F4 |
 
 ---
 
@@ -516,6 +519,45 @@ Los tres módulos duplican, cada uno por su cuenta, la reacción ante "tabla no 
 
 ---
 
+## H35 — H27 verificado: Calculator y Formula pierden precisión decimal por mecanismos DISTINTOS, ambos confirmados contra código fuente real de Kettle; B17 (regla "todos los operandos BigNumber") queda validada como conclusión correcta, aunque la atribución del mecanismo en el texto viejo era imprecisa
+
+**Qué:** el usuario aportó una investigación externa (lectura directa de `pentaho/pentaho-kettle`, branch `master`, GitHub) que responde H27 con archivo:línea real, no inferencia. Resumen verificado:
+
+- **`Calculator`:** el tipo de la operación NO lo decide "el más ancho" de los operandos — lo fija estrictamente el PRIMER operando (`field_a`). `Calculator.calcFields()` → `ValueDataUtil.plus/minus/multiply/divide(metaA, dataA, metaB, dataB)`; adentro, `ValueDataUtil` hace `switch(metaA.getType())` y coacciona `field_b` al tipo de A (`getBigNumber`/`getNumber` según corresponda). Si `field_a` es `Number` (double), la cuenta entera se hace en `double` — aunque `field_b` sea `BigNumber` — y `resultType = metaA.getType()` queda en `NUMBER`; si el campo de salida está declarado `BigNumber`, el `Double` ya impreciso se envuelve vía `targetMeta.convertData(...)` sin recuperar dígitos. Si `field_a` es `BigNumber`, la rama es `TYPE_BIGNUMBER` completa, aritmética exacta. Es decir: es asimétrico y depende del ORDEN de los operandos, no solo de si "alguno" es `BigNumber`.
+- **`Formula`:** mecanismo distinto — no despacha por ningún operando propio, delega el cálculo entero al motor libformula (`Formula.java` construye un `org.pentaho.reporting.libraries.formula.Formula` y llama `.evaluate()`), que opera internamente en `BigDecimal` sin importar el orden ni el tipo de los campos de entrada. El cálculo en sí no pierde precisión al mezclar `Number`+`BigNumber`. La fuga de precisión en `Formula` está en otro punto: (a) el `value_type` de SALIDA declarado — `setNeedDataConversion(fn.getValueType() != tipo_natural_resultado)`; si se declara `Number` para un resultado que llegó como `BigDecimal`, la conversión final degrada a `double`; (b) "garbage-in" — un campo de origen ya `Number`/double entra a la fórmula con la imprecisión que ya cargaba, y el cálculo exacto en `BigDecimal` no la recupera retroactivamente.
+- **Conclusión sobre B17:** la regla práctica del prompt ("todos los operandos y la salida en `BigNumber`") es correcta y queda confirmada como la regla SEGURA — para `Calculator` porque no depende de que el modelo acierte cuál campo terminó siendo `field_a` en el JSON (una condición más laxa, "alcanza con que uno sea BigNumber", sería falsa en general); para `Formula` porque cierra tanto el hueco de salida como el de garbage-in. Lo que sí estaba mal en el texto viejo de B17: atribuía el mismo mecanismo ("el cálculo pierde precisión en la operación misma") a ambos steps por igual — cierto para `Calculator`, no exactamente cierto para `Formula` (ahí el cálculo en sí no pierde nada; pierde la conversión de salida). Corregido en `system_etl.txt` B17 (esta sesión) — separada la explicación por step, agregada nota sobre `DIVIDE` en `BigNumber` con `MathContext.UNLIMITED` (riesgo de `ArithmeticException` en runtime si falta `value_precision` en divisiones no exactas, hallazgo nuevo del mismo research, sin código E asignado).
+
+**Evidencia:** `pentaho/pentaho-kettle` (GitHub, branch `master`) — `core/.../row/ValueDataUtil.java` (switch por `metaA.getType()`, casos `TYPE_BIGNUMBER`/`TYPE_NUMBER` en `plus`/`minus`/`multiply`/`divide`; `divideBigDecimals` con `MathContext.UNLIMITED`), `engine/.../calculator/Calculator.java` (`resultType = metaA.getType()`, `convertData` final), `engine/.../formula/Formula.java` (`data.formulas[i].evaluate()`, rama `instanceof BigDecimal`, `setNeedDataConversion`). `backend/prompts/system_etl.txt` regla B17 (reescrita esta sesión, línea ~351 antes del cambio). Investigación aportada por el usuario en documento externo, contrastada contra el texto de B17 actual antes de aplicar cualquier cambio (no se copió código del documento a ciegas — regla del proyecto).
+
+**Sesión de origen:** esta sesión (2026-07-28), retoma H27.
+
+**Estado:** cerrado — ver D36.
+
+---
+
+## H36 — H28 verificado: `FIELD_TYPE_SOURCES` auditado contra el universo real de steps de este proyecto (`STEP_BUILDERS`, ~45 entradas en `step_emitters.py`), no contra Kettle completo (~70+ plugins) — 6 huecos nuevos confirmados en código además de `Constant`
+
+**Qué:** el documento externo del usuario proponía una lista de ~24 steps adicionales de Kettle completo con value-type por campo — pero la mayoría (Call DB Procedure, User Defined Java Expression/Class, LDAP/LDIF/YAML/RSS/Salesforce/SAS/Access/Property/Google Analytics/S3 CSV Input, Injector, Mapping input, Rows from result, Transformation/Job Executor, SAP, Rules Executor/Accumulator, Data Grid, Add XML/XML Output, Get data from XML) NO están en `STEP_BUILDERS` (`step_emitters.py:88-149`, confirmado por lectura completa) — este proyecto no los genera, así que auditarlos contra Kettle completo era la pregunta equivocada para cerrar H28(b). La pregunta correcta — "¿cuáles de los ~45 steps que este proyecto SÍ emite declaran un value-type de Kettle por campo, y no están en `FIELD_TYPE_SOURCES`?" — se respondió leyendo cada builder en `steps/*.py` (`transform.py`, `lookups.py`, `control.py`, `input.py`, `output.py`) que contiene un tag `"type"`/`"value_type"`/`"data_type"` por campo, y clasificando cada uno como value-type genuino de Kettle vs. otro vocabulario que usa el mismo nombre de tag por coincidencia.
+
+**Huecos confirmados (agregados a `FIELD_TYPE_SOURCES` esta sesión):**
+- **`Constant`** (`steps/transform.py:191-201`, `_step_Constant`) — ya identificado en H28 original, fix aplicado.
+- **`FieldSplitter`** (`steps/transform.py:318-335`) — Split Fields: un campo delimitado → N columnas en la misma fila, cada una con `type` propio. Un importe partido en sub-campos mal tipados es exactamente el patrón E14.
+- **`Denormaliser`** (`steps/transform.py:338-355`) — pivot filas→columnas; cada `pivot` declara `target_type` (nombre de tag distinto a `"type"`, mismo rol) para la columna resultante.
+- **`RegexEval`** (`steps/transform.py:358-385`) — grupos de captura (`capture_fields`) con `type` propio; un importe capturado por regex sin tipar `BigNumber` cae en E14.
+- **`DBLookup`** (`steps/lookups.py:88-118`, `_step_DBLookup`) — valores de retorno (`return_fields`/`returns`) con `type` propio; un atributo monetario devuelto por lookup (ej. precio vigente) puede quedar mal tipado.
+- **`StreamLookup`** (`steps/lookups.py:138-154`) — mismo caso que `DBLookup` para valores traídos desde otro stream (`values`/`fields`).
+- **`DataValidator`** (`steps/control.py:65-92`, `_step_DataValidator`) — cada `validator_field` declara `data_type` (nombre de tag distinto, mismo rol); una regla de validación con `data_type` incorrecto no detecta que un campo debería ser `BigNumber`.
+
+**Considerados y descartados por ser otro vocabulario bajo el mismo nombre de tag** (no son value-type de Kettle, documentado en el comentario junto a `FIELD_TYPE_SOURCES` para que no se re-investiguen): `FilterRows` (`<value><type>` es el tipo de la CONSTANTE de comparación, no un campo del stream), `DimensionLookup` punch-through (`Insert`/`Update`, modo de escritura), `GroupBy` (`SUM`/`AVG`/`COUNT`, función de agregación), `AnalyticQuery` (`LEAD`/`LAG`, función analítica), `GetSystemInfo` (`"system date (fixed/variable)"`, qué dato de sistema capturar). Considerados y descartados por bajo riesgo real (value-type genuino de Kettle, pero no persiste con semántica monetaria aguas abajo): `ConcatFields` (describe los campos ENTRADA a una concatenación cuya salida siempre es `String`), `IfNull` (`type` selecciona qué columnas reciben reemplazo de null, `IfNullMeta` no castea).
+
+**Evidencia:** `backend/app/services/ktr_builder/step_emitters.py:88-149` (`STEP_BUILDERS` completo, universo real de steps). Cada builder citado arriba, leído completo esta sesión. `backend/app/services/ktr_builder/error_catalog_checks.py` (`FIELD_TYPE_SOURCES`, actualizado esta sesión con las 7 entradas — Constant + las 6 nuevas — y el comentario de exclusiones ampliado). `tests/test_error_catalog_checks.py` (13 tests, verde tras el cambio) y `tests/test_pdi_step_coherence.py` (3 tests, verde) corridos para confirmar que no rompió nada existente.
+
+**Sesión de origen:** esta sesión (2026-07-28), retoma H28.
+
+**Estado:** cerrado — ver D36. Exhaustividad ahora acotada al universo real de `STEP_BUILDERS` (~45 steps), no a Kettle completo — si `STEP_BUILDERS` gana un step nuevo que declare value-type por campo, ese step queda fuera de `FIELD_TYPE_SOURCES` hasta la próxima auditoría manual (sin mecanismo automático que lo detecte — riesgo residual, ver D36).
+
+---
+
 ## H30 — `KNOWN_PDI_STEP_TYPES` era código muerto; su docstring describía un mecanismo (whitelist → Dummy) que el código ya había abandonado
 
 **Qué:** `registry.py:223-228` (ya borrado, ver D27) definía `KNOWN_PDI_STEP_TYPES = STEP_BUILDERS.keys() | STEP_TYPE_ALIASES.values() | {...}`, con un docstring que afirmaba: *"build_ktr() corrige cualquier type fuera de lista a Dummy antes de serializar, en vez de depender de que el modelo nunca alucine un id"*. Grep completo del repo (`app/`, `tests/`) confirmó **cero consumidores** del símbolo fuera del propio `registry.py` y su reexport en `ktr_builder/__init__.py`. El gate real contra un `type` no soportado es otro, en `build.py:347-351`: `STEP_BUILDERS.get(canonical_type) is None → raise KtrBuilderError`, sin ninguna referencia a la whitelist. Grep de "Dummy" en todo `backend/app` confirmó que no existe ninguna rama de degradación a `Dummy` — la única mención está en el docstring de `registry.py` y en `contracts.py:1-3`, que lista *"tipo no registrado degradado a Dummy"* como uno de los **defectos históricos que `contracts.py` fue escrito para cerrar** (fail-fast reemplazó la degradación silenciosa, consistente con D5/R11). El símbolo sobrevivió al cambio de diseño sin que nadie lo desconectara.
@@ -593,6 +635,47 @@ eventos `build.started` seguidos serían la señal), pero no la introduce.
 
 **Estado:** abierto, sin dueño. Preexistente a esta sesión. Fix (lock optimista sobre `build_status`, o un
 `UPDATE ... WHERE build_status = ...` atómico) queda fuera de alcance de D29/D30.
+
+---
+
+## H37 — Ningún prompt vivo declara cuándo SCD1 vs SCD2 — y Pentaho tampoco tiene criterio propio
+
+**Qué:** el usuario reportó errores recurrentes en la decisión SCD1/SCD2 con la expectativa de que ya existiera
+un criterio claro para tomarla. Auditado el repo completo (prompts, `structure_inferrer.py`, `etl_generator.py`,
+`dimension_step_policy.py`, schemas): **no existe**. `system_inference.txt` menciona SCD nueve veces, pero todas
+son consecuencias de un `scd_type` ya elegido (contrato DDL D4, índice D3, `fecha_fin` NULLABLE I6) — ninguna
+dice cuándo elegir 1 vs 2. Lo único que llega al modelo sobre el significado de cada valor es la descripción del
+JSON Schema (`inference_output.py::_DIM_CONTRACT_SCHEMA["scd_type"]`): define qué es cada valor, nunca cuándo
+corresponde. El único texto del repo con un criterio real —*"Incluir campos SCD Tipo 2 si el contexto implica
+seguimiento de cambios históricos"*— vive en `promptfoo/prompts/inference.yaml:34-35`, una copia congelada que
+no corre en producción.
+
+**No es una omisión aislada de este prompt: ni la herramienta subyacente tiene criterio propio.** Pentaho
+Academy documenta el step `Dimension Lookup/Update` adoptando la terminología y el criterio de Kimball sin
+aportar uno propio — su única prescripción original es negativa y sobre volatilidad de **esquema**, no de datos:
+*"Introducing changes to the dimensional model in Type 2 could be very expensive database operation so it is
+not recommended to use it in dimensions where a new attribute could be added in the future."* Es decir: no hay
+una fuente autorizada de "cuándo SCD2" que el prompt estuviera omitiendo por descuido — el criterio nunca
+existió escrito en ningún lado que el proyecto pudiera haber copiado. Escribirlo es trabajo legítimo, no reparar
+una omisión.
+
+**Consecuencia real, no solo teórica:** un `scd_type` mal elegido en la etapa de inferencia no queda como una
+advertencia — `dimension_step_policy.py::enforce_dimension_step_policy` hace downgrade
+`DimensionLookup`→`CombinationLookup` reescribiendo el config entero, tirando `fields`/`date_from`/`date_to`.
+Es el mecanismo exacto detrás de H9 ("así se perdió esa vez", SCD2 real perdido sin que nadie lo pidiera).
+
+**Evidencia:** `backend/prompts/system_inference.txt` (antes de D37, sin sección de criterio SCD1/2);
+`backend/app/schemas/llm_output_schemas/inference_output.py:30-37` (`scd_type` solo describe valores);
+`promptfoo/prompts/inference.yaml:34-35` (criterio real, congelado, no vivo);
+`backend/app/services/ktr_builder/dimension_step_policy.py:244-262` (downgrade que reescribe el config);
+`docs/refactor/01-hallazgos.md` H9 (arriba, esta misma tabla).
+
+**Sesión de origen:** 2026-07-28, a pedido explícito del usuario ("revisá qué existe para decidir cuándo SCD1 u
+SCD2, y quién es responsable").
+
+**Estado:** cerrado — D37 agrega el criterio (`domain/scd.py::classify_scd_candidates` + sección nueva en
+`system_inference.txt`) y lo funda contra Pentaho Academy + Kimball Group (fuentes F1-F3 en D37), no contra
+juicio propio.
 
 ---
 

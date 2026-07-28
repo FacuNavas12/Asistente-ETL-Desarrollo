@@ -153,24 +153,37 @@ def _schema_from_columnas_origen(
 
 # ─── ModelContext builder ─────────────────────────────────────────────────────
 
-def build_model_context(tables: list, db: Optional[Session] = None) -> ModelContext:
+def resolve_canonical_schemas(tables: list, db: Optional[Session] = None) -> list[CanonicalSchema]:
     """
-    Routes each table to the appropriate CanonicalSchema builder, then converts
-    to ModelContext via canonical_to_model_context().
+    Routes each table to the appropriate CanonicalSchema builder, sin convertir
+    a ModelContext — build_model_context() usa esto y descarta lo que el
+    whitelist de prompt no necesita (primary_key, foreign_keys,
+    semantics.dwh_intent). El pre-check SCD (D37, domain/scd.py) sí necesita
+    esos campos, así que reusa esta función para no volver a perfilar contra
+    la BD (misma resolución, dos consumidores).
 
     DB path          (connection_id set)    → _profile_from_db()
     File/DDL path    (canonical_schema set) → canonical_schema used directly
     Formulario path  (neither)              → _schema_from_columnas_origen()
     """
-    model_tables: list[ModelTableContext] = []
+    schemas: list[CanonicalSchema] = []
     for table in tables:
         if getattr(table, "connection_id", None) and db is not None:
-            canonical = _profile_from_db(table, db)
+            schemas.append(_profile_from_db(table, db))
         elif getattr(table, "canonical_schema", None) is not None:
-            canonical = table.canonical_schema
+            schemas.append(table.canonical_schema)
         else:
-            canonical = _schema_from_columnas_origen(table)
+            schemas.append(_schema_from_columnas_origen(table))
+    return schemas
 
+
+def build_model_context(tables: list, db: Optional[Session] = None) -> ModelContext:
+    """
+    Routes each table to the appropriate CanonicalSchema builder, then converts
+    to ModelContext via canonical_to_model_context().
+    """
+    model_tables: list[ModelTableContext] = []
+    for canonical in resolve_canonical_schemas(tables, db):
         ctx = canonical_to_model_context([canonical])
         model_tables.extend(ctx.source_tables)
 

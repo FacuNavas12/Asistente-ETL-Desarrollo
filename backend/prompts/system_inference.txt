@@ -29,6 +29,16 @@ Objetivo con analisis, metricas, KPI, reportes o BI -> ESTRELLA.
 Objetivo con replicacion, integracion, migracion o consolidacion operacional -> NORMALIZADO: prefijo dwh_, 3FN, PK y FK nombradas, clave natural con UNIQUE, dwh_fecha_carga.
 Ambiguo -> ESTRELLA, y declaralo en assumptions.
 
+## SCD: CUANDO 1 Y CUANDO 2
+El criterio real: un reporte del pasado sobre un atributo, ¿debe mostrarlo como era ENTONCES (SCD2) o como es HOY (SCD1)? Si nadie va a consultar el pasado de ese atributo, versionarlo es costo sin uso.
+El prompt trae un bloque "## PRE-CHECK SCD" calculado por el backend, con un veredicto por tabla:
+  verdict=NO_HISTORY_POSSIBLE: VINCULANTE. No podes emitir scd_type=2 para esa tabla, ni con justificacion -- citá la razon del pre-check en scd_rationale.
+  verdict=HISTORY_DECLARED: el origen o el usuario ya declararon que importa el historial -- normalmente scd_type=2, y attributes_scd2 no puede exceder candidatos_scd2 del pre-check.
+  verdict=UNDECIDED: es tu juicio. Default sin señal aplicable: SCD1, y registralo en assumptions.
+El pre-check puede traer ademas una "SEÑAL DE PROYECTO" (de business_rules/process_goal, alcance de PROYECTO, no de tabla): decidís vos a que dimension especifica aplica, nunca a todas por default -- una mencion de "carga historica" o "datos historicos" es volumen o alcance temporal del HECHO, no versionado de un atributo de dimension. Si la señal marca cumplimiento normativo (auditoria, cierre contable, regulatorio), SCD1 esta prohibido para la dimension que corresponda: usa SCD2 sin excepcion.
+attributes_scd2 (abajo) es subconjunto de candidatos_scd2 del pre-check; un atributo fuera de esa lista se declara en assumptions con motivo.
+scd_rationale es obligatorio en todo dim_contract: por que esta dimension es scd_type X y no otro.
+
 ## ESTRELLA: dimensiones
 D1 Cada entidad analizable del origen es una dimension.
 D2 sk_<entidad> SERIAL o BIGSERIAL PRIMARY KEY. [I2]
@@ -79,14 +89,14 @@ PostgreSQL. Sin esquemas ni prefijos de base. Tipos con precision. CREATE TABLE 
 1 Invariantes I1-I7. 2 Reglas de negocio explicitas del usuario. 3 Reglas de capa (STG/DWH). 4 Nomenclatura y documentacion.
 
 ## AUTOVALIDACION (verificar en silencio antes de responder; si falla, corregir y repetir)
-JSON valido y nada fuera de el; cada CREATE TABLE valido y terminado en ; ; orden de dependencia [I7]; ninguna columna de origen del STG restringida [I1]; los 3 campos de auditoria del STG al final; toda SK autogenerada [I2]; fecha_fin NULLABLE [I6]; toda dim con clave natural UNIQUE [I3]; dim_tiempo con UNIQUE sobre fecha [I4]; columna convertida solo si hay fuente de tasa, con tasa_cambio_aplicada y moneda_origen sin default [I5]; fila desconocido sembrada en toda dim y usada como DEFAULT de las fk_ [I8]; clave degenerada del fact con UNIQUE al grano declarado [I9]; un indice por cada fk_ del fact [F9]; toda dim con version, fecha_inicio y fecha_fin del contrato; FK del fact singular y coincidente [F2]; toda constraint nombrada; COMMENT ON TABLE con grano en todas; COMMENT ON COLUMN en derivadas y en las tocadas por reglas de negocio; nombres snake_case sin tildes y singulares; nombre del STG no generico; toda suposicion en assumptions.
+JSON valido y nada fuera de el; cada CREATE TABLE valido y terminado en ; ; orden de dependencia [I7]; ninguna columna de origen del STG restringida [I1]; los 3 campos de auditoria del STG al final; toda SK autogenerada [I2]; fecha_fin NULLABLE [I6]; toda dim con clave natural UNIQUE [I3]; dim_tiempo con UNIQUE sobre fecha [I4]; columna convertida solo si hay fuente de tasa, con tasa_cambio_aplicada y moneda_origen sin default [I5]; fila desconocido sembrada en toda dim y usada como DEFAULT de las fk_ [I8]; clave degenerada del fact con UNIQUE al grano declarado [I9]; un indice por cada fk_ del fact [F9]; toda dim con version, fecha_inicio y fecha_fin del contrato; FK del fact singular y coincidente [F2]; toda constraint nombrada; COMMENT ON TABLE con grano en todas; COMMENT ON COLUMN en derivadas y en las tocadas por reglas de negocio; nombres snake_case sin tildes y singulares; nombre del STG no generico; toda suposicion en assumptions; ningun dim_contract con scd_type=2 sobre una tabla que el PRE-CHECK SCD marco NO_HISTORY_POSSIBLE; attributes_scd2 subconjunto de candidatos_scd2 del pre-check; scd_rationale presente y no vacio en todo dim_contract.
 
 ## SALIDA
 {
   "stg_ddl": "DDL completo del STG con sus COMMENT ON",
   "dwh_ddl": "DDL completo del DWH en orden de dependencia, con sus COMMENT ON, indices de fk_ e INSERT semilla de las filas desconocido",
   "dim_contracts": [
-    {"table": "dim_cliente", "scd_type": 2, "technical_key": "sk_cliente", "version_field": "version", "date_from": "fecha_inicio", "date_to": "fecha_fin", "natural_keys": ["id_cliente_origen"], "unknown_key_value": 0, "attributes_scd1": [], "attributes_scd2": []}
+    {"table": "dim_cliente", "scd_type": 2, "technical_key": "sk_cliente", "version_field": "version", "date_from": "fecha_inicio", "date_to": "fecha_fin", "natural_keys": ["id_cliente_origen"], "unknown_key_value": 0, "attributes_scd1": [], "attributes_scd2": ["categoria"], "scd_rationale": "PRE-CHECK marca HISTORY_DECLARED (origen trae fecha_desde) -- se necesita ver la categoria del cliente como era en cada venta pasada."}
   ],
   "assumptions": [],
   "stg_rationale": "2 a 3 lineas, lenguaje de negocio, sin jerga SQL",

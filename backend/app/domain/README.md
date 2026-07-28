@@ -13,6 +13,7 @@ Value objects puros, consumidos por `schemas/` (fachada, ver excepción) y por e
 | Archivo | Qué hace |
 |---|---|
 | `canonical_types.py` | `CanonicalType` (Enum), `FieldFormat` (Literal), `ColumnRole` (Enum) — vocabulario de tipos/columnas, movido desde `schemas/canonical.py` (sesión de arquitectura). |
+| `scd.py` | Criterio determinista de SCD1 vs SCD2 (D37): `classify_scd_candidates()`, `detect_history_intent()`, y `derive_dimension_step_type()` (movida desde `services/ktr_builder/dimension_step_policy.py`, que la reexporta — vocabulario SCD compartido entre la etapa de inferencia y la de KTR). |
 
 `services/ktr_builder/step_types.py` es domain por criterio pero queda físicamente en `services/ktr_builder/` — es vocabulario específico de ese paquete (identidad de tipo de step PDI, campos críticos), no vocabulario compartido; sacarlo de ahí sería un segundo movimiento estructural sin necesidad. Ver `docs/arquitectura-objetivo.md`, mapa capa-objetivo, para el resto de lo etiquetado `domain` que todavía no se movió.
 

@@ -15,14 +15,29 @@ Overrides son legitimos (volumen muy alto cuya cache no entra en memoria,
 matching por reglas complejas o difusas, dimension de recarga full refresh) y
 existen. La propiedad que se preserva es "default determinista + override
 explicito, nunca silencioso": ver OVERRIDE_STEP_PREFIX.
+
+D37 (docs/refactor/02-decisiones.md): derive_dimension_step_type() se movio a
+domain/scd.py — D11 (acá) fijo que el STEP se deriva de scd_type; D37 fijo de
+donde sale scd_type, que D11 daba por dado. Se reexporta acá, mismo patron de
+excepcion nombrada que schemas/canonical.py -> domain/canonical_types.py, para
+no tocar los call sites existentes de este modulo.
 """
 from __future__ import annotations
 
 import logging
 
+from app.domain.scd import derive_dimension_step_type
 from app.services.ktr_builder.contracts import normalize_config, parse_cfg
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "OVERRIDE_STEP_PREFIX",
+    "DIMENSION_STEP_TYPES",
+    "derive_dimension_step_type",
+    "role_of_dimension_step",
+    "enforce_dimension_step_policy",
+]
 
 # Mismo patrón que FIELD_INTEGRITY_PREFIX en fields_validate.py: un prefijo de
 # texto plano en validaciones[].mensaje que el código detecta por
@@ -38,17 +53,8 @@ OVERRIDE_STEP_PREFIX = "[Override de step] "
 # o dimensión faltante en dim_contracts). Ese caso no puede quedar en silencio.
 DIMENSION_STEP_TYPES = {"DimensionLookup", "CombinationLookup"}
 
-
-def derive_dimension_step_type(scd_type: int) -> str:
-    """Unica fuente de verdad para "qué step carga esta dimensión". Toda
-    dimensión en dim_contracts ya declara su propia surrogate key (D2/D4 de
-    la inferencia — el contrato completo es obligatorio sea SCD1 o SCD2), así
-    que el único eje de decisión real es si versiona (SCD2) o no.
-
-    Dimensiones sin surrogate key que gestionar (tablas de referencia
-    estáticas, PK = clave natural) no entran en dim_contracts en absoluto —
-    no llegan a esta función."""
-    return "DimensionLookup" if scd_type == 2 else "CombinationLookup"
+# derive_dimension_step_type() vive ahora en domain/scd.py (D37) — importada
+# arriba y reexportada vía __all__.
 
 
 # D16: tipos de step cuya escritura sobre tabla física es SIEMPRE inequívoca

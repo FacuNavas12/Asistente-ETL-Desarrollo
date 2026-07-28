@@ -17,6 +17,7 @@ _DIM_CONTRACT_REQUIRED = [
     "unknown_key_value",
     "attributes_scd1",
     "attributes_scd2",
+    "scd_rationale",
 ]
 
 _DIM_CONTRACT_SCHEMA: Dict[str, Any] = {
@@ -63,6 +64,16 @@ _DIM_CONTRACT_SCHEMA: Dict[str, Any] = {
             "type": "array",
             "items": {"type": "string"},
             "description": "Atributos versionados por SCD2. Vacío si no aplica o si scd_type != 2.",
+        },
+        "scd_rationale": {
+            "type": "string",
+            "description": (
+                "Por qué esta dimensión es scd_type X y no otro. Si el PRE-CHECK SCD del prompt "
+                "trae verdict=NO_HISTORY_POSSIBLE o HISTORY_DECLARED para esta tabla, citá esa razón "
+                "tal cual. Si UNDECIDED, explicá el juicio de negocio (¿un reporte del pasado necesita "
+                "ver el atributo como era entonces?) y qué evidencia lo sostiene (señal de proyecto "
+                "aplicada a esta dimensión en particular, o default sin señal)."
+            ),
         },
     },
 }

@@ -148,6 +148,11 @@ class DimContract(BaseModel):
     unknown_key_value: int
     attributes_scd1: List[str] = []
     attributes_scd2: List[str] = []
+    # D37 (docs/refactor/02-decisiones.md): la razón del scd_type elegido,
+    # como artefacto persistido — no prosa suelta. Default "" para que los
+    # dim_contracts ya persistidos en etls.result_json (anteriores a D37)
+    # sigan validando sin migración.
+    scd_rationale: str = ""
 
 
 class RefineRequest(BaseModel):

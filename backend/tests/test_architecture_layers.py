@@ -55,6 +55,10 @@ DOMAIN_MODULES = {
     # archivo). type_mappings.py NO entra acá — se reclasificó a infra en la
     # misma sesión (traduce vendor concreto, consumido solo por otro adaptador).
     "domain.canonical_types",
+    # scd.py: criterio determinista de SCD1/SCD2 (D37) + derive_dimension_step_type
+    # (movida desde dimension_step_policy.py, que la reexporta) — vocabulario de
+    # dominio compartido entre la etapa de inferencia y la de generación de KTR.
+    "domain.scd",
 }
 
 # Invariante que sostiene 2.b del cierre de la sesión de arquitectura: nada de

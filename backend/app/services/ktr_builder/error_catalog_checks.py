@@ -27,7 +27,11 @@ Cobertura (ver contexto de la tarea para el catálogo completo E1-E14):
       steps de ktr_builder que declaran un value-type real de Kettle por
       campo (Calculator, Formula, SelectValues/meta, ScriptValueMod,
       GetVariable, RowGenerator, CsvInput, TextFileInput, ExcelInput,
-      JsonInput, TextFileOutput, ExcelOutput -- ver FIELD_TYPE_SOURCES)  (E14)
+      JsonInput, TextFileOutput, ExcelOutput, Constant, FieldSplitter,
+      Denormaliser, RegexEval, DBLookup, StreamLookup, DataValidator --
+      ver FIELD_TYPE_SOURCES; lista cerrada por auditoría de los ~45 steps
+      de STEP_BUILDERS, no por catálogo E1-E14 original -- H35/H36,
+      docs/refactor/01-hallazgos.md, D36 en 02-decisiones.md)         (E14)
   V13 Todo step de la familia lookup-por-clave (CombinationLookup,
       DimensionLookup, StreamLookup, DBLookup) tiene al menos un <key>
       con ambos lados no vacíos -- una key vacía/incompleta no es un
@@ -300,22 +304,45 @@ def v8_truncate_sin_transaccional(root: ET.Element) -> list[Finding]:
 #   DimensionLookup punch-through fields (steps/lookups.py) -- vocabulario
 #   Insert/Update/"Punch through" (modo de escritura), no un value-type de
 #   Kettle. GroupBy aggregates -- vocabulario SUM/AVG/COUNT (tipo de
-#   agregación), tampoco un value-type. Ninguno de los dos puede matchear
-#   "Number" de todas formas, así que ni hace falta excluirlos por nombre de
-#   step -- el filtro de valor ya los descarta.
+#   agregación), tampoco un value-type. AnalyticQuery fields -- mismo caso,
+#   vocabulario LEAD/LAG (función analítica). GetSystemInfo fields --
+#   vocabulario "system date (fixed/variable)" (qué dato de sistema capturar),
+#   tampoco un value-type. Ninguno de los cuatro puede matchear "Number" de
+#   todas formas, así que ni hace falta excluirlos por nombre de step -- el
+#   filtro de valor ya los descarta.
+# Consideradas y AFUERA por bajo riesgo real (value-type genuino, pero no es
+# el campo que persiste con semántica monetaria en el resto del stream):
+#   ConcatFields fields (steps/transform.py) -- describe metadata de los
+#   campos ENTRADA a la concatenación (para formatear el string armado); el
+#   campo de SALIDA (`extra_field`) siempre es String, no hay BigNumber
+#   posible aguas abajo de este step. IfNull fields (steps/transform.py) --
+#   `type` ahí es un selector de qué columnas recibe el reemplazo de null,
+#   no una redeclaración de tipo del campo (IfNullMeta no castea).
+# H35/H36 (docs/refactor/01-hallazgos.md) auditaron los ~45 steps de
+# STEP_BUILDERS (step_emitters.py) contra este mismo criterio -- no solo
+# Calculator/SelectValues/Formula del catálogo E1-E14 original -- y agregaron
+# las 7 entradas de abajo desde Constant en adelante. Ver D36
+# (02-decisiones.md) para el detalle por step.
 FIELD_TYPE_SOURCES: tuple[tuple[str, str | None, str, str, str], ...] = (
-    ("Calculator",      None,     "calculation", "field_name", "value_type"),
-    ("Formula",         None,     "formula",      "field_name", "value_type"),
-    ("SelectValues",    "fields", "meta",         "name",       "type"),
-    ("ScriptValueMod",  "fields", "field",        "name",       "type"),
-    ("GetVariable",     "fields", "field",        "name",       "type"),
-    ("RowGenerator",    "fields", "field",        "name",       "type"),
-    ("CsvInput",        "fields", "field",        "name",       "type"),
-    ("TextFileInput",   "fields", "field",        "name",       "type"),
-    ("ExcelInput",      "fields", "field",        "name",       "type"),
-    ("JsonInput",       "fields", "field",        "name",       "type"),
-    ("TextFileOutput",  "fields", "field",        "name",       "type"),
-    ("ExcelOutput",     "fields", "field",        "name",       "type"),
+    ("Calculator",      None,     "calculation",    "field_name",  "value_type"),
+    ("Formula",         None,     "formula",         "field_name",  "value_type"),
+    ("SelectValues",    "fields", "meta",            "name",        "type"),
+    ("ScriptValueMod",  "fields", "field",           "name",        "type"),
+    ("GetVariable",     "fields", "field",           "name",        "type"),
+    ("RowGenerator",    "fields", "field",           "name",        "type"),
+    ("CsvInput",        "fields", "field",           "name",        "type"),
+    ("TextFileInput",   "fields", "field",           "name",        "type"),
+    ("ExcelInput",      "fields", "field",           "name",        "type"),
+    ("JsonInput",       "fields", "field",           "name",        "type"),
+    ("TextFileOutput",  "fields", "field",           "name",        "type"),
+    ("ExcelOutput",     "fields", "field",           "name",        "type"),
+    ("Constant",        "fields", "field",           "name",        "type"),
+    ("FieldSplitter",   "fields", "field",           "name",        "type"),
+    ("Denormaliser",    "fields", "field",           "target_name", "target_type"),
+    ("RegexEval",       "fields", "field",           "name",        "type"),
+    ("DBLookup",        "lookup", "value",           "name",        "type"),
+    ("StreamLookup",    "lookup", "value",           "name",        "type"),
+    ("DataValidator",   None,     "validator_field", "name",        "data_type"),
 )
 
 

@@ -195,11 +195,16 @@ def _format_dim_contracts(dim_contracts: list) -> str:
         # pero tiene que registrarse en `validaciones` con el prefijo
         # OVERRIDE_STEP_PREFIX y campo=<tabla> — ver system_etl.txt.
         step_requerido = derive_dimension_step_type(c.scd_type)
+        # D37: attributes_scd1/attributes_scd2 se le exigen al LLM de inferencia
+        # y llegan al validador de DDL (ddl_validation.py), pero hasta acá la
+        # fase de generación de steps nunca los veía — el juicio de "qué
+        # atributos versionan" se calculaba y se tiraba.
         line = (
             f"- {c.table}: step_requerido={step_requerido}, technical_key={c.technical_key}, "
             f"version_field={c.version_field}, date_from={c.date_from}, date_to={c.date_to}, "
             f"natural_keys={list(c.natural_keys)}, unknown_key_value={c.unknown_key_value}, "
-            f"scd_type={c.scd_type}"
+            f"scd_type={c.scd_type}, attributes_scd1={list(c.attributes_scd1)}, "
+            f"attributes_scd2={list(c.attributes_scd2)}"
         )
         lines.append(line)
     return "\n".join(lines)
