@@ -11,7 +11,7 @@ from typing import Optional
 from xml.etree import ElementTree as ET
 
 from app.schemas.lineage import Lineage, LineageEdge, LineageNode
-from app.services.ktr_builder import STEP_TYPE_ALIASES
+from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 from app.services.ktr_builder.contracts import normalize_config
 from app.services.ktr_builder.contracts import parse_cfg as _parse_config
 
@@ -129,44 +129,27 @@ def build_lineage(ktr_data: dict) -> Lineage:
     return Lineage(nodes=nodes, edges=edges)
 
 
-def stitch_lineage_many(ktr_data_list: list[dict]) -> Lineage:
-    """
-    F3 punto 3 (03-plan.md): generaliza stitch_lineage de 2 KTR fijos a M
-    archivos. Cose el linaje de ktr_data_list[0..M-1] (en el orden de
-    ejecución que ya vino dado — el de compute_cut() dentro de una etapa,
-    y el de las etapas entre sí) en un único grafo continuo, agregando un hop
-    sintético por cada tabla que un TableOutput sink de un archivo escribe y
-    un TableInput source de OTRO archivo (no necesariamente el siguiente) lee
-    (matcheados por nombre de tabla, no por posición ni adyacencia).
+def _resolve_table_endpoints(
+    ktr_data_list: list[dict],
+) -> tuple[dict[str, tuple[str, int]], list[tuple[str, int, list[str]]], list[dict], list[dict]]:
+    """Recorre ktr_data_list namespaceando steps/hops por índice de archivo
+    (prefijo "F1::", "F2::", ... — el índice 0 sin prefijo) y detecta, por
+    archivo, los sinks (TableOutput sin hop saliente propio) y sources
+    (TableInput sin hop entrante propio) — el mismo matching escritor→lector
+    que usa stitch_lineage_many() para coser el linaje, extraído acá para que
+    otro caller (D23, validador de contrato entre KTR) pueda reusar el
+    matching por nombre de tabla sin reimplementarlo.
 
-    Cada archivo a partir del segundo se namespacea con un prefijo por índice
-    ("F1::", "F2::", ...) — son archivos generados por llamadas/grupos
-    separados, sin garantía de nombres de step únicos entre sí. El primero
-    (índice 0) no se prefija, para no romper el linaje del flujo legacy de 1
-    solo KTR ni el caso M=1.
+    Devuelve (sinks, pending_sources, all_steps, all_hops):
+      - sinks: {tabla_lower: (step_name, file_idx)} — último-en-ganar si dos
+        archivos escriben la misma tabla (setdefault: primero-en-ganar).
+      - pending_sources: [(step_name, file_idx, [tabla_lower, ...])].
+      - all_steps/all_hops: steps y hops YA namespaceados, listos para
+        build_lineage() una vez agregados los hops sintéticos.
 
-    No modifica build_lineage(): la reusa tal cual sobre el grafo ya
-    combinado, para que la clasificación de capa (que depende del grado del
-    nodo) vea el grafo completo en vez de M mitades desconectadas — un
-    TableInput que sería in_deg==0 dentro de un archivo solo (mal clasificado
-    como "origen") deja de serlo una vez agregado el hop sintético que lo
-    conecta al sink que escribió esa tabla en otro archivo.
-
-    Un sink y su source nunca se conectan si están en el MISMO archivo (evita
-    un falso hop sintético dentro de una rama ya conectada por hops reales) —
-    la única diferencia real de comportamiento frente al M=2 original, que no
-    podía darse ese caso porque comparaba archivos distintos por construcción.
-
-    Tolerante: si un TableInput no matchea ningún sink de otro archivo (el
-    modelo no respetó los nombres de tabla fijados en el prompt), esa rama
-    queda sin costura y build_lineage() la clasifica "origen" igual que hoy —
-    señal visual del mismatch en vez de una excepción.
-    """
-    if not ktr_data_list:
-        return build_lineage({})
-    if len(ktr_data_list) == 1:
-        return build_lineage(ktr_data_list[0])
-
+    Solo tabla — nombre. Sin campos ni tipos: eso vive en una capa aparte
+    (contracts.py del lado escritor + DDL parseado del lado lector), esta
+    función no lo resuelve."""
     all_steps: list[dict] = []
     all_hops: list[dict] = []
     sinks: dict[str, tuple[str, int]] = {}
@@ -209,6 +192,49 @@ def stitch_lineage_many(ktr_data_list: list[dict]) -> Lineage:
 
         all_steps.extend(steps)
         all_hops.extend(hops)
+
+    return sinks, pending_sources, all_steps, all_hops
+
+
+def stitch_lineage_many(ktr_data_list: list[dict]) -> Lineage:
+    """
+    F3 punto 3 (03-plan.md): generaliza stitch_lineage de 2 KTR fijos a M
+    archivos. Cose el linaje de ktr_data_list[0..M-1] (en el orden de
+    ejecución que ya vino dado — el de compute_cut() dentro de una etapa,
+    y el de las etapas entre sí) en un único grafo continuo, agregando un hop
+    sintético por cada tabla que un TableOutput sink de un archivo escribe y
+    un TableInput source de OTRO archivo (no necesariamente el siguiente) lee
+    (matcheados por nombre de tabla, no por posición ni adyacencia).
+
+    Cada archivo a partir del segundo se namespacea con un prefijo por índice
+    ("F1::", "F2::", ...) — son archivos generados por llamadas/grupos
+    separados, sin garantía de nombres de step únicos entre sí. El primero
+    (índice 0) no se prefija, para no romper el linaje del flujo legacy de 1
+    solo KTR ni el caso M=1.
+
+    No modifica build_lineage(): la reusa tal cual sobre el grafo ya
+    combinado, para que la clasificación de capa (que depende del grado del
+    nodo) vea el grafo completo en vez de M mitades desconectadas — un
+    TableInput que sería in_deg==0 dentro de un archivo solo (mal clasificado
+    como "origen") deja de serlo una vez agregado el hop sintético que lo
+    conecta al sink que escribió esa tabla en otro archivo.
+
+    Un sink y su source nunca se conectan si están en el MISMO archivo (evita
+    un falso hop sintético dentro de una rama ya conectada por hops reales) —
+    la única diferencia real de comportamiento frente al M=2 original, que no
+    podía darse ese caso porque comparaba archivos distintos por construcción.
+
+    Tolerante: si un TableInput no matchea ningún sink de otro archivo (el
+    modelo no respetó los nombres de tabla fijados en el prompt), esa rama
+    queda sin costura y build_lineage() la clasifica "origen" igual que hoy —
+    señal visual del mismatch en vez de una excepción.
+    """
+    if not ktr_data_list:
+        return build_lineage({})
+    if len(ktr_data_list) == 1:
+        return build_lineage(ktr_data_list[0])
+
+    sinks, pending_sources, all_steps, all_hops = _resolve_table_endpoints(ktr_data_list)
 
     synthetic_hops: list[dict] = []
     for name, src_idx, tablas in pending_sources:

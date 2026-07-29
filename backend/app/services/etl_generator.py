@@ -39,6 +39,7 @@ from app.services.ktr_builder import (
     STEP_TYPE_ALIASES,
 )
 from app.services.ktr_builder.build import _sanitize
+from app.services.ktr_builder.contract_validate import CONTRACT_PREFIX, validate_ktr_contracts
 from app.services.ktr_builder.fields_validate import FIELD_INTEGRITY_PREFIX
 from app.services.lineage_builder import stitch_lineage_many
 from app.services.job_progress import ProgressSink, active_sink, current_sink
@@ -46,9 +47,11 @@ from app.services.job_progress import ProgressSink, active_sink, current_sink
 
 def _split_integrity_warnings(warnings: list[str]) -> tuple[list[str], list[Validacion]]:
     """Separa las advertencias de integridad de campos (ver FIELD_INTEGRITY_PREFIX
-    en fields_validate.py) del resto de warnings cosméticos. Las de integridad
-    se promueven a Validacion tipo="error" — la severidad más alta que
-    EtlDetail sabe renderizar — en vez de perderse entre las buenas prácticas."""
+    en fields_validate.py) y de contrato entre KTR (ver CONTRACT_PREFIX en
+    contract_validate.py, D23) del resto de warnings cosméticos. Ambas se
+    promueven a Validacion tipo="error" — la severidad más alta que EtlDetail
+    sabe renderizar — en vez de perderse entre las buenas prácticas. D15/D23
+    punto 4: mismo canal de severidad, sin caso especial."""
     plain: list[str] = []
     integridad: list[Validacion] = []
     for w in warnings:
@@ -57,6 +60,12 @@ def _split_integrity_warnings(warnings: list[str]) -> tuple[list[str], list[Vali
                 tipo="error",
                 campo="integridad_campos",
                 mensaje=w[len(FIELD_INTEGRITY_PREFIX):],
+            ))
+        elif w.startswith(CONTRACT_PREFIX):
+            integridad.append(Validacion(
+                tipo="error",
+                campo="contrato_ktr",
+                mensaje=w[len(CONTRACT_PREFIX):],
             ))
         else:
             plain.append(w)
@@ -1009,6 +1018,12 @@ async def generate_etl_from_inference(
     )
     required_columns_by_table = _required_columns_from_ddl(req.stg_definition, dwh_ddl)
     type_warnings = _type_mismatch_warnings(req.stg_definition, dwh_ddl, data_2["ktr"])
+    contract_warnings = [
+        f"{CONTRACT_PREFIX}{m}"
+        for m in validate_ktr_contracts(
+            [data_1["ktr"], data_2["ktr"]], req.stg_definition, dwh_ddl, STEP_TYPE_ALIASES,
+        )
+    ]
     dim_contract_warnings = _dim_contracts_anomaly_warning(dwh_ddl, req.dim_contracts)
     inferred_member_warnings = _inferred_member_notifications(
         _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
@@ -1027,8 +1042,8 @@ async def generate_etl_from_inference(
         extra_warnings=[
             *cfg_warnings_1, *cfg_warnings_2,
             *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
-            *type_warnings, *dim_contract_warnings, *inferred_member_warnings, *ddl_change_warnings,
-            *business_rule_warnings,
+            *type_warnings, *contract_warnings, *dim_contract_warnings, *inferred_member_warnings,
+            *ddl_change_warnings, *business_rule_warnings,
         ],
         extra_validaciones=[*ddl_result.conflictos, *[Validacion(**r) for r in step_policy_results]],
         dwh_ddl=dwh_ddl,
@@ -1329,6 +1344,12 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             )
 
             type_warnings = _type_mismatch_warnings(req.stg_definition, dwh_ddl, data_2["ktr"])
+            contract_warnings = [
+                f"{CONTRACT_PREFIX}{m}"
+                for m in validate_ktr_contracts(
+                    [data_1["ktr"], data_2["ktr"]], req.stg_definition, dwh_ddl, STEP_TYPE_ALIASES,
+                )
+            ]
             dim_contract_warnings = _dim_contracts_anomaly_warning(dwh_ddl, req.dim_contracts)
             inferred_member_warnings = _inferred_member_notifications(
                 _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
@@ -1360,7 +1381,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                 "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, dwh_ddl),
                 "repair_warnings": [
                     *stage_warnings_1, *stage_warnings_2,
-                    *type_warnings, *dim_contract_warnings, *inferred_member_warnings,
+                    *type_warnings, *contract_warnings, *dim_contract_warnings, *inferred_member_warnings,
                     *ddl_change_warnings, *reuse_tokens_note,
                 ],
                 # Persistido para que _try_build() (que corre después, cuando el

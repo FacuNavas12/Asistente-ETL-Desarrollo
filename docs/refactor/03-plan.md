@@ -98,7 +98,7 @@ Track F: F1 ✓ (2026-07-22)
 | F5 | Limpieza de bajo costo, sin dependencias | Ninguna | H12 |
 
 **Pendientes concretos de F4** (movidos desde `04-deuda-abierta.md`, disuelto — T4 de la reorganización documental):
-- Validador de contrato entre KTR (alcance cerrado por D23, sin código).
+- ~~Validador de contrato entre KTR~~ — implementado por D38 (`contract_validate.py`); nombres cerrados, tipos quedan gap documentado (no simulado).
 - `validate_business_rules()` — enganche wireado, lógica real sin escribir (stub, D23).
 - Emisión del anti-join + `Union` de miembro inferido (D21) — diseño cerrado, código pendiente.
 - **H28(a)** — agregar `("Constant", "fields", "field", "name", "type")` a `FIELD_TYPE_SOURCES` (`error_catalog_checks.py:305-317`). Fix de una línea, sin riesgo.

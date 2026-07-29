@@ -13,6 +13,7 @@ el auto-layout y validate.py para la validación de estructura pre-XML.
 """
 from app.services.ktr_builder.build import build_ktr
 from app.services.ktr_builder.contracts import ConfigParseError, normalize_step_configs
+from app.services.ktr_builder.contract_validate import CONTRACT_PREFIX, validate_ktr_contracts
 from app.services.ktr_builder.connection import (
     _build_connection,
     _DB_TYPE_TO_KETTLE,
@@ -48,4 +49,6 @@ __all__ = [
     "ConfigParseError",
     "compute_cut",
     "split_ktr_by_cut",
+    "validate_ktr_contracts",
+    "CONTRACT_PREFIX",
 ]

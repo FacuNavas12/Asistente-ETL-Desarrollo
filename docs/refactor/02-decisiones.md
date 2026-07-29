@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-07-28 (D37)
+**Última actualización:** 2026-07-28 (D38)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -39,7 +39,7 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D20 | Forma de la respuesta con N archivos | Diseño cerrado, backend implementado — falta frontend (D20-punto5) |
 | D21 | Miembro inferido (cierra C.6) | Resuelto — detección en código; residual en `04-verificacion.md` |
 | D22 | Triage F4, 3 gaps cerrados por prompt | Resuelto |
-| D23 | Alcance validador de contrato entre KTR | Alcance cerrado, sin código |
+| D23 | Alcance validador de contrato entre KTR | Alcance cerrado — implementado por D38 |
 | D24 | Track A retomada, A0 ejecutada | Cerrado |
 | D25 | A0.5 ejecutada, deriva H29 | Cerrado |
 | D26 | Suite roja marcada + test arquitectura + separación tests | Parte 2 (test de arquitectura) implementada 2026-07-27 como `backend/tests/test_architecture_layers.py` — no `test_architecture_boundaries.py` como decía el texto original, mismo objetivo. Partes 1 (xfail known failures) y 3 (separación unit/integration/manual) siguen sin implementar |
@@ -54,6 +54,7 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D35 | El mapa de conexiones es por-ETL y se aplica en todo camino de build (incluido `build-from-raw`); `conn_origen` derivado se valida antes de usarse | Ejecutado |
 | D36 | H27/H28 cerrados con evidencia real (Kettle fuente + auditoría de `STEP_BUILDERS`); B17 reescrita, `FIELD_TYPE_SOURCES` +6 entradas | Ejecutado |
 | D37 | Criterio determinista de SCD1 vs SCD2 — pre-check en `domain/scd.py` + criterio escrito en `system_inference.txt` | Ejecutado |
+| D38 | Validador de contrato entre KTR (D23) implementado — nombres, tipos como gap documentado | Ejecutado |
 
 ---
 
@@ -77,7 +78,7 @@ Navegación rápida — clic para ir directo a la decisión. Grupos según la ta
 [D16](#d16) dependencia externa real: eje `dim_contracts` · [D19](#d19) wiring de servicio cerrado, HTTP en modo notificación · [D20](#d20) forma de la respuesta con N archivos
 
 **F4** — track de errores / contenido generado
-[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo · [D36](#d36) B17 reescrita + `FIELD_TYPE_SOURCES` +6 entradas (cierra H27/H28)
+[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo · [D36](#d36) B17 reescrita + `FIELD_TYPE_SOURCES` +6 entradas (cierra H27/H28) · [D38](#d38) validador de contrato entre KTR implementado (cierra D23)
 
 **Track A** — auditoría de arquitectura
 [D24](#d24) Track A retomada, A0 ejecutada · [D25](#d25) A0.5 ejecutada (censo de fallos silenciosos), H29 · [D26](#d26) adelanta en chico una porción de A2/R1 (test de arquitectura), sin esperar a A7 · [D27](#d27) split `registry.py`, `KNOWN_PDI_STEP_TYPES` borrado, `CanonicalType` a `domain/`, criterio vocabulario-PDI-es-dominio
@@ -943,6 +944,30 @@ D37 ataca A sin tocar B. SCD2 vs SCD1 es un requisito de negocio ("¿un reporte 
 | F3 | Kimball Group — *Design Tip #152: Slowly Changing Dimension Types 0, 4, 5, 6, 7* | https://www.kimballgroup.com/2013/02/design-tip-152-slowly-changing-dimension-types-0-4-5-6-7/ |
 
 Default SCD1 respaldado por F2: *"most data warehouses start out with Type 1 as the default"*. Excepción incorporada al prompt: F2 marca el único caso donde SCD1 está prohibido, no solo desaconsejado — *"In financial reporting environments with month end close processes and in any environment subject to regulatory or legal compliance, Type 1 changes may be outlawed. In these cases, the Type 2 technique must be used."*
+
+<a id="d38"></a>
+### D38 — Validador de contrato entre KTR (D23) implementado: nombres, tipos como gap documentado `[F4]`
+
+**Contexto:** D23 cerró el alcance (qué compara, qué no, severidad) sin código. Esta sesión lo implementó.
+
+**Decisiones tomadas durante la implementación, no cubiertas por D23:**
+
+1. **Fuente de aristas escritor→lector: `build_rw_matrix()` (`fragmentation.py`), no `stitch_lineage_many()`.** `stitch_lineage_many` (usada para el diagrama de linaje) solo matchea `TableOutput`/`TableInput` terminales — un lector vía `DBLookup`/`DimensionLookup` no-terminal le es invisible. `build_rw_matrix` ya clasifica ese universo más amplio (mismo que usa `validate_dimension_lookup_races`). El matching de linaje se extrajo igual a `_resolve_table_endpoints()` (`lineage_builder.py`) por si otro caller lo necesita — `stitch_lineage_many` lo reusa sin cambio de comportamiento (33 tests de regresión verdes antes de tocar nada más).
+
+2. **Bug encontrado en `build_rw_matrix()` durante la implementación, corregido localmente (no en `fragmentation.py`):** no resuelve tabla para `TableInput` con SQL crudo — mira únicamente `cfg["table"]`, vacío para un `TableInput` (el nombre vive en `cfg["sql"]`). Es el caso de lectura más común del pipeline (KTR_2 leyendo STG vía `SELECT * FROM stg_x`); sin el fix, el validador nunca disparaba en el caso típico (confirmado con un test end-to-end que daba 0 en vez de 1 antes del fix). Corregido en `contract_validate.py::_per_file_table_roles()`, reusando el regex que ya usa `lineage_builder._extract_table` — no se tocó `build_rw_matrix` ni `fragmentation.py` porque esa matriz también alimenta `compute_cut()` (F3): ampliarla ahí habría cambiado decisiones de corte, fuera de alcance de D23.
+
+3. **Alcance entregado — nombres, no tipos.** D23 punto 3 pedía "columnas + nombres + tipos". Se entregan columnas NOT NULL sin default (DDL) vs. columnas de tabla realmente escritas (`column_name`/`table_field` del config del step, no del stream — distinto de lo que ya usa `contracts.py::consumes`, que es intra-archivo y del lado stream). Tipos quedan sin implementar: un step escritor no declara tipo propio, y el único tipo "real" del lado escritor requeriría inferencia de expresión cross-file (fuera de `contracts.py` por diseño). Implementarlo iguala al chequeo DDL-vs-DDL que ya hace `etl_generator._type_mismatch_warnings()` — que D23 punto 1 excluye explícitamente como fuente de verdad de este validador (compara declarado contra declarado, no lo que el KTR realmente produjo). Gap documentado en el docstring de `contract_validate.py`, no simulado.
+
+4. **Cobertura de extracción de columnas escritas — 3 tipos de step, no todos los que build_rw_matrix marca "W".** `TableOutput`/`InsertUpdate`/`Update` tienen shape de config conocido y mapeado (`_WRITER_TABLE_FIELD_SOURCES`). `DimensionLookup`/`CombinationLookup` (también W/RW en `build_rw_matrix`) tienen shape de atributos de dimensión distinto, no mapeado — un archivo cuya única escritura a una tabla sea por esos dos steps no se valida por nombre (conservador: `_table_columns_written` devuelve `None`, el validador salta esa arista sin falso positivo).
+
+**Qué se construyó:**
+- `lineage_builder.py`: `_resolve_table_endpoints()` extraído de `stitch_lineage_many` (fase 1, sin cambio de comportamiento). Import de `STEP_TYPE_ALIASES` corregido de `app.services.ktr_builder` (paquete) a `app.services.ktr_builder.step_types` (submódulo) — el paquete import causaba ciclo contra `contract_validate.py`, que ahora se re-exporta desde `ktr_builder/__init__.py`.
+- `services/ktr_builder/contract_validate.py` (nuevo): `validate_ktr_contracts()` + helpers, ver puntos 1-4 arriba.
+- `etl_generator.py`: wireado en el mismo punto que `type_warnings`/`dim_contract_warnings` (los dos ya presentes en ambos flujos) — sync (`generate_etl_from_inference`) y async (`generate_etl_async`, checkpoint de etapa `stg_dwh`). `_split_integrity_warnings()` extendido para reconocer `CONTRACT_PREFIX` y promover a `Validacion(tipo="error", campo="contrato_ktr")` — mismo canal de severidad que `FIELD_INTEGRITY_PREFIX` (D15/D23 punto 4), campo distinto para no confundir en la UI un gap cross-archivo con uno intra-archivo.
+
+**Verificado (D13):** `backend/tests/test_contract_validate.py` — 2 tests del validador en sí (detecta el hueco incluso leído por `DBLookup`, no falsea cuando todo está escrito) + 1 test end-to-end HTTP (LLM mockeado) confirmando que el mismatch llega a `ETLGenerateResponse.validaciones` como `tipo="error"`/`campo="contrato_ktr"`. Suite completa corrida antes/después (`git stash`): 8 fallos preexistentes confirmados independientes de este cambio (los 6 de `test_ktr_build_job_api.py`, H24/D26; los 2 de `test_ktr_xml_validator.py`/`test_structured_outputs.py`, D20/D26) — cero regresión nueva, 580 tests verdes incluidos los 3 nuevos.
+
+**Estado:** ejecutado, esta misma sesión (2026-07-28).
 
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido
