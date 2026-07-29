@@ -26,7 +26,6 @@ Depende del archivo: `ETLGenerateResponse`/`JobPlan` para los casos de uso; fila
 | `masker.py` | `infrastructure/db_inspection/` | Enmascarado format-preserving de valores de muestra. |
 | `documenter.py`, `validator.py` | `services/` | Documentación / validación de calidad vía LLM. |
 | `sql_defaults.py` | `domain/` | Clasifica un DEFAULT SQL como literal vs. función/expresión. Puro. |
-| `validate_business_rules.py` | `domain/` | Chequeo heurístico de reglas de negocio contra steps. Puro, hoy un stub (D23). |
 | `lineage_builder.py` | **partido** — `build_lineage`/`stitch_lineage_many` puros (`domain/`), `_parse_ktr_xml` lee XML (`infrastructure/pentaho/`) | Construcción del grafo de linaje. |
 
 Detalle de cada uno con línea exacta: `docs/auditoria/00-inventario.md` sección 1.
@@ -37,7 +36,7 @@ Es el README más importante de esta carpeta porque es el archivo más grande y 
 
 ## Reglas que aplican
 R3 — ningún archivo de acá debería importar `fastapi` (violado hoy en 3 archivos, congelado en `backend/tests/test_architecture_layers.py::FROZEN_R3`) ni `sqlalchemy` directo (violado en más archivos todavía, fuera del recorte de ese test — ver su docstring).
-R7 — `sql_defaults.py`, `validate_business_rules.py` son piezas de conocimiento de dominio puro que ya viven acá sueltas; no deberían crecer con más lógica de casos de uso mezclada adentro. (`type_mappings.py` salió de este grupo — es infra, ver tabla.)
+R7 — `sql_defaults.py` es pieza de conocimiento de dominio puro que ya vive acá suelta; no debería crecer con más lógica de casos de uso mezclada adentro. (`type_mappings.py` salió de este grupo — es infra, ver tabla. `validate_business_rules.py` salió del grupo — removido, D39 en `docs/refactor/02-decisiones.md`.)
 
 ## Qué NO va acá
 - Una regla nueva sobre "qué tabla toca un step" o "qué campos tiene" — eso es `services/ktr_builder/contracts.py` o dominio nuevo, no una función más en `etl_generator.py` (R7: un solo lugar).

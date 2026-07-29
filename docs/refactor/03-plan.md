@@ -99,7 +99,9 @@ Track F: F1 ✓ (2026-07-22)
 
 **Pendientes concretos de F4** (movidos desde `04-deuda-abierta.md`, disuelto — T4 de la reorganización documental):
 - ~~Validador de contrato entre KTR~~ — implementado por D38 (`contract_validate.py`); nombres cerrados, tipos quedan gap documentado (no simulado).
-- `validate_business_rules()` — enganche wireado, lógica real sin escribir (stub, D23).
+- **Mejora, no riesgo** — tipos en el validador de contrato entre KTR (`contract_validate.py`, D38 punto 3). Hoy solo compara nombres; el writer no declara tipo propio, así que agregar tipo requeriría inferencia de expresión cross-file (fuera de `contracts.py` por diseño) o caer en el chequeo DDL-vs-DDL que D23 punto 1 ya excluyó como fuente de verdad de este validador. Sin caso real todavía que lo pida — retomar si aparece uno.
+- ~~`validate_business_rules()`~~ — removido, sin reemplazo en backend (D39). Responsabilidad de reglas de negocio queda en DDL (ya cubierto parcialmente por el validador de contrato/tipos) + Data Validator (PDI), ítem nuevo abajo.
+- **Investigar Data Validator (PDI)** — herramienta nativa de Pentaho para validar reglas de negocio en tiempo de ejecución del `.ktr`, candidata a cubrir lo que `validate_business_rules()` iba a intentar por inspección de steps (D39). Sin investigar todavía: nombre exacto del step/plugin, alcance, forma de integrarlo a la generación. Sin dueño hasta esa investigación.
 - Emisión del anti-join + `Union` de miembro inferido (D21) — diseño cerrado, código pendiente.
 - **H28(a)** — agregar `("Constant", "fields", "field", "name", "type")` a `FIELD_TYPE_SOURCES` (`error_catalog_checks.py:305-317`). Fix de una línea, sin riesgo.
 - **H28(b)** — barrer el resto de los ~12 step types de `registry.py` que declaran `type`/`value_type` por campo, confirmar si `Constant` era el único hueco de `FIELD_TYPE_SOURCES`.

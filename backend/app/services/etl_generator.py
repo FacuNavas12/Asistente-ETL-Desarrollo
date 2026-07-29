@@ -27,7 +27,6 @@ from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
 from app.services.adapters.ddl_adapter import parse_ddl
 from app.services.ddl_validation import validate_and_correct_ddl
-from app.services.validate_business_rules import validate_business_rules
 from app.services.ktr_builder import (
     build_ktr,
     derive_dimension_step_type,
@@ -1029,10 +1028,6 @@ async def generate_etl_from_inference(
         _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
     )
     ddl_change_warnings = [f"DDL (Parte 3): {c}" for c in ddl_result.cambios_aplicados]
-    business_rule_warnings = [
-        *validate_business_rules(req.stg_definition, req.reglasNegocio, data_1["ktr"]),
-        *validate_business_rules(dwh_ddl, req.reglasNegocio, data_2["ktr"]),
-    ]
     step_policy_results = enforce_dimension_step_policy(
         data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
     )
@@ -1043,7 +1038,7 @@ async def generate_etl_from_inference(
             *cfg_warnings_1, *cfg_warnings_2,
             *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
             *type_warnings, *contract_warnings, *dim_contract_warnings, *inferred_member_warnings,
-            *ddl_change_warnings, *business_rule_warnings,
+            *ddl_change_warnings,
         ],
         extra_validaciones=[*ddl_result.conflictos, *[Validacion(**r) for r in step_policy_results]],
         dwh_ddl=dwh_ddl,

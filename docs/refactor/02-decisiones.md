@@ -55,6 +55,7 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D36 | H27/H28 cerrados con evidencia real (Kettle fuente + auditoría de `STEP_BUILDERS`); B17 reescrita, `FIELD_TYPE_SOURCES` +6 entradas | Ejecutado |
 | D37 | Criterio determinista de SCD1 vs SCD2 — pre-check en `domain/scd.py` + criterio escrito en `system_inference.txt` | Ejecutado |
 | D38 | Validador de contrato entre KTR (D23) implementado — nombres, tipos como gap documentado | Ejecutado |
+| D39 | `validate_business_rules()` (D23) removido — responsabilidad se traslada a DDL + futura herramienta Data Validator (PDI), fuera de esta sesión | Ejecutado |
 
 ---
 
@@ -78,7 +79,7 @@ Navegación rápida — clic para ir directo a la decisión. Grupos según la ta
 [D16](#d16) dependencia externa real: eje `dim_contracts` · [D19](#d19) wiring de servicio cerrado, HTTP en modo notificación · [D20](#d20) forma de la respuesta con N archivos
 
 **F4** — track de errores / contenido generado
-[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo · [D36](#d36) B17 reescrita + `FIELD_TYPE_SOURCES` +6 entradas (cierra H27/H28) · [D38](#d38) validador de contrato entre KTR implementado (cierra D23)
+[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo · [D36](#d36) B17 reescrita + `FIELD_TYPE_SOURCES` +6 entradas (cierra H27/H28) · [D38](#d38) validador de contrato entre KTR implementado (cierra D23) · [D39](#d39) `validate_business_rules()` removido, responsabilidad a DDL + Data Validator
 
 **Track A** — auditoría de arquitectura
 [D24](#d24) Track A retomada, A0 ejecutada · [D25](#d25) A0.5 ejecutada (censo de fallos silenciosos), H29 · [D26](#d26) adelanta en chico una porción de A2/R1 (test de arquitectura), sin esperar a A7 · [D27](#d27) split `registry.py`, `KNOWN_PDI_STEP_TYPES` borrado, `CanonicalType` a `domain/`, criterio vocabulario-PDI-es-dominio
@@ -966,6 +967,30 @@ Default SCD1 respaldado por F2: *"most data warehouses start out with Type 1 as 
 - `etl_generator.py`: wireado en el mismo punto que `type_warnings`/`dim_contract_warnings` (los dos ya presentes en ambos flujos) — sync (`generate_etl_from_inference`) y async (`generate_etl_async`, checkpoint de etapa `stg_dwh`). `_split_integrity_warnings()` extendido para reconocer `CONTRACT_PREFIX` y promover a `Validacion(tipo="error", campo="contrato_ktr")` — mismo canal de severidad que `FIELD_INTEGRITY_PREFIX` (D15/D23 punto 4), campo distinto para no confundir en la UI un gap cross-archivo con uno intra-archivo.
 
 **Verificado (D13):** `backend/tests/test_contract_validate.py` — 2 tests del validador en sí (detecta el hueco incluso leído por `DBLookup`, no falsea cuando todo está escrito) + 1 test end-to-end HTTP (LLM mockeado) confirmando que el mismatch llega a `ETLGenerateResponse.validaciones` como `tipo="error"`/`campo="contrato_ktr"`. Suite completa corrida antes/después (`git stash`): 8 fallos preexistentes confirmados independientes de este cambio (los 6 de `test_ktr_build_job_api.py`, H24/D26; los 2 de `test_ktr_xml_validator.py`/`test_structured_outputs.py`, D20/D26) — cero regresión nueva, 580 tests verdes incluidos los 3 nuevos.
+
+**Estado:** ejecutado, esta misma sesión (2026-07-28).
+
+<a id="d39"></a>
+### D39 — `validate_business_rules()` (D23) removido: responsabilidad se traslada a DDL + futura herramienta Data Validator (PDI) `[F4]`
+
+**Contexto:** D23 punto 3 dejó un segundo enganche, distinto del validador de contrato (cerrado por D38): `validate_business_rules()` — stub, pase libre siempre, wireado 2x en `etl_generator.py` (una llamada por etapa, KTR_1 contra `stg_definition`, KTR_2 contra `dwh_ddl`), pendiente de lógica real que comparara `business_rules` (texto libre del usuario) contra los steps ya generados (`config`, fórmulas, filtros).
+
+**Decisión (2026-07-28), tomada por el usuario tras investigación propia:** validar reglas de negocio inspeccionando steps/config de un `.ktr` ya generado es mala práctica — el KTR es la salida serializada, no el lugar donde una regla de negocio debería hacerse cumplir. El enganche se remueve sin reemplazo equivalente dentro del backend:
+
+- `backend/app/services/validate_business_rules.py` — borrado (era stub puro, cero lógica real que preservar).
+- `etl_generator.py` — desenganchado: import, las 2 llamadas (`business_rule_warnings`) y su inclusión en `extra_warnings` de `generate_etl_from_inference`. Sin equivalente en el flujo async (`generate_etl_async`) — nunca estuvo wireado ahí, no había nada que sacar.
+- `backend/tests/test_architecture_layers.py` — entrada `"services.validate_business_rules"` sacada de `DOMAIN_MODULES` (módulo ya no existe).
+- Referencias a `validate_business_rules.py` en `backend/app/services/README.md` y `docs/arquitectura-objetivo.md` corregidas (eran mapa de capas objetivo, vivo — no snapshot fechado). `docs/auditoria/00-inventario.md` queda sin tocar: es salida fechada de A0 (2026-07-25), descriptiva de un momento, no un mapa que deba seguir sincronizado.
+
+**Dónde queda la responsabilidad — gap real, abierto, con dueño de superficie distinto:**
+1. **DDL** — constraints declarados en `stg_definition`/`dwh_model` (NOT NULL, tipos, FK) siguen siendo la única garantía estructural verificada por el backend hoy (validador de contrato D23/D38, `_type_mismatch_warnings`, etc.). Reglas de negocio que se puedan expresar como constraint de DDL quedan cubiertas por ese camino existente — no es un mecanismo nuevo, es delimitar que ahí es donde ya vive lo verificable.
+2. **Data Validator (PDI)** — herramienta nativa de Pentaho Data Integration para validar datos en tiempo de ejecución del `.ktr`, todavía sin investigar en este proyecto (nombre, alcance y forma de integración quedan para una sesión futura). Candidato natural para reglas de negocio que no se reducen a un constraint de esquema (ej. "el monto no puede superar X cuando la categoría es Y") — se aplicarían corriendo el ETL, no auditando el XML generado.
+
+**Qué NO resuelve esta decisión:** sigue sin existir, en ningún punto del pipeline, una verificación de que `reglasNegocio` (texto libre que hoy solo entra al prompt del LLM) se haya aplicado. D23 lo marcó como gap real; D39 lo deja igual de abierto, solo saca el enganche que fingía ser el lugar donde eventualmente se resolvería — el lugar correcto es DDL (ya cubierto parcialmente) + Data Validator (por investigar), no el backend inspeccionando steps.
+
+**Consecuencia sobre el plan:** cierra el pendiente `validate_business_rules()` de la lista de F4 en `03-plan.md` (sin implementación equivalente). Agrega un pendiente nuevo, sin dueño hasta que se investigue: "investigar Data Validator de PDI para reglas de negocio en runtime".
+
+*Por qué D39 y no solo borrar el archivo:* mismo criterio que D14/D16/D20/D22/D23/D24/D25/D26 — cambia el alcance que D23 había dejado fijado (punto de enganche futuro), antes de tocar código.
 
 **Estado:** ejecutado, esta misma sesión (2026-07-28).
 

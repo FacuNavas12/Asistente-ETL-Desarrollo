@@ -48,7 +48,6 @@ DOMAIN_MODULES = {
     "services.ktr_builder.common",
     "services.sql_defaults",
     "services.ktr_default_validator",
-    "services.validate_business_rules",
     # canonical_types.py: CanonicalType/FieldFormat/ColumnRole — value objects
     # puros de stdlib (Enum/Literal), vocabulario de dominio movido afuera de
     # schemas/canonical.py (que los reexporta con excepción nombrada, ver ese
