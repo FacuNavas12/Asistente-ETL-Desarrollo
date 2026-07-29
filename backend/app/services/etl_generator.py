@@ -36,7 +36,6 @@ from app.services.ktr_builder import (
     repair_ktr_steps,
     split_ktr_by_cut,
     STEP_TYPE_ALIASES,
-    TABLE_KEY_PREFIX,
     ValidationContext,
     run_passes,
 )
@@ -211,7 +210,7 @@ def _recover_table_keys(ktr_data: dict, known_tables: frozenset[str]) -> list[st
     split_ktr_by_cut() (build_rw_matrix): ambos corren antes de build_ktr()
     y necesitan ver 'table' ya recuperado (ver validators/README.md)."""
     findings = run_passes(ValidationContext(ktr_data, STEP_TYPE_ALIASES, known_tables))
-    return [f"{TABLE_KEY_PREFIX}{f.message}" for f in findings]
+    return [f.message for f in findings]
 
 
 def _format_dim_contracts(dim_contracts: list) -> str:

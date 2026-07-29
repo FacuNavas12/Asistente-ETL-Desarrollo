@@ -34,7 +34,7 @@ from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.step_emitters import STEP_BUILDERS, unmapped_config_keys
 from app.services.ktr_builder.step_types import _CRITICAL_FIELDS, STEP_TYPE_ALIASES
 from app.services.ktr_builder.validate import _validate_ktr
-from app.services.ktr_builder.validators import TABLE_KEY_PREFIX, ValidationContext, run_passes
+from app.services.ktr_builder.validators import ValidationContext, run_passes
 from app.services.ktr_default_validator import (
     check_missing_required_fields,
     scrub_function_default_constants,
@@ -156,7 +156,7 @@ def build_ktr(
         else frozenset(k.lower() for k in (required_columns_by_table or {})),
     )
     table_findings = run_passes(table_ctx)
-    cfg_parse_warnings.extend(f"{TABLE_KEY_PREFIX}{f.message}" for f in table_findings)
+    cfg_parse_warnings.extend(f.message for f in table_findings)
 
     warnings = cfg_parse_warnings + _validate_ktr(ktr_data)
     for w in warnings:

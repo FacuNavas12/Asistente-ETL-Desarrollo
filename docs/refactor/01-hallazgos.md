@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Cada H se escribe una vez y no se reescribe — una actualización nueva se agrega como párrafo nuevo dentro de la misma entrada, con fecha. El índice al tope sí se edita en el momento en que el estado de un hallazgo cambia.
 
-**Última actualización:** 2026-07-29 (H29 cerrado parcial, D40)
+**Última actualización:** 2026-07-29 (H40 cerrado — D41)
 
 Cada entrada: qué se encontró, evidencia (`archivo:línea`), de qué sesión salió, y estado. Estado se evalúa contra [`02-decisiones.md`](02-decisiones.md) — si una decisión ya cerró el hallazgo, dice cuál.
 
@@ -53,6 +53,9 @@ El cuerpo de cada H es evidencia, no repite estado por fuera de lo ya escrito en
 | H35 | H27 verificado contra código fuente real de Kettle — Calculator/Formula pierden precisión por mecanismos distintos, regla B17 confirmada correcta | Cerrado — D36 | verificación | F4 |
 | H36 | `FIELD_TYPE_SOURCES` auditado contra los ~45 steps reales de `STEP_BUILDERS` (no contra Kettle completo) — 6 huecos nuevos además de `Constant` | Cerrado — D36 | verificación | F4 |
 | H37 | Ningún prompt vivo declara cuándo SCD1 vs SCD2 — y Pentaho tampoco tiene criterio propio (adopta Kimball y delega) | Cerrado — D37 | contenido-LLM / dim_contracts | F4 |
+| H38 | `CHECK` constraints del DDL nunca se parsean; `FieldConstraints.minimum/maximum` existe en el schema pero nadie lo popula, en ningún adapter | Abierto, sin dueño de track — causa raíz de un bug real ya corregido a mano (ver evidencia) | borde-entrada / contenido-LLM | F4 |
+| H39 | `system_etl.txt` no fija que los steps de validación de reglas de negocio van únicamente en el KTR con destino staging→DWH — permite duplicarlos también en origen→staging | Abierto, sin dueño de track — causa raíz de un bug real ya corregido a mano (ver evidencia) | contenido-LLM / prompt | F4 |
+| H40 | Un campo calculado (`Calculator`/similar) que ningún step downstream consume ni se mapea a ninguna columna de destino no genera warning — cómputo muerto silencioso | Cerrado — D41 (pass `flag_dead_computed_fields`, alcance `Calculator`) | validación | F4 |
 
 ---
 
@@ -680,6 +683,54 @@ SCD2, y quién es responsable").
 **Estado:** cerrado — D37 agrega el criterio (`domain/scd.py::classify_scd_candidates` + sección nueva en
 `system_inference.txt`) y lo funda contra Pentaho Academy + Kimball Group (fuentes F1-F3 en D37), no contra
 juicio propio.
+
+---
+
+## H38 — `CHECK` constraints del DDL nunca llegan al LLM; `FieldConstraints.minimum/maximum` existe pero está muerto en todo el backend
+
+**Qué:** el usuario trajo un reporte de fixes manuales (`fixes_flujo_completo_stg_dwh.md`, 28-29/07/2026) sobre un ETL de catálogo/productos ya generado. Bug 1 de ese reporte: el step `Filtrar Precios Negativos` (`FilterRows`) en la transformación staging→DWH solo evaluaba `precio_unitario >= 0`, dejando pasar una fila con `precio_lista = -750.00` que violó `ck_dim_producto_precio_lista` y abortó el job. Investigando la causa raíz (no solo el síntoma, ya corregido a mano): el DDL del usuario declaraba un `CHECK (precio_lista >= 0 AND precio_unitario >= 0 AND stock >= 0)` a nivel tabla — y ese constraint **nunca llega al modelo**.
+
+`ddl_adapter.py::_create_table_to_schema` (`backend/app/services/adapters/ddl_adapter.py:157-164`) solo reconoce `exp.PrimaryKey`/`exp.ForeignKey` a nivel tabla al iterar `col_exprs` — cualquier `exp.Check` (tabla o columna) cae en ningún `elif`, se descarta en silencio, sin log ni warning. `_col_def_to_field` (líneas 230-243) solo lee `NotNullColumnConstraint`/`PrimaryKeyColumnConstraint`/`DefaultColumnConstraint` de `col_def.constraints` — mismo patrón, `CheckColumnConstraint` no está en la lista.
+
+Más: `FieldConstraints` (`backend/app/schemas/canonical.py:37-45`) **ya tiene** campos `minimum`/`maximum` — exactamente el shape que necesitaría un CHECK simple tipo `col >= 0`. Grep de `minimum=`/`maximum=` en todo `backend/app/` → cero resultados. Ningún adapter (DDL, DB, Frictionless) los popula nunca. Es un campo de schema muerto desde que se escribió, no solo un hueco del adapter DDL.
+
+**Por qué importa:** sin el CHECK en el `CanonicalSchema`, el LLM no tiene ground truth estructural sobre qué columnas deben ser no-negativas — solo el texto libre de `reglasNegocio` ("no aceptar precios negativos"). De ahí que adivinara una condición parcial (una sola columna, la primera que asoció con "precio") en vez de las tres que el CHECK real exige. `system_etl.txt` checklist ítem 4 (línea 598) solo pregunta si la regla de negocio "está materializada en algún step" — no tiene con qué comparar contra el DDL real porque el dato ni siquiera se extrajo.
+
+**Evidencia:** `backend/app/services/adapters/ddl_adapter.py:157-176` (PK/FK únicos reconocidos a nivel tabla), `ddl_adapter.py:230-243` (constraints de columna reconocidos), `backend/app/schemas/canonical.py:37-45` (`FieldConstraints.minimum/maximum`, campos sin escritor); `fixes_flujo_completo_stg_dwh.md` (Fix 1, aportado por el usuario) para el síntoma real ya corregido a mano.
+
+**Sesión de origen:** 2026-07-29, a pedido del usuario ("usá el md de fixes para encontrar un error silencioso o falta nuestra").
+
+**Estado:** abierto, sin dueño de track. No es el mismo gap que D39 (que habla de verificar reglas de negocio ya materializadas contra el KTR generado, decisión tomada de no resolverlo así) — es una capa antes: ni siquiera se extrae el dato DDL que le daría al LLM la oportunidad de acertar. Resoluble sin reabrir D39: extender `ddl_adapter.py` a reconocer `exp.Check`/`CheckColumnConstraint` para patrones simples (`col >= lit`, `col <= lit`, y su combinación AND), poblar `minimum`/`maximum`, y sumarlos a `format_model_context_for_prompt()`. Automatizar el chequeo (comparar `FilterRows` contra `minimum`/`maximum` conocido) sería trabajo nuevo de validador en `ktr_builder/validators/`, mismo paquete que D40.
+
+---
+
+## H39 — `system_etl.txt` no fija que los steps de validación de reglas de negocio van solo en staging→DWH; permite duplicarlos también en origen→staging
+
+**Qué:** mismo reporte de fixes que H38 (`fixes_flujo_completo_stg_dwh.md`, Fix 2). El LLM generó **dos** steps `Filtrar Precios Negativos` independientes — uno en `stg_dwh_2` (staging→DWH, correcto) y otro, con distinta condición incompleta, en `ktr_1_origen_a_staging` (origen→staging). El segundo descartaba filas *antes* de que llegaran a staging, rompiendo el contrato documentado de esa tabla ("Truncate y Load", copia completa del origen). El resultado final coincidía con lo esperado (6 productos válidos) de casualidad — 2 productos se perdían en cada capa por separado, sumando los 4 esperados; un cambio futuro de reglas en el DWH hubiera dejado esos productos inalcanzables porque nunca llegaban a staging.
+
+Revisado `system_etl.txt`: la regla 6 (línea 143, "Aplica todas las reglas de negocio provistas en los steps correspondientes") y el checklist ítem 4 (línea 598, "¿está materializada en al menos un step del KTR?") no dicen **en cuál** de los dos KTR. Nada en el prompt distingue "origen→staging = lectura + metadata técnica + truncate" de "staging→DWH = donde vive la validación de negocio" como regla explícita — la distinción existe en la documentación del proyecto (tabla `stg_tienda_producto` = copia completa) pero no en lo que el LLM lee para generar.
+
+**Por qué importa:** a diferencia de H29/D40 (tabla no resuelta, mecanismo de recuperación por contenido), acá no hay nada que recuperar — el step está bien formado, solo mal ubicado. Ningún pase de `ktr_builder/validators/` chequea hoy "step de filtro/validación de negocio presente en un KTR cuyo target es una tabla `stg_*`".
+
+**Evidencia:** `backend/prompts/system_etl.txt:143` (regla 6), `system_etl.txt:598` (checklist ítem 4) — ninguna menciona capa/destino; `fixes_flujo_completo_stg_dwh.md` (Fix 2, aportado por el usuario) para el síntoma real ya corregido a mano.
+
+**Sesión de origen:** 2026-07-29, mismo pedido que H38.
+
+**Estado:** abierto, sin dueño de track. Dos caminos no excluyentes: (a) regla nueva en `system_etl.txt` ("los steps de validación de reglas de negocio van únicamente en el KTR con destino staging→DWH; origen→staging se limita a lectura, metadata técnica y truncate/load"); (b) pase determinista nuevo en `ktr_builder/validators/` (mismo paquete que nace en D40) que marque como error/warning cualquier `FilterRows`/step de validación en un KTR cuyo target resuelto sea `stg_*`.
+
+---
+
+## H40 — Campo calculado sin consumidor downstream no genera warning (cómputo muerto silencioso)
+
+**Qué:** hallazgo menor del mismo reporte (`fixes_flujo_completo_stg_dwh.md`, nota "Hallazgo adicional" bajo Fix 2, sin fix aplicado por el usuario). El step `Calcular Valor Inventario` en `ktr_1_origen_a_staging` computa `valor_inventario`, campo que `stg_tienda_producto` no tiene columna para recibir — nunca se mapea a ningún step downstream. No rompe nada (no genera error), pero es trabajo del LLM que no aporta nada al resultado, invisible hoy para cualquier validador.
+
+**Evidencia:** `fixes_flujo_completo_stg_dwh.md`, sección Fix 2, "Hallazgo adicional" (aportado por el usuario, no verificado contra el `.ktr` real en esta sesión — el archivo fuente no está en este repo).
+
+**Sesión de origen:** 2026-07-29, mismo pedido que H38/H39.
+
+**Estado:** abierto, menor, sin dueño de track. Candidato a checklist ítem nuevo en `system_etl.txt` (simétrico al ítem 11 ya existente, que chequea el caso inverso: campo de destino sin origen mapeado) o a pase en `ktr_builder/validators/`.
+
+**2026-07-29 — cerrado por D41 (`02-decisiones.md`).** Pase nuevo `flag_dead_computed_fields` en `backend/app/services/ktr_builder/validators/dead_computed_fields.py`, alcance acotado a `Calculator` (ver D41 para por qué no todo tipo productor). Camino en el mismo turno destapó y corrigió un bug de wiring en D40: `TABLE_KEY_PREFIX` se le pegaba a TODOS los findings de `run_passes()`, no solo a los de `recover_table_key` — con un segundo pass en `PRE_EMIT_PASSES` eso hubiera etiquetado mal las advertencias nuevas. Verificado con `backend/tests/test_dead_computed_fields.py` (7 tests) + suite completa sin regresión (ver D41).
 
 ---
 

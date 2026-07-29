@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-07-28 (D38)
+**Última actualización:** 2026-07-29 (D41)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -57,6 +57,7 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D38 | Validador de contrato entre KTR (D23) implementado — nombres, tipos como gap documentado | Ejecutado |
 | D39 | `validate_business_rules()` (D23) removido — responsabilidad se traslada a DDL + futura herramienta Data Validator (PDI), fuera de esta sesión | Ejecutado |
 | D40 | H29 — recuperación determinista de `table` por contenido (no posición); `TABLE_BEARING_STEPS` explícito en vez de `required_keys`; nace `ktr_builder/validators/` | Ejecutado |
+| D41 | H40 — nuevo pass `flag_dead_computed_fields` (warning, no repara) para `Calculator` sin consumidor downstream; corrige de paso un bug de wiring en D40 (prefijo `TABLE_KEY_PREFIX` se aplicaba a TODOS los findings de `run_passes()`, no solo a los de `recover_table_key`) | Ejecutado |
 
 ---
 
@@ -1015,6 +1016,25 @@ Default SCD1 respaldado por F2: *"most data warehouses start out with Type 1 as 
 **Alcance de esta sesión:** solo `fragmentation.py` queda efectivamente cerrado para el caso H29 (su matriz R/W ahora ve el step recuperado). `dimension_step_policy.py` y `fields_validate.py` **también** se benefician porque corren después del punto de wiring temprano — pero el patrón triplicado `if not table: continue` en sí (la duplicación de "qué hacer cuando la tabla no resuelve") no se centralizó ahí; solo se cerró el síntoma (la tabla ahora suele estar cuando esos módulos preguntan). H29 pasa a **cerrado parcial** en `01-hallazgos.md` — ver esa entrada para el detalle de qué queda.
 
 **Verificado (D13):** `backend/tests/test_table_key_recovery.py` (7 tests: recuperación exitosa, no-op con `table` ya presente, idempotencia, sin match, match ambiguo, step fuera de `TABLE_BEARING_STEPS`, contrato `repaired=True` ↔ mutación real) + `test_pdi_step_coherence.py::test_table_bearing_steps_matches_key_aliases_targeting_table`. Suite completa corrida antes/después (`git stash`): mismos 45 fallos preexistentes confirmados independientes (36 de `test_api.py` sin servidor vivo, 6 de `test_ktr_build_job_api.py`/D26/C.7, 1 de `test_ktr_xml_validator.py`, 1 de `test_structured_outputs.py`) — cero regresión nueva, 588 tests verdes + 11 nuevos.
+
+**Estado:** ejecutado, esta misma sesión (2026-07-29).
+
+<a id="d41"></a>
+### D41 — H40: pass `flag_dead_computed_fields` (warning) + fix de wiring de `TABLE_KEY_PREFIX` en D40 `[F4]`
+
+**Contexto:** H40 (`01-hallazgos.md`) — un `Calculator` puede declarar un campo nuevo (`calculations[].field_name`) que ningún step aguas abajo consume ni se mapea a ninguna columna de tabla destino. No rompe el build (Spoon corre igual, el campo queda flotando en el stream) — es cómputo del LLM sin efecto en el resultado, invisible hoy para cualquier validador. Hallazgo menor, sin fix aplicado por el usuario en el reporte original.
+
+**Decisión — alcance acotado a `Calculator`, no a todo tipo "productor" de `contracts.STEP_CONTRACTS`:** generalizar a `Formula`/`NumberRange`/`GroupBy` exige reconstruir el stream real por step (qué campos ya venían del upstream vs. cuáles agrega ESE step puntual — el mecanismo que ya usa `fields_validate._topo_order`/`_step_output_fields`) para distinguir "campo nuevo" de "campo que ya estaba". `Calculator` es el único tipo donde el nombre del campo agregado se lee directo del config (`calculations[].field_name`) sin esa reconstrucción — encaja con el alcance "menor" que `01-hallazgos.md` le asignó a H40. Si el gap se confirma real en los otros tipos, es H nueva, no una ampliación silenciosa de este pass.
+
+**Detección, no reparación:** severidad `"warning"` siempre, nunca mutación (`repaired=False`) — a diferencia de `recover_table_key` (D40), acá no hay nada seguro para auto-completar: el campo podría ser necesario a futuro (columna que el usuario todavía no agregó al destino) o directamente sobrar. Mismo criterio D15 (notifica, no bloquea/decide por el usuario).
+
+**Algoritmo — conservador a propósito, mismo sesgo que `fields_validate.py` ("preferimos no detectar un hueco real antes que marcar mal un `.ktr` válido"):** el pass camina TODO el subgrafo alcanzable aguas abajo del `Calculator` (BFS por hops habilitados) y cuenta el campo como usado si CUALQUIER step ahí lo consume por nombre (`contracts.STEP_CONTRACTS[...].consumes`, que ya cubre `TableOutput`/`InsertUpdate`/`DimensionLookup`/`DBLookup`/`StreamLookup`/`SortRows`/`Unique`) — no distingue si un narrowing intermedio (`SelectValues` sin incluirlo, `GroupBy`) lo habría descartado del stream antes de llegar a ese consumidor real. `_consumed_names()` suma dos casos que `STEP_CONTRACTS` todavía no modela como `consumes` (gap propio, no de este pass, documentado en el docstring del módulo): `SelectValues` (consume por `select[].name` antes de un posible rename) y `GroupBy`/`MemoryGroupBy` (consume por `aggregates[].subject_field`) — sin esto, cualquier campo calculado que sólo alimentara un rename o un agregado daría falso positivo.
+
+**Bug de wiring encontrado y corregido en el camino (no era el alcance original de esta sesión, pero bloqueaba sumar el pass sin introducir una regresión):** `etl_generator.py::_recover_table_keys` y `build.py::build_ktr` llamaban `run_passes(ctx)` (que corre TODOS los passes de `PRE_EMIT_PASSES`) y después prefijaban CADA finding con `TABLE_KEY_PREFIX = "[Clave de tabla] "` a ciegas — correcto mientras `PRE_EMIT_PASSES` tenía un solo pass (D40), pero con un segundo pass (`flag_dead_computed_fields`) etiquetaría sus warnings como si fueran de recuperación de tabla, silenciosamente. Fix: `TABLE_KEY_PREFIX` pasa a vivir DENTRO de `Finding.message` en `table_key_recovery.py` (cada pass es dueño de su propio prefijo, ahora `DEAD_FIELD_PREFIX = "[Cómputo sin consumidor] "` para el nuevo); los dos call-sites usan `f.message` sin agregar nada. Ningún consumidor externo comparaba el string `TABLE_KEY_PREFIX` fuera de estos dos puntos (verificado por grep) — cambio seguro.
+
+**Dónde vive:** `backend/app/services/ktr_builder/validators/dead_computed_fields.py`, sumado a `PRE_EMIT_PASSES` (mismo punto de wiring temprano que D40 ya dejó armado — `etl_generator.py` + red de seguridad en `build.py`, sin cambios ahí más allá del fix de prefijo).
+
+**Verificado:** `backend/tests/test_dead_computed_fields.py` (7 tests: warning cuando no hay consumidor, sin warning si mapea a `TableOutput`, sin warning si lo consume un `DBLookup` más adelante en la cadena, sin warning si `removed_from_result=Y`, tipos no-`Calculator` ignorados, hop deshabilitado no cuenta como alcanzable, `run_passes()` corre ambos passes sin que uno pise el prefijo del otro) + `test_table_key_recovery.py` (7, sin cambios de comportamiento tras el fix de prefijo). Suite completa corrida (excluyendo `test_api.py`/`test_ktr_build_job_api.py`, que ya requerían servidor vivo antes de esta sesión): 587 verdes, 2 fallos preexistentes sin relación (`test_ktr_xml_validator.py`, `test_structured_outputs.py` — mismos que documenta D40), cero regresión nueva.
 
 **Estado:** ejecutado, esta misma sesión (2026-07-29).
 

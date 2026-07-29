@@ -10,7 +10,12 @@ resolvió `table`, se busca entre los valores string del config cuál coincide
 (case-insensitive, sin prefijo de schema) con una tabla física real conocida
 del ETL (`ctx.known_tables`). Exactamente un match -> se renombra esa clave a
 `table`. Cero o varios matches -> no se adivina, se reporta severidad error
-(D15: notifica, no bloquea — el .ktr sale igual)."""
+(D15: notifica, no bloquea — el .ktr sale igual).
+
+`TABLE_KEY_PREFIX` va DENTRO de `Finding.message` (no lo agrega el caller):
+con más de un pass en `PRE_EMIT_PASSES` (D41), un caller que prefijara TODO
+`run_passes()` con esta constante etiquetaría mal los findings de cualquier
+otro pass — cada pass es dueño de su propio prefijo, si tiene uno."""
 from __future__ import annotations
 
 from app.services.ktr_builder.contracts import TABLE_BEARING_STEPS, normalize_config, parse_cfg
@@ -58,9 +63,9 @@ def recover_table_key(ctx: ValidationContext) -> list[Finding]:
                 repaired=True,
                 step_name=step_name,
                 message=(
-                    f"Step '{step_name}' ({canonical}): la clave '{key}' no es un alias conocido "
-                    f"de tabla, pero su valor coincide con la tabla real '{resolved}' — renombrada "
-                    "a 'table'. Revisar si el LLM debería haber usado 'table' directamente."
+                    f"{TABLE_KEY_PREFIX}Step '{step_name}' ({canonical}): la clave '{key}' no es un "
+                    f"alias conocido de tabla, pero su valor coincide con la tabla real '{resolved}' "
+                    "— renombrada a 'table'. Revisar si el LLM debería haber usado 'table' directamente."
                 ),
             ))
         elif len(candidates) == 0:
@@ -68,10 +73,10 @@ def recover_table_key(ctx: ValidationContext) -> list[Finding]:
                 severity="error",
                 step_name=step_name,
                 message=(
-                    f"Step '{step_name}' ({canonical}) no declara 'table' y ningún campo de su "
-                    "config coincide con una tabla real conocida de este ETL. El step no participa "
-                    "en la matriz de lectura/escritura ni en las validaciones de dimensión — "
-                    "completar la tabla a mano en Spoon antes de ejecutar."
+                    f"{TABLE_KEY_PREFIX}Step '{step_name}' ({canonical}) no declara 'table' y ningún "
+                    "campo de su config coincide con una tabla real conocida de este ETL. El step no "
+                    "participa en la matriz de lectura/escritura ni en las validaciones de dimensión "
+                    "— completar la tabla a mano en Spoon antes de ejecutar."
                 ),
             ))
         else:
@@ -79,9 +84,9 @@ def recover_table_key(ctx: ValidationContext) -> list[Finding]:
                 severity="error",
                 step_name=step_name,
                 message=(
-                    f"Step '{step_name}' ({canonical}) no declara 'table' y hay {len(candidates)} "
-                    f"campos ambiguos que podrían serlo ({', '.join(candidates)}) — no se adivina. "
-                    "Completar la tabla a mano en Spoon antes de ejecutar."
+                    f"{TABLE_KEY_PREFIX}Step '{step_name}' ({canonical}) no declara 'table' y hay "
+                    f"{len(candidates)} campos ambiguos que podrían serlo ({', '.join(candidates)}) — "
+                    "no se adivina. Completar la tabla a mano en Spoon antes de ejecutar."
                 ),
             ))
     return findings

@@ -7,13 +7,14 @@
 `ValidationContext(ktr_data, step_type_aliases, known_tables)`. `known_tables` es el set de nombres de tabla física reales del ETL en curso (staging + DWH vía DDL, o `dim_contracts` cuando no hay DDL — ver `etl_generator.py`).
 
 ## Qué sale
-`list[Finding]` — `severity` (`"error"`/`"warning"`/`"info"`), `message`, `step_name`, `repaired` (True si el pass mutó `ktr_data` por ese finding).
+`list[Finding]` — `severity` (`"error"`/`"warning"`/`"info"`), `message`, `step_name`, `repaired` (True si el pass mutó `ktr_data` por ese finding). Si un pass quiere que su mensaje sea reconocible en `warnings` (p. ej. para que el caller lo etiquete distinto), el prefijo va DENTRO de `message` — nunca lo agrega el caller de `run_passes()`: con más de un pass en `PRE_EMIT_PASSES`, un prefijo agregado por fuera etiquetaría mal los findings de cualquier otro pass (D41 corrigió esto — `TABLE_KEY_PREFIX` se lo agregaba `etl_generator.py`/`build.py` a TODOS los findings, no solo a los de `recover_table_key`).
 
 ## Archivos
 | Archivo | Qué hace |
 |---|---|
 | `base.py` | `ValidationContext`, `Finding`, protocolo `KtrPass`. |
 | `table_key_recovery.py` | H29 — recupera `table` cuando el LLM usó una clave no aliaseada, por coincidencia de contenido contra `known_tables`. |
+| `dead_computed_fields.py` | H40 — avisa (no repara) cuando un `Calculator` agrega un campo que ningún step aguas abajo consume ni mapea a tabla destino. Solo warning, nunca mutación. |
 | `__init__.py` | `PRE_EMIT_PASSES` (tupla) + `run_passes(ctx)`. |
 
 ## Dónde se llama
