@@ -56,6 +56,7 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D37 | Criterio determinista de SCD1 vs SCD2 — pre-check en `domain/scd.py` + criterio escrito en `system_inference.txt` | Ejecutado |
 | D38 | Validador de contrato entre KTR (D23) implementado — nombres, tipos como gap documentado | Ejecutado |
 | D39 | `validate_business_rules()` (D23) removido — responsabilidad se traslada a DDL + futura herramienta Data Validator (PDI), fuera de esta sesión | Ejecutado |
+| D40 | H29 — recuperación determinista de `table` por contenido (no posición); `TABLE_BEARING_STEPS` explícito en vez de `required_keys`; nace `ktr_builder/validators/` | Ejecutado |
 
 ---
 
@@ -79,7 +80,7 @@ Navegación rápida — clic para ir directo a la decisión. Grupos según la ta
 [D16](#d16) dependencia externa real: eje `dim_contracts` · [D19](#d19) wiring de servicio cerrado, HTTP en modo notificación · [D20](#d20) forma de la respuesta con N archivos
 
 **F4** — track de errores / contenido generado
-[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo · [D36](#d36) B17 reescrita + `FIELD_TYPE_SOURCES` +6 entradas (cierra H27/H28) · [D38](#d38) validador de contrato entre KTR implementado (cierra D23) · [D39](#d39) `validate_business_rules()` removido, responsabilidad a DDL + Data Validator
+[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo · [D36](#d36) B17 reescrita + `FIELD_TYPE_SOURCES` +6 entradas (cierra H27/H28) · [D38](#d38) validador de contrato entre KTR implementado (cierra D23) · [D39](#d39) `validate_business_rules()` removido, responsabilidad a DDL + Data Validator · [D40](#d40) recuperación determinista de `table` por contenido (cierra parcial H29), nace `ktr_builder/validators/`
 
 **Track A** — auditoría de arquitectura
 [D24](#d24) Track A retomada, A0 ejecutada · [D25](#d25) A0.5 ejecutada (censo de fallos silenciosos), H29 · [D26](#d26) adelanta en chico una porción de A2/R1 (test de arquitectura), sin esperar a A7 · [D27](#d27) split `registry.py`, `KNOWN_PDI_STEP_TYPES` borrado, `CanonicalType` a `domain/`, criterio vocabulario-PDI-es-dominio
@@ -993,6 +994,29 @@ Default SCD1 respaldado por F2: *"most data warehouses start out with Type 1 as 
 *Por qué D39 y no solo borrar el archivo:* mismo criterio que D14/D16/D20/D22/D23/D24/D25/D26 — cambia el alcance que D23 había dejado fijado (punto de enganche futuro), antes de tocar código.
 
 **Estado:** ejecutado, esta misma sesión (2026-07-28).
+
+<a id="d40"></a>
+### D40 — H29: recuperación determinista de `table` por contenido; `TABLE_BEARING_STEPS` explícito en vez de `required_keys`; nace `ktr_builder/validators/` `[F3/F4]`
+
+**Contexto:** H29 (`01-hallazgos.md`) — cuando el LLM declara la tabla física de un step bajo una clave no cubierta por `contracts.STEP_CONTRACTS.key_aliases` (ej. `schema_table` en vez de `table`), `cfg.get("table")` da vacío y tres módulos independientes (`fragmentation.build_rw_matrix`, `dimension_step_policy.enforce_dimension_step_policy`, `fields_validate.validate_dimension_lookup_races`) hacen `if not table: continue` sin avisar — el step queda invisible para el motor de corte, el enforcement SCD1/SCD2 (D37) y el chequeo de carrera, contradiciendo el propio docstring de `fragmentation.py` ("D15: notifica, no bloquea" — "no bloquea" cumple, "notifica" no estaba implementado).
+
+**Decisión — tres partes:**
+
+1. **Prevención en el prompt, no solo recuperación en código.** `system_etl.txt` gana REGLA CRÍTICA B18: la clave de tabla física siempre es `table`, nunca una variante. Reduce la tasa, no la elimina — de ahí las dos partes siguientes.
+
+2. **`table` NO entra a `required_keys` de `contracts.py`.** Se evaluó y se descartó — `required_keys` desemboca en `raise KtrBuilderError` (`build.py:132-133`), hard-abort que D15/D34 ya vienen descartando sistemáticamente (conexión sin resolver tampoco aborta). En cambio, `TABLE_BEARING_STEPS` (frozenset explícito en `contracts.py`, junto a `STEP_CONTRACTS`) declara qué tipos tienen tabla física — dato propio, sin colgarse del mecanismo que aborta. Un test de coherencia (`test_pdi_step_coherence.py::test_table_bearing_steps_matches_key_aliases_targeting_table`) verifica que no diverja de los `key_aliases` reales.
+
+3. **Recuperación por CONTENIDO, no por posición.** Se descartó la heurística "el primer campo del config es la tabla" — no todo step con tabla la declara primero, y el orden de claves de un dict JSON no es garantía semántica del LLM. En cambio: si `table` sigue vacío tras `normalize_config()`, se busca entre los valores string top-level del config cuál coincide (case-insensitive, sin prefijo de schema) con una tabla física real conocida del ETL (`known_tables` — staging+DWH vía DDL parseado, o `dim_contracts` cuando no hay DDL, ej. `build_etl_from_raw`). Exactamente un match → se renombra esa clave a `table` (warning). Cero o varios matches → no se adivina, error explícito, el `.ktr` sale igual (D15).
+
+**Dónde vive — nace `backend/app/services/ktr_builder/validators/`** (`base.py` con el contrato `ValidationContext`/`Finding`/`KtrPass`, `table_key_recovery.py` con el pass, `__init__.py` con `PRE_EMIT_PASSES`/`run_passes`). Deliberadamente separado de `fragmentation.py`/`dimension_step_policy.py`/`fields_validate.py` — no se migran de arrastre, el paquete nace con un solo pass y queda listo para sumar validadores nuevos sin que cada uno reinvente su propio canal de retorno (hoy conviven `list[str]`, `list[dict]` y mutación in-place sin retorno entre los módulos existentes).
+
+**Punto de wiring — descubierto en implementación, corrige la premisa inicial del plan:** `enforce_dimension_step_policy` y `fragmentation.build_rw_matrix` (vía `split_ktr_by_cut`) corren en `etl_generator.py` **antes** de `build_ktr()` — cablear el pass solo dentro de `build.py` habría dejado 2 de los 3 puntos ciegos de H29 sin cubrir. El pass corre temprano, junto a `normalize_step_configs()`, en los 4 puntos de entrada (`build_etl_from_raw` ×2, `generate_etl_from_inference` sync, `_stage_pipeline` del flujo async) — y de nuevo, defensivamente, dentro de `build_ktr()` (idempotente, no-op si ya resolvió) para callers que lo invocan directo (tests, flujos que no pasan por el pipeline completo).
+
+**Alcance de esta sesión:** solo `fragmentation.py` queda efectivamente cerrado para el caso H29 (su matriz R/W ahora ve el step recuperado). `dimension_step_policy.py` y `fields_validate.py` **también** se benefician porque corren después del punto de wiring temprano — pero el patrón triplicado `if not table: continue` en sí (la duplicación de "qué hacer cuando la tabla no resuelve") no se centralizó ahí; solo se cerró el síntoma (la tabla ahora suele estar cuando esos módulos preguntan). H29 pasa a **cerrado parcial** en `01-hallazgos.md` — ver esa entrada para el detalle de qué queda.
+
+**Verificado (D13):** `backend/tests/test_table_key_recovery.py` (7 tests: recuperación exitosa, no-op con `table` ya presente, idempotencia, sin match, match ambiguo, step fuera de `TABLE_BEARING_STEPS`, contrato `repaired=True` ↔ mutación real) + `test_pdi_step_coherence.py::test_table_bearing_steps_matches_key_aliases_targeting_table`. Suite completa corrida antes/después (`git stash`): mismos 45 fallos preexistentes confirmados independientes (36 de `test_api.py` sin servidor vivo, 6 de `test_ktr_build_job_api.py`/D26/C.7, 1 de `test_ktr_xml_validator.py`, 1 de `test_structured_outputs.py`) — cero regresión nueva, 588 tests verdes + 11 nuevos.
+
+**Estado:** ejecutado, esta misma sesión (2026-07-29).
 
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido

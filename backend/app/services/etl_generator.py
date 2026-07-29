@@ -36,6 +36,9 @@ from app.services.ktr_builder import (
     repair_ktr_steps,
     split_ktr_by_cut,
     STEP_TYPE_ALIASES,
+    TABLE_KEY_PREFIX,
+    ValidationContext,
+    run_passes,
 )
 from app.services.ktr_builder.build import _sanitize
 from app.services.ktr_builder.contract_validate import CONTRACT_PREFIX, validate_ktr_contracts
@@ -180,6 +183,35 @@ def _staging_table_names_from_ddl(stg_ddl: str) -> list[str]:
         _log.warning("No se pudo parsear DDL de staging para extraer nombres de tabla: %s", exc)
         return []
     return [schema.source_name for schema in schemas]
+
+
+def _known_table_names(*ddls: str) -> frozenset[str]:
+    """Nombres de tabla física reales (lowercase, todas las tablas del/los
+    DDL, sin filtrar por si tienen columnas NOT NULL) — insumo de
+    validators.recover_table_key (H29). Best-effort, igual que
+    _staging_table_names_from_ddl/_required_columns_from_ddl: un DDL no
+    parseable solo se loggea."""
+    names: set[str] = set()
+    for ddl in ddls:
+        if not ddl or not ddl.strip():
+            continue
+        try:
+            schemas = parse_ddl(ddl, dialect=None)
+        except Exception as exc:
+            _log.warning("No se pudo parsear DDL para nombres de tabla conocidos: %s", exc)
+            continue
+        names.update(schema.source_name.strip().lower() for schema in schemas)
+    return frozenset(names)
+
+
+def _recover_table_keys(ktr_data: dict, known_tables: frozenset[str]) -> list[str]:
+    """Corre validators.recover_table_key temprano (H29) y devuelve los
+    findings ya formateados como warnings — llamar SIEMPRE junto a
+    normalize_step_configs(), antes de enforce_dimension_step_policy() y de
+    split_ktr_by_cut() (build_rw_matrix): ambos corren antes de build_ktr()
+    y necesitan ver 'table' ya recuperado (ver validators/README.md)."""
+    findings = run_passes(ValidationContext(ktr_data, STEP_TYPE_ALIASES, known_tables))
+    return [f"{TABLE_KEY_PREFIX}{f.message}" for f in findings]
 
 
 def _format_dim_contracts(dim_contracts: list) -> str:
@@ -482,6 +514,7 @@ def _build_response_from_data(
     required_columns_by_table: dict[str, list[str]] | None = None,
     extra_warnings: list[str] | None = None,
     strict_connections: bool = False,
+    known_tables: frozenset[str] | None = None,
 ) -> ETLGenerateResponse:
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_data = data.get("ktr", {})
@@ -539,6 +572,7 @@ def _build_response_from_data(
             real_connections=real_connections,
             required_columns_by_table=required_columns_by_table,
             strict_connections=strict_connections,
+            known_tables=known_tables,
         )
     except Exception as e:
         _log.error("build_ktr failed: %s — conservando raw_data para reintento manual", str(e))
@@ -585,6 +619,7 @@ def _build_response_from_two_ktr_data(
     extra_validaciones: list[Validacion] | None = None,
     strict_connections: bool = False,
     dwh_ddl: str | None = None,
+    known_tables: frozenset[str] | None = None,
 ) -> ETLGenerateResponse:
     """Construye la respuesta del flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH).
     No reusa _build_response_from_data() porque cada build_ktr() acá necesita
@@ -623,6 +658,7 @@ def _build_response_from_two_ktr_data(
             pass_source_connection="conn_origen",
             pass_dest_connection="conn_staging",
             strict_connections=strict_connections,
+            known_tables=known_tables,
         )
     except Exception as e:
         _log.error("build_ktr (KTR_1 origen→STG) failed: %s — conservando raw_data para reintento manual", str(e))
@@ -636,6 +672,7 @@ def _build_response_from_two_ktr_data(
             pass_source_connection="conn_staging",
             pass_dest_connection="conn_dwh",
             strict_connections=strict_connections,
+            known_tables=known_tables,
         )
     except Exception as e:
         _log.error("build_ktr (KTR_2 STG→DWH) failed: %s — conservando raw_data para reintento manual", str(e))
@@ -784,10 +821,15 @@ async def build_etl_from_raw(
         region_inferencia="local",
     )
     extra_warnings: list[str] = []
+    # H29: sin DDL en este camino (ver docstring arriba) — dim_contracts es la
+    # única fuente de nombres de tabla reales disponible acá.
+    known_tables = frozenset(c.table.strip().lower() for c in (dim_contracts or []) if c.table)
     if "ktr_1" in raw_llm_data and "ktr_2" in raw_llm_data:
         raw_llm_data["ktr_1"]["ktr"], cfg_w1 = normalize_step_configs(raw_llm_data["ktr_1"]["ktr"])
         raw_llm_data["ktr_2"]["ktr"], cfg_w2 = normalize_step_configs(raw_llm_data["ktr_2"]["ktr"])
-        extra_warnings = [*cfg_w1, *cfg_w2]
+        table_w1 = _recover_table_keys(raw_llm_data["ktr_1"]["ktr"], known_tables)
+        table_w2 = _recover_table_keys(raw_llm_data["ktr_2"]["ktr"], known_tables)
+        extra_warnings = [*cfg_w1, *cfg_w2, *table_w1, *table_w2]
         if llm is not None:
             raw_llm_data["ktr_1"]["ktr"], w1 = await repair_ktr_steps(raw_llm_data["ktr_1"]["ktr"], llm, "")
             raw_llm_data["ktr_2"]["ktr"], w2 = await repair_ktr_steps(raw_llm_data["ktr_2"]["ktr"], llm, "")
@@ -807,9 +849,11 @@ async def build_etl_from_raw(
             connection_warnings=connection_warnings,
             extra_warnings=extra_warnings,
             strict_connections=bool(real_connections),
+            known_tables=known_tables,
         )
     if raw_llm_data.get("ktr"):
         raw_llm_data["ktr"], extra_warnings = normalize_step_configs(raw_llm_data["ktr"])
+        extra_warnings = [*extra_warnings, *_recover_table_keys(raw_llm_data["ktr"], known_tables)]
     if llm is not None and raw_llm_data.get("ktr"):
         raw_llm_data["ktr"], w = await repair_ktr_steps(raw_llm_data["ktr"], llm, "")
         extra_warnings = [*extra_warnings, *w]
@@ -828,6 +872,7 @@ async def build_etl_from_raw(
         connection_warnings=connection_warnings,
         extra_warnings=extra_warnings,
         strict_connections=bool(real_connections),
+        known_tables=known_tables,
     )
 
 
@@ -1003,6 +1048,12 @@ async def generate_etl_from_inference(
 
     data_1["ktr"], cfg_warnings_1 = normalize_step_configs(data_1["ktr"])
     data_2["ktr"], cfg_warnings_2 = normalize_step_configs(data_2["ktr"])
+    # H29 — corre ANTES de enforce_dimension_step_policy (más abajo) y del
+    # split_ktr_by_cut interno de _build_response_from_two_ktr_data: ambos
+    # necesitan 'table' ya recuperado (ver validators/README.md).
+    known_tables = _known_table_names(req.stg_definition, dwh_ddl)
+    table_warnings_1 = _recover_table_keys(data_1["ktr"], known_tables)
+    table_warnings_2 = _recover_table_keys(data_2["ktr"], known_tables)
     context_text = f"{req.stg_definition}\n\n{dwh_ddl}"
     data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
     data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
@@ -1035,13 +1086,14 @@ async def generate_etl_from_inference(
         data_1, data_2, metadata,
         required_columns_by_table=required_columns_by_table,
         extra_warnings=[
-            *cfg_warnings_1, *cfg_warnings_2,
+            *cfg_warnings_1, *cfg_warnings_2, *table_warnings_1, *table_warnings_2,
             *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
             *type_warnings, *contract_warnings, *dim_contract_warnings, *inferred_member_warnings,
             *ddl_change_warnings,
         ],
         extra_validaciones=[*ddl_result.conflictos, *[Validacion(**r) for r in step_policy_results]],
         dwh_ddl=dwh_ddl,
+        known_tables=known_tables,
     )
 
 
@@ -1073,6 +1125,7 @@ async def _stage_pipeline(
     context_text: str,
     llm: BaseLLM,
     sink: ProgressSink,
+    known_tables: frozenset[str] = frozenset(),
 ) -> tuple[dict, Optional[LLMResponse], list[str]]:
     """Corre UNA etapa completa (llamada al modelo + normalize + los dos
     repairs) y emite progreso en cada hito. Extraído de lo que antes era una
@@ -1092,13 +1145,17 @@ async def _stage_pipeline(
     sink.emit(code="stage.llm.done", message=f"El modelo respondió — {label} ({n_steps} steps)")
 
     data["ktr"], cfg_warnings = normalize_step_configs(data["ktr"])
+    # H29 — antes de repair/integrity está bien (esos no tocan 'table'), pero
+    # tiene que estar antes de enforce_dimension_step_policy/split_ktr_by_cut,
+    # que corren después de que esta función retorna (ver validators/README.md).
+    table_warnings = _recover_table_keys(data["ktr"], known_tables)
 
     sink.emit(code="stage.repair.started", message=f"Revisando steps incompletos — {label}")
     data["ktr"], repair_warnings = await repair_ktr_steps(data["ktr"], llm, context_text)
     data["ktr"], integrity_warnings = await repair_integrity_gaps(data["ktr"], llm, context_text)
     sink.emit(code="stage.repair.done", message=f"Steps revisados — {label}")
 
-    return data, resp, [*cfg_warnings, *repair_warnings, *integrity_warnings]
+    return data, resp, [*cfg_warnings, *table_warnings, *repair_warnings, *integrity_warnings]
 
 
 def _try_build(job_id, db: Session, sink: Optional[ProgressSink] = None) -> None:
@@ -1175,6 +1232,7 @@ def _try_build(job_id, db: Session, sink: Optional[ProgressSink] = None) -> None
             # arriba, y el .ktr se entrega con placeholder para completar en Spoon.
             strict_connections=True,
             dwh_ddl=job.model_json.get("dwh_ddl"),
+            known_tables=frozenset(job.model_json.get("known_tables") or ()),
         )
     except KtrBuildError as exc:
         job.build_status = KtrBuildStatus.failed
@@ -1255,6 +1313,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                 staging_tables = _staging_table_names_from_ddl(req.stg_definition)
                 system         = _load_system("system_etl.txt")
                 context_text   = f"{req.stg_definition}\n\n{dwh_ddl}"
+                known_tables   = _known_table_names(req.stg_definition, dwh_ddl)
 
                 # ── Etapa 1 (origen→STG) — reuso o llamada real ────────────────
                 if req.reuse_stage_1 is not None:
@@ -1263,6 +1322,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                     # puede venir de un archivo importado por el usuario, misma
                     # superficie de confianza que build-from-raw.
                     data_1["ktr"], stage_warnings_1 = normalize_step_configs(data_1["ktr"])
+                    stage_warnings_1 = [*stage_warnings_1, *_recover_table_keys(data_1["ktr"], known_tables)]
                     resp_1 = None
                     sink.current_stage = "origen_stg"
                     sink.emit(
@@ -1275,6 +1335,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                     )
                     data_1, resp_1, stage_warnings_1 = await _stage_pipeline(
                         "origen_stg", prompt_1, system, context_text, llm, sink,
+                        known_tables=known_tables,
                     )
 
                 # CHECKPOINT 1 (D30): model_status sigue en "pending" — _try_build()
@@ -1286,6 +1347,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                     **(job.model_json or {}),
                     "raw_data_1": data_1,
                     "dwh_ddl": dwh_ddl,
+                    "known_tables": sorted(known_tables),
                     "stage_warnings_1": stage_warnings_1,
                     "ddl_conflictos": [c.model_dump() for c in ddl_result.conflictos],
                     "stages": {
@@ -1305,6 +1367,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                 )
                 data_2, resp_2, stage_warnings_2 = await _stage_pipeline(
                     "stg_dwh", prompt_2, system, context_text, llm, sink,
+                    known_tables=known_tables,
                 )
             except Exception as exc:
                 _log.error("generate_etl_async: etapa %s falló (job_id=%s) — %s",

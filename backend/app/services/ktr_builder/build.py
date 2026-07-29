@@ -34,6 +34,7 @@ from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.step_emitters import STEP_BUILDERS, unmapped_config_keys
 from app.services.ktr_builder.step_types import _CRITICAL_FIELDS, STEP_TYPE_ALIASES
 from app.services.ktr_builder.validate import _validate_ktr
+from app.services.ktr_builder.validators import TABLE_KEY_PREFIX, ValidationContext, run_passes
 from app.services.ktr_default_validator import (
     check_missing_required_fields,
     scrub_function_default_constants,
@@ -70,6 +71,7 @@ def build_ktr(
     pass_source_connection: str | None = None,
     pass_dest_connection: str | None = None,
     strict_connections: bool = False,
+    known_tables: frozenset[str] | None = None,
 ) -> tuple[str, str, list[str]]:
     """
     Convert KTR JSON dict from Gemini response to .ktr XML string.
@@ -97,6 +99,17 @@ def build_ktr(
     conexiones reales (ver _try_build en etl_generator.py) — en los demás
     flujos (preview sin conexiones aún elegidas) el placeholder es esperado
     y ni se revisa.
+
+    known_tables: nombres de tabla física reales del ETL (staging + DWH,
+    lowercase, sin schema) — insumo de validators.recover_table_key (H29).
+    Red de seguridad: etl_generator.py ya corre ese pass ANTES de acá (tiene
+    que correr antes de enforce_dimension_step_policy/split_ktr_by_cut, que
+    ejecutan antes de build_ktr — ver validators/README.md), así que acá es
+    best-effort para callers que invocan build_ktr() directo (tests,
+    build_etl_from_raw). None sin required_columns_by_table -> set vacío
+    (el pass no encuentra nada que recuperar, solo reporta). None CON
+    required_columns_by_table -> usa sus claves como aproximación (cobertura
+    parcial: solo tablas con alguna columna NOT NULL sin default).
 
     Returns (ktr_xml_string, filename, warnings). Returns ("", "", []) if ktr_data is empty.
     """
@@ -131,6 +144,19 @@ def build_ktr(
             incomplete.append(f"Config incompleto en '{step.get('name')}' ({canonical}): {reason}")
     if incomplete:
         raise KtrBuilderError(" | ".join(incomplete))
+
+    # Red de seguridad (H29): ya corrió antes en etl_generator.py para los
+    # steps que enforce_dimension_step_policy/build_rw_matrix necesitan ver
+    # a tiempo — acá es best-effort para callers que no pasaron por ese
+    # pipeline. Idempotente: si ya se resolvió, no encuentra nada que hacer.
+    table_ctx = ValidationContext(
+        ktr_data=ktr_data,
+        step_type_aliases=STEP_TYPE_ALIASES,
+        known_tables=known_tables if known_tables is not None
+        else frozenset(k.lower() for k in (required_columns_by_table or {})),
+    )
+    table_findings = run_passes(table_ctx)
+    cfg_parse_warnings.extend(f"{TABLE_KEY_PREFIX}{f.message}" for f in table_findings)
 
     warnings = cfg_parse_warnings + _validate_ktr(ktr_data)
     for w in warnings:

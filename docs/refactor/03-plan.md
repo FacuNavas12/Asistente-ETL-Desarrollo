@@ -2,7 +2,7 @@
 
 **Mutable.** Se reescribe en el mismo turno en que una fase avanza. No repite estado de fase (ver `ESTADO.md`).
 
-**Última actualización:** 2026-07-27
+**Última actualización:** 2026-07-29
 
 Deriva de [`00-objetivo.md`](00-objetivo.md) y [`01-hallazgos.md`](01-hallazgos.md), evaluado contra [`02-decisiones.md`](02-decisiones.md) — esa es la fuente de verdad cuando algo choca. Narrativa de sesión (algoritmos, investigación, reportes de cierre) vive en [`03b-reportes.md`](03b-reportes.md). El estado vigente de cada fase vive únicamente en [`ESTADO.md`](ESTADO.md) — acá no se repite, solo fases, dependencias y qué es cada una.
 
@@ -131,6 +131,7 @@ Toda fase de Track A y Track F, sin excepción, cierra solo con: (1) dos tests �
 - **C.1** — plan de soporte multi-motor SQL (Postgres queda de default por D12, el resto no tiene plan).
 - **C.4** — auditoría retroactiva de cambios no declarados en commits pasados de generación de KTR. Falta acotar hasta qué commit.
 - **Migración de los 34 tests existentes** a la estructura por naturaleza que fija D26 (`unit/`/`integration/`/`manual/`) — decidido, no ejecutado. Sin `conftest.py` hoy en `backend/tests/`; mover sin agregarlo arriesga romper la colección de `pytest.ini` en silencio (mismo patrón que D5/D15 prohíben). No bloquea nada — candidato natural a Track A (A2/A3) o sesión de testing propia.
+- **Costo/beneficio de los JSON Schemas de salida del LLM** (`{"type": "string"}` vs `"object"` por campo, revisita de D18) — motivado por H29/D40: `ktr.steps[*].config` (`etl_output.py:103-116`) es string libre a propósito (D18), y esa falta de estructura es la causa raíz de que el nombre de clave `table` no se pueda forzar por schema. Encargo completo ya redactado: `docs/costo/beneficio de JSON Schemas.md`. Sesión propia — necesita spike empírico contra Gemini/Anthropic, no es un criterio que se decida de escritorio.
 
 ## Qué queda fuera de este plan
 

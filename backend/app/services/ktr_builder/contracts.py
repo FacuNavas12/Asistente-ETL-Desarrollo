@@ -288,6 +288,16 @@ def _consumes_unique(cfg):
 
 # ─── Registry ────────────────────────────────────────────────────────────────
 
+# Tipos cuyo config referencia una tabla física (lectura o escritura). Fuente
+# de verdad para validators/table_key_recovery.py (H29) — deliberadamente
+# explícito en vez de derivado por introspección de key_aliases, para que un
+# test de coherencia (test_pdi_step_coherence.py) pueda comparar los dos y
+# detectar drift si alguien agrega un step con tabla y se olvida acá.
+TABLE_BEARING_STEPS = frozenset({
+    "TableOutput", "InsertUpdate", "Update", "Delete",
+    "DimensionLookup", "CombinationLookup", "DBLookup",
+})
+
 STEP_CONTRACTS: dict[str, StepContract] = {
     "TableInput": StepContract(produces=_produces_table_input),
     "CsvInput": StepContract(produces=_produces_file_input),

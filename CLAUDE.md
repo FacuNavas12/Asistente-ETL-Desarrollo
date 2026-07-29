@@ -207,6 +207,13 @@ app/
                                     avisa (no aborta, D34 en docs/refactor/02-decisiones.md) la capa
                                     (origen/staging/dwh) que ni siquiera llegó en connections_map — el .ktr sale
                                     igual, con esa capa en placeholder para completar a mano en Spoon.
+                                    validators/ (D40) — passes pre-emisión sobre ktr_data, contrato uniforme
+                                    (ValidationContext/Finding/run_passes, ver base.py). table_key_recovery.py
+                                    (H29) recupera la clave `table` cuando el LLM la declaró bajo un nombre no
+                                    aliaseado, por coincidencia de contenido contra tablas físicas reales
+                                    conocidas — nunca por posición. Cableado temprano en etl_generator.py
+                                    (junto a normalize_step_configs, antes de enforce_dimension_step_policy/
+                                    split_ktr_by_cut) + defensivo dentro de build_ktr().
     lineage_builder.py            — build_lineage()/stitch_lineage() (dict KTR) y variantes _from_xml();
                                     stitch_lineage cose origen→STG→DWH matcheando tablas STG entre KTR_1 y KTR_2
     validator.py                  — validación de estructuras

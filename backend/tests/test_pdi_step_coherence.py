@@ -29,6 +29,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from app.services.ktr_builder.contracts import STEP_CONTRACTS, TABLE_BEARING_STEPS
 from app.services.ktr_builder.step_emitters import STEP_BUILDERS
 from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 
@@ -115,4 +116,23 @@ def test_builders_not_offered_in_prompt_are_documented():
         f"Los builders no ofrecidos en el prompt cambiaron: eran {sorted(known_unused)}, "
         f"ahora son {unused}. Si agregaste un builder nuevo, decidí si el prompt lo "
         "debería ofrecer y actualizá esta lista a mano."
+    )
+
+
+def test_table_bearing_steps_matches_key_aliases_targeting_table():
+    """H29 (docs/refactor/01-hallazgos.md) — contracts.TABLE_BEARING_STEPS es
+    deliberadamente explícito (no derivado por introspección) para que este
+    test pueda comparar contra STEP_CONTRACTS.key_aliases y avisar si diverge
+    — ej. alguien agrega un alias de tabla a un step nuevo y se olvida de
+    sumarlo a TABLE_BEARING_STEPS, o viceversa."""
+    derived = {
+        step_type for step_type, contract in STEP_CONTRACTS.items()
+        if "table" in contract.key_aliases.values()
+    }
+    assert TABLE_BEARING_STEPS == derived, (
+        f"TABLE_BEARING_STEPS ({sorted(TABLE_BEARING_STEPS)}) no coincide con los tipos "
+        f"que STEP_CONTRACTS declara con alias de tabla ({sorted(derived)}). Si agregaste/"
+        "sacaste un alias 'algo': 'table' en contracts.py, actualizá TABLE_BEARING_STEPS "
+        "a mano — o si el tipo nuevo declara 'table' directo sin alias, agregalo a mano "
+        "a TABLE_BEARING_STEPS y a este test."
     )

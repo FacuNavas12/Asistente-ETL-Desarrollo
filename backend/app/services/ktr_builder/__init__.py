@@ -33,6 +33,7 @@ from app.services.ktr_builder.step_emitters import STEP_BUILDERS
 from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 from app.services.ktr_builder.repair import repair_integrity_gaps, repair_ktr_steps
 from app.services.ktr_builder.validate import _validate_ktr
+from app.services.ktr_builder.validators import TABLE_KEY_PREFIX, ValidationContext, run_passes
 
 __all__ = [
     "build_ktr",
@@ -51,4 +52,7 @@ __all__ = [
     "split_ktr_by_cut",
     "validate_ktr_contracts",
     "CONTRACT_PREFIX",
+    "run_passes",
+    "ValidationContext",
+    "TABLE_KEY_PREFIX",
 ]

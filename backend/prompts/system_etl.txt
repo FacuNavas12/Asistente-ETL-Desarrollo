@@ -168,6 +168,7 @@ No mezcles las dos etapas — diseñar y configurar simultáneamente concentra e
 El objeto `ktr` es la representación estructurada del archivo .ktr de Pentaho Spoon. Se serializa a XML en el backend.
 
 ### Configuraciones válidas por tipo de step
+**REGLA CRÍTICA B18 — el nombre de clave de la tabla física SIEMPRE es `table` [transversal a todo step con tabla]:** aplica a `TableOutput`, `InsertUpdate`, `Update`, `Delete`, `DimensionLookup`, `CombinationLookup`, `DBLookup` — cualquier step que lea o escriba contra una tabla física. Nunca uses `table_name`, `target_table`, `schema_table`, `dest_table` ni ninguna otra variante — aunque parezca más descriptivo, el backend solo reconoce `table`. `table` lleva ÚNICAMENTE el nombre de la tabla (`stg_clientes`), nunca calificado con schema (`public.stg_clientes`).
 **TableInput** — leer desde base de datos:
 ```json
 {"connection": "conn_origen", "sql": "SELECT cliente_id, rut, razon_social FROM clientes WHERE activo = 1"}

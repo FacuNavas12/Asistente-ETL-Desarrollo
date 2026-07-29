@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Cada H se escribe una vez y no se reescribe — una actualización nueva se agrega como párrafo nuevo dentro de la misma entrada, con fecha. El índice al tope sí se edita en el momento en que el estado de un hallazgo cambia.
 
-**Última actualización:** 2026-07-28 (H37)
+**Última actualización:** 2026-07-29 (H29 cerrado parcial, D40)
 
 Cada entrada: qué se encontró, evidencia (`archivo:línea`), de qué sesión salió, y estado. Estado se evalúa contra [`02-decisiones.md`](02-decisiones.md) — si una decisión ya cerró el hallazgo, dice cuál.
 
@@ -44,7 +44,7 @@ El cuerpo de cada H es evidencia, no repite estado por fuera de lo ya escrito en
 | H26 | `ETL_OUTPUT_SCHEMA` no declara `documentacion` | Abierto, ambiguo — feature perdida vs. resto sin limpiar | schema/producto | — |
 | H27 | B17 (BigNumber operandos) sin verificar contra Kettle real | Cerrado — ver H35 (D36) | verificación | F4 |
 | H28 | `FIELD_TYPE_SOURCES` armado por inspección propia, 2 huecos | Cerrado — ver H36 (D36) | verificación | F4 |
-| H29 | `build_rw_matrix()` excluye steps sin `table` sin notificar | Abierto — no bloquea F3 (D15), sin dueño | transversal | F3, A3 |
+| H29 | `build_rw_matrix()` excluye steps sin `table` sin notificar | Cerrado parcial — ver D40 | transversal | F3, A3 |
 | H30 | `KNOWN_PDI_STEP_TYPES` era código muerto, docstring describía un mecanismo (whitelist→Dummy) que el código ya no tenía | Cerrado 2026-07-27 — D27 (borrado, reemplazado por test de coherencia) | docstring/muerto | A2 |
 | H31 | 7 alias de `STEP_TYPE_ALIASES` sin builder en `STEP_BUILDERS` | Abierto, inofensivo hoy — el prompt no ofrece los display names que resuelven a estos | contenido-LLM | — |
 | H32 | 4 builders en `STEP_BUILDERS` que el prompt nunca ofrece (capacidad desperdiciada) | Abierto, inofensivo — registro nomás | prompt | — |
@@ -515,7 +515,11 @@ Los tres módulos duplican, cada uno por su cuenta, la reacción ante "tabla no 
 
 **Sesión de origen:** A0.5 (`docs/auditoria/00b-fallos-silenciosos.md`, sección 3.1), 2026-07-25.
 
-**Estado:** abierto. No bloquea F3 bajo D15 (no bloquea, ya "genera y notifica" para todo lo demás) — pero la notificación específicamente prometida por el propio módulo no existe todavía. Sin dueño de track asignado — candidato natural a F3 (mismo archivo, mismo mecanismo de `notifications` que ya usa `compute_cut()` para sus otros tres casos) o a un fix chico y aislado, a decidir.
+**Estado (original):** abierto. No bloquea F3 bajo D15 (no bloquea, ya "genera y notifica" para todo lo demás) — pero la notificación específicamente prometida por el propio módulo no existe todavía. Sin dueño de track asignado — candidato natural a F3 (mismo archivo, mismo mecanismo de `notifications` que ya usa `compute_cut()` para sus otros tres casos) o a un fix chico y aislado, a decidir.
+
+**Actualización 2026-07-29 — cerrado parcial, ver D40 (`02-decisiones.md`):** se implementó recuperación determinista de `table` por contenido (match contra tablas físicas reales conocidas del ETL, no heurística posicional) en un pass nuevo, `backend/app/services/ktr_builder/validators/table_key_recovery.py`, cableado temprano en `etl_generator.py` (antes de que `enforce_dimension_step_policy`/`split_ktr_by_cut` corran, ambos antes de `build_ktr()`) — así los tres módulos citados arriba (`fragmentation.py`, `dimension_step_policy.py`, `fields_validate.py`) reciben el `table` ya recuperado cuando preguntan. Cuando no hay match único, se emite `Finding` severidad error (prefijo `[Clave de tabla]`) y el `.ktr` sale igual (D15) — la promesa "notifica" del docstring de `fragmentation.py` queda cumplida para este caso.
+
+**Lo que sigue abierto — el patrón en sí, no el síntoma:** D40 no centralizó "qué hacer cuando la resolución de tabla da vacío" en los tres módulos — cada uno sigue con su propio `if not table: continue` (`fragmentation.py`, `dimension_step_policy.py:164-166`, `fields_validate.py:424-425`). Lo que cambió es que, gracias al pass temprano, la tabla casi siempre YA está resuelta cuando esos tres preguntan — pero si algún caller nuevo invocara alguno de esos tres módulos sin pasar por el pipeline de `etl_generator.py` (o si `known_tables` llega vacío/incompleto), el gap original reaparece intacto en esos tres sitios. Centralizar la reacción en sí (no solo adelantar cuándo se resuelve la causa) queda para quien retome R7/R12 (`docs/auditoria/00b-fallos-silenciosos.md` sección 3.1, `ktr_builder/README.md`).
 
 ---
 
