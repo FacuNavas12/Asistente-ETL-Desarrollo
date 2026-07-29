@@ -35,6 +35,21 @@ function ValidationItem({ v }) {
   );
 }
 
+function DdlSection({ title, ddl, description }) {
+  if (!ddl) return null;
+  return (
+    <CollapsibleSection title={title}>
+      <div className="infer-panel">
+        <div className="infer-panel__header">
+          <p className="etl-section__text" style={{ margin: 0 }}>{description}</p>
+          <CopyButton text={ddl} />
+        </div>
+        <pre className="infer-panel__ddl">{ddl}</pre>
+      </div>
+    </CollapsibleSection>
+  );
+}
+
 function ArtifactsSection({ art }) {
   if (art.status !== "ok") {
     return <p className="etl-section__text">{art.message}</p>;
@@ -73,6 +88,7 @@ export default function ResultView({ result }) {
     validaciones = [],
     documentacion = "",
     advertencias_buenas_practicas = [],
+    stg_ddl = "",
     dwh_ddl = "",
   } = result ?? {};
 
@@ -105,19 +121,17 @@ export default function ResultView({ result }) {
         </CollapsibleSection>
       )}
 
-      {dwh_ddl && (
-        <CollapsibleSection title="DDL final del DWH">
-          <div className="infer-panel">
-            <div className="infer-panel__header">
-              <p className="etl-section__text" style={{ margin: 0 }}>
-                Este es el DDL contra el que se generó el proceso — creá las tablas en tu DWH antes de correr el .ktr.
-              </p>
-              <CopyButton text={dwh_ddl} />
-            </div>
-            <pre className="infer-panel__ddl">{dwh_ddl}</pre>
-          </div>
-        </CollapsibleSection>
-      )}
+      <DdlSection
+        title="DDL final del STG"
+        ddl={stg_ddl}
+        description="Este es el DDL contra el que se generó el proceso — creá las tablas en tu staging antes de correr el .ktr."
+      />
+
+      <DdlSection
+        title="DDL final del DWH"
+        ddl={dwh_ddl}
+        description="Este es el DDL contra el que se generó el proceso — creá las tablas en tu DWH antes de correr el .ktr."
+      />
 
       {documentacion && (
         <CollapsibleSection title="Documentación">

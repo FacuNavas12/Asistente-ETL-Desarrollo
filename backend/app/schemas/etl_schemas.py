@@ -114,6 +114,13 @@ class ETLGenerateResponse(BaseModel):
     # contra el que se armó KTR_2 (STG→DWH), no el dwh_model crudo del request.
     # None en el flujo monolítico legacy (build-from-raw sin auditoría).
     dwh_ddl: Optional[str] = None
+    # DDL final del STG (req.stg_definition, confirmado por el usuario en
+    # /infer-structures — a diferencia de dwh_model, este tramo no pasa por
+    # ninguna auditoría/corrección propia, así que "final" == el mismo texto
+    # que armó KTR_1/KTR_2). Mismo motivo que dwh_ddl: sin esto el usuario no
+    # tiene forma de recrear la tabla STG contra la que se generó el .ktr.
+    # None en los mismos casos que dwh_ddl (build-from-raw sin req disponible).
+    stg_ddl: Optional[str] = None
 
 
 class ETLValidateResponse(BaseModel):

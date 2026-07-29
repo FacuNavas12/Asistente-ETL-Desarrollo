@@ -618,6 +618,7 @@ def _build_response_from_two_ktr_data(
     extra_validaciones: list[Validacion] | None = None,
     strict_connections: bool = False,
     dwh_ddl: str | None = None,
+    stg_ddl: str | None = None,
     known_tables: frozenset[str] | None = None,
 ) -> ETLGenerateResponse:
     """Construye la respuesta del flujo de 2 KTR + 1 .kjb (origen→STG / STG→DWH).
@@ -740,6 +741,7 @@ def _build_response_from_two_ktr_data(
         lineage=lineage,
         metadata=metadata,
         dwh_ddl=dwh_ddl,
+        stg_ddl=stg_ddl,
     )
 
 
@@ -1095,6 +1097,7 @@ async def generate_etl_from_inference(
         ],
         extra_validaciones=[*ddl_result.conflictos, *[Validacion(**r) for r in step_policy_results]],
         dwh_ddl=dwh_ddl,
+        stg_ddl=req.stg_definition,
         known_tables=known_tables,
     )
 
@@ -1234,6 +1237,7 @@ def _try_build(job_id, db: Session, sink: Optional[ProgressSink] = None) -> None
             # arriba, y el .ktr se entrega con placeholder para completar en Spoon.
             strict_connections=True,
             dwh_ddl=job.model_json.get("dwh_ddl"),
+            stg_ddl=job.model_json.get("stg_ddl"),
             known_tables=frozenset(job.model_json.get("known_tables") or ()),
         )
     except KtrBuildError as exc:
@@ -1349,6 +1353,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                     **(job.model_json or {}),
                     "raw_data_1": data_1,
                     "dwh_ddl": dwh_ddl,
+                    "stg_ddl": req.stg_definition,
                     "known_tables": sorted(known_tables),
                     "stage_warnings_1": stage_warnings_1,
                     "ddl_conflictos": [c.model_dump() for c in ddl_result.conflictos],

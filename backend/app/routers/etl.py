@@ -87,9 +87,10 @@ def update_etl_connections(
             connection_warnings=conn_warnings,
             strict_connections=True,
             # sin esto, cada reconstrucción vía este endpoint (reconectar destino)
-            # pisa etl.result sin dwh_ddl porque raw_llm_data (ai.py) nunca lo
-            # guardó — ResultView oculta la sección de DDL apenas se llama acá.
+            # pisa etl.result sin dwh_ddl/stg_ddl porque raw_llm_data (ai.py) nunca
+            # los guardó — ResultView oculta la sección de DDL apenas se llama acá.
             dwh_ddl=(etl.result or {}).get("dwh_ddl"),
+            stg_ddl=(etl.result or {}).get("stg_ddl"),
         )
     except KtrBuildError as exc:
         raise HTTPException(status_code=422, detail=str(exc.original_error))
