@@ -58,6 +58,40 @@ CREATE TABLE t (
 );
 """
 
+# H38 — CHECK constraints y PK/FK con CONSTRAINT nombrado (docs/refactor/01-hallazgos.md)
+
+DDL_NAMED_CONSTRAINTS = """
+CREATE TABLE padre (
+    id INT,
+    CONSTRAINT pk_padre PRIMARY KEY (id)
+);
+CREATE TABLE hijo (
+    id INT,
+    padre_id INT,
+    CONSTRAINT pk_hijo PRIMARY KEY (id),
+    CONSTRAINT fk_hijo_padre FOREIGN KEY (padre_id) REFERENCES padre (id)
+);
+"""
+
+DDL_CHECK_TABLE_LEVEL_AND = """
+CREATE TABLE producto (
+    precio_lista DECIMAL(10,2),
+    precio_unitario DECIMAL(10,2),
+    stock INT,
+    CONSTRAINT ck_producto CHECK (precio_lista >= 0 AND precio_unitario >= 0 AND stock >= 0)
+);
+"""
+
+DDL_CHECK_COLUMN_LEVEL = "CREATE TABLE t (precio DECIMAL(10,2) CHECK (precio >= 0));"
+DDL_CHECK_BETWEEN = "CREATE TABLE t (edad INT CHECK (edad BETWEEN 0 AND 120));"
+DDL_CHECK_IN = "CREATE TABLE t (estado VARCHAR(10) CHECK (estado IN ('A', 'B', 'C')));"
+DDL_CHECK_REVERSED = "CREATE TABLE t (precio DECIMAL(10,2) CHECK (0 <= precio));"
+DDL_CHECK_OR = "CREATE TABLE t (x INT CHECK (x < 0 OR x > 100));"
+DDL_CHECK_FUNCTION = "CREATE TABLE t (nombre VARCHAR(50) CHECK (LENGTH(nombre) > 0));"
+DDL_CHECK_STRICT_INT_GT = "CREATE TABLE t (cantidad INT CHECK (cantidad > 0));"
+DDL_CHECK_STRICT_INT_LT = "CREATE TABLE t (nivel INT CHECK (nivel < 10));"
+DDL_CHECK_STRICT_NUMBER = "CREATE TABLE t (precio DECIMAL(10,2) CHECK (precio > 0));"
+
 
 # ── parse_ddl unit tests ──────────────────────────────────────────────────────
 
@@ -201,6 +235,92 @@ class TestParseDDL:
         assert cust_id.length is None
 
 
+# ── H38: PK/FK con CONSTRAINT nombrado ────────────────────────────────────────
+# Confirmado contra DDL real de DWH que TODOS los constraints salen nombrados
+# (CONSTRAINT pk_x / fk_x) — sin desenvolver exp.Constraint, ni PK ni FK se
+# detectaban (docs/arquitectura-objetivo-candidatos.md, C1).
+
+class TestNamedConstraints:
+    def test_named_table_level_pk_detected(self):
+        schemas = parse_ddl(DDL_NAMED_CONSTRAINTS, "postgres")
+        padre = next(s for s in schemas if s.source_name == "padre")
+        assert padre.primary_key == ["id"]
+        assert next(f for f in padre.fields if f.name == "id").is_primary_key is True
+
+    def test_named_table_level_fk_detected(self):
+        schemas = parse_ddl(DDL_NAMED_CONSTRAINTS, "postgres")
+        hijo = next(s for s in schemas if s.source_name == "hijo")
+        assert len(hijo.foreign_keys) == 1
+        assert hijo.foreign_keys[0].reference_resource == "padre"
+        padre_id = next(f for f in hijo.fields if f.name == "padre_id")
+        assert padre_id.is_foreign_key is True
+        assert padre_id.references.reference_resource == "padre"
+
+    def test_named_pk_does_not_break_own_table(self):
+        schemas = parse_ddl(DDL_NAMED_CONSTRAINTS, "postgres")
+        hijo = next(s for s in schemas if s.source_name == "hijo")
+        assert hijo.primary_key == ["id"]
+
+
+# ── H38: CHECK constraints → minimum/maximum/enum ────────────────────────────
+
+class TestCheckConstraints:
+    def test_table_level_named_check_multi_column(self):
+        schemas = parse_ddl(DDL_CHECK_TABLE_LEVEL_AND, "postgres")
+        fields = {f.name: f for f in schemas[0].fields}
+        assert fields["precio_lista"].constraints.minimum == "0"
+        assert fields["precio_unitario"].constraints.minimum == "0"
+        assert fields["stock"].constraints.minimum == "0"
+
+    def test_column_level_inline_check(self):
+        schemas = parse_ddl(DDL_CHECK_COLUMN_LEVEL, "postgres")
+        assert schemas[0].fields[0].constraints.minimum == "0"
+
+    def test_between_maps_to_minimum_and_maximum(self):
+        schemas = parse_ddl(DDL_CHECK_BETWEEN, "postgres")
+        edad = schemas[0].fields[0]
+        assert edad.constraints.minimum == "0"
+        assert edad.constraints.maximum == "120"
+
+    def test_in_maps_to_enum(self):
+        schemas = parse_ddl(DDL_CHECK_IN, "postgres")
+        assert schemas[0].fields[0].constraints.enum == ["A", "B", "C"]
+
+    def test_reversed_operand_order(self):
+        schemas = parse_ddl(DDL_CHECK_REVERSED, "postgres")
+        assert schemas[0].fields[0].constraints.minimum == "0"
+
+    def test_or_condition_is_discarded_not_raised(self):
+        schemas = parse_ddl(DDL_CHECK_OR, "postgres")
+        x = schemas[0].fields[0]
+        assert x.constraints.minimum is None
+        assert x.constraints.maximum is None
+
+    def test_function_in_condition_is_discarded(self):
+        schemas = parse_ddl(DDL_CHECK_FUNCTION, "postgres")
+        assert schemas[0].fields[0].constraints.minimum is None
+
+    def test_strict_gt_on_integer_adds_one(self):
+        schemas = parse_ddl(DDL_CHECK_STRICT_INT_GT, "postgres")
+        assert schemas[0].fields[0].constraints.minimum == "1"
+
+    def test_strict_lt_on_integer_subtracts_one(self):
+        schemas = parse_ddl(DDL_CHECK_STRICT_INT_LT, "postgres")
+        assert schemas[0].fields[0].constraints.maximum == "9"
+
+    def test_strict_gt_on_number_is_discarded(self):
+        """NUMBER sin escala fija diferido — ver docs/refactor/01-hallazgos.md H38."""
+        schemas = parse_ddl(DDL_CHECK_STRICT_NUMBER, "postgres")
+        assert schemas[0].fields[0].constraints.minimum is None
+
+    @pytest.mark.parametrize("dialect", ["postgres", "tsql"])
+    def test_check_extraction_identical_across_dialects(self, dialect):
+        schemas = parse_ddl(DDL_CHECK_TABLE_LEVEL_AND, dialect)
+        fields = {f.name: f for f in schemas[0].fields}
+        assert fields["precio_lista"].constraints.minimum == "0"
+        assert fields["stock"].constraints.minimum == "0"
+
+
 # ── /api/schema/from-ddl endpoint tests ──────────────────────────────────────
 
 class TestFromDDLEndpoint:
@@ -275,6 +395,25 @@ class TestFromDDLEndpoint:
     def test_default_dialect_is_ansi(self):
         resp = client.post("/api/schema/from-ddl", json={"ddl": "CREATE TABLE t (id INT);"})
         assert resp.status_code == 200
+
+    def test_named_pk_fk_in_response(self):
+        resp = client.post(
+            "/api/schema/from-ddl",
+            json={"ddl": DDL_NAMED_CONSTRAINTS, "dialect": "postgres"},
+        )
+        assert resp.status_code == 200, resp.text
+        hijo = next(s for s in resp.json() if s["source_name"] == "hijo")
+        assert hijo["primary_key"] == ["id"]
+        assert len(hijo["foreign_keys"]) == 1
+
+    def test_check_minimum_in_response(self):
+        resp = client.post(
+            "/api/schema/from-ddl",
+            json={"ddl": DDL_CHECK_COLUMN_LEVEL, "dialect": "postgres"},
+        )
+        assert resp.status_code == 200, resp.text
+        precio = resp.json()[0]["fields"][0]
+        assert precio["constraints"]["minimum"] == "0"
 
     def test_no_raw_data_in_response(self):
         resp = client.post("/api/schema/from-ddl", json={"ddl": DDL_BASIC, "dialect": "postgres"})

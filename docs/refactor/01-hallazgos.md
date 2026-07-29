@@ -702,6 +702,8 @@ Más: `FieldConstraints` (`backend/app/schemas/canonical.py:37-45`) **ya tiene**
 
 **Estado:** abierto, sin dueño de track. No es el mismo gap que D39 (que habla de verificar reglas de negocio ya materializadas contra el KTR generado, decisión tomada de no resolverlo así) — es una capa antes: ni siquiera se extrae el dato DDL que le daría al LLM la oportunidad de acertar. Resoluble sin reabrir D39: extender `ddl_adapter.py` a reconocer `exp.Check`/`CheckColumnConstraint` para patrones simples (`col >= lit`, `col <= lit`, y su combinación AND), poblar `minimum`/`maximum`, y sumarlos a `format_model_context_for_prompt()`. Automatizar el chequeo (comparar `FilterRows` contra `minimum`/`maximum` conocido) sería trabajo nuevo de validador en `ktr_builder/validators/`, mismo paquete que D40.
 
+**2026-07-29 — cerrado por D43 (`02-decisiones.md`).** Investigación contra sqlglot en vivo corrigió el nombre de nodo del hallazgo original (no es `exp.Check`, sqlglot entrega `CheckColumnConstraint` directo o envuelto en `exp.Constraint` si el CHECK está nombrado) y destapó un gap más hondo: constraints nombrados (`CONSTRAINT x PRIMARY KEY/FOREIGN KEY/CHECK(...)`) se perdían igual, confirmado contra un DDL real del usuario con 0 PK/FK detectadas en 5 tablas. El fix final resuelve ambos en el mismo cambio, más `IN`→`enum` y `BETWEEN`. Ver D43 para el detalle completo.
+
 ---
 
 ## H39 — `system_etl.txt` no fija que los steps de validación de reglas de negocio van solo en staging→DWH; permite duplicarlos también en origen→staging

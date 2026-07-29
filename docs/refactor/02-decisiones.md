@@ -1058,6 +1058,30 @@ Default SCD1 respaldado por F2: *"most data warehouses start out with Type 1 as 
 
 **Estado:** ejecutado, esta misma sesión (2026-07-29).
 
+<a id="d43"></a>
+### D43 — H38: CHECK del DDL (`col OP lit`, `BETWEEN`, `IN`) se extrae a `minimum`/`maximum`/`enum`; incluye fix de PK/FK con `CONSTRAINT` nombrado, más hondo que el alcance original `[F4]`
+
+**Contexto:** H38 (`01-hallazgos.md`) — `ddl_adapter.py` nunca reconocía un `CHECK` (tabla o columna), y `FieldConstraints.minimum`/`maximum` existían en el schema sin un solo escritor en todo el backend. Investigando con `sqlglot` en vivo (postgres + tsql) para basar el fix en cómo la librería realmente entrega el AST, no en supuestos:
+
+**Hallazgo que amplió el alcance antes de decidir el fix:** un `CONSTRAINT nombre PRIMARY KEY/FOREIGN KEY/CHECK(...)` llega envuelto en `exp.Constraint`, no en el tipo directo (`exp.PrimaryKey`/`exp.ForeignKey`/`CheckColumnConstraint`) — sin desenvolverlo, PK/FK/CHECK **nombrados** se pierden en silencio igual que un CHECK sin nombre. Probado contra un DDL real de DWH del usuario (`dim_producto`, `fact_inventario`, constraints 100% nombrados): **0 primary keys y 0 foreign keys detectadas en las 5 tablas**, no solo el CHECK. El usuario confirmó sumar este fix al mismo cambio — no es H38 tal como se escribió originalmente, pero comparte la causa (`exp.Constraint` nunca se desenvuelve) y el usuario lo autorizó explícitamente en la misma sesión.
+
+**Decisión — alcance de patrones CHECK soportados en `_collect_condition_constraints` (`ddl_adapter.py`):**
+- `col OP lit` (`>=`/`<=`/`>`/`<`, cualquier orden de operandos) → `minimum`/`maximum`. `And` recursivo (multi-columna, cualquier profundidad).
+- `BETWEEN` → `minimum`/`maximum` directo (sqlglot ya lo da separado en `.args["low"]`/`.args["high"]`, sin partirlo a mano).
+- `IN (...)` → `FieldConstraints.enum` (campo que también existía muerto, cero escritores — mismo patrón que `minimum`/`maximum`). Decisión explícita del usuario: no descartar `IN`, tratarlo como su propio campo de schema en vez de forzarlo a un rango.
+- Operadores estrictos (`>`/`<`): ajuste `+1`/`-1` **solo para `CanonicalType.INTEGER`** (decisión explícita del usuario, acotando mi propuesta original). Para `NUMBER` no hay "próximo valor" sin conocer la escala del tipo (`NUMERIC(p,s)` sí la tiene, `FLOAT`/`DOUBLE` no) — se descarta y se loggea, **diferido a otra sesión** (queda la ruta trazada: `Decimal(1).scaleb(-scale)` como unidad exacta cuando `scale` está declarado).
+- Descartado y loggeado, no levanta excepción: `OR`, funciones (`LENGTH(...)`), comparaciones columna-vs-columna, subqueries.
+
+**Diferido, no decidido en esta sesión (pedido explícito del usuario):** rangos sobre fecha/texto (`CHECK (fecha >= '2020-01-01')`) — falta más información del usuario antes de diseñar el enfoque.
+
+**Propagación (hueco 3 del hallazgo original) — sin esto, `minimum`/`maximum`/`enum` quedaban poblados pero invisibles para el LLM igual:** `ColumnProfile` (`context_schemas.py`) gana los 2 campos + `enum`; `schema_to_context.py::_field_to_minimal_profile` los pasa; `context_builder.py::format_model_context_for_prompt` los renderiza (`"rango válido (CHECK del DDL): ..."` / `"valores válidos (CHECK del DDL): ..."`) — whitelist del docstring actualizada explícitamente, es el único exit point al prompt.
+
+**Hallazgo lateral, registrado aparte, no resuelto acá:** durante la misma investigación se confirmó que la responsabilidad de "cuál es la key de una tabla" vive partida en 2 lugares que nunca se comparan — `ddl_adapter` (parseo del DDL declarado) y `dim_contracts[i].natural_keys` (declarado por el LLM en inferencia, canal independiente — por eso los `.ktr` generados escribían bien en las dimensiones pese al bug de PK/FK). Candidato a unificación futura de Track A, no una decisión de esta sesión — ver `docs/arquitectura-objetivo-candidatos.md` § C1.
+
+**Verificado:** `backend/tests/test_ddl_adapter.py` — 28 tests nuevos (`TestNamedConstraints`, `TestCheckConstraints`, + 2 en `TestFromDDLEndpoint`), incluyendo los 2 dialectos parametrizados y el DDL real del usuario probado manualmente antes de escribir los tests. Suite completa corrida con `git stash` de los archivos tocados (`ddl_adapter.py`, `schema_to_context.py`, `context_builder.py`, `context_schemas.py`, `test_ddl_adapter.py`) para aislar: los 54 fallos son idénticos con y sin el cambio (36 de `test_api.py` sin servidor vivo, 6 de `test_ktr_build_job_api.py`, 1 de `test_ktr_xml_validator.py`, ~11 de `test_structured_outputs.py` por cuota de Gemini agotada — `429 RESOURCE_EXHAUSTED`) — cero regresión nueva, 603 verdes + 28 tests nuevos.
+
+**Estado:** ejecutado, esta misma sesión (2026-07-29).
+
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido
 

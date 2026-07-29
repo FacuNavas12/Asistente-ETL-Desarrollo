@@ -199,8 +199,8 @@ def format_model_context_for_prompt(ctx: ModelContext) -> str:
     WHITELIST — only these ColumnProfile fields are written:
       name, inferred_type, null_pct, distinct_count,
       leading_trailing_spaces_pct, casing_distribution,
-      min_length, max_length, format_hint, masked_examples,
-      required, default_kind.
+      min_length, max_length, minimum, maximum, enum,
+      format_hint, masked_examples, required, default_kind.
 
     Absent: connection_id, raw data values, InternalTableRef, InternalContext.
     """
@@ -222,6 +222,15 @@ def format_model_context_for_prompt(ctx: ModelContext) -> str:
                 parts.append(f"casing: {casing_str}")
             if col.min_length is not None and col.max_length is not None:
                 parts.append(f"largo: {col.min_length}–{col.max_length} chars")
+            if col.minimum is not None or col.maximum is not None:
+                if col.minimum is not None and col.maximum is not None:
+                    parts.append(f"rango válido (CHECK del DDL): {col.minimum}–{col.maximum}")
+                elif col.minimum is not None:
+                    parts.append(f"rango válido (CHECK del DDL): >= {col.minimum}")
+                else:
+                    parts.append(f"rango válido (CHECK del DDL): <= {col.maximum}")
+            if col.enum:
+                parts.append(f"valores válidos (CHECK del DDL): {', '.join(col.enum)}")
             if col.format_hint:
                 parts.append(f"formato: {col.format_hint}")
             if col.masked_examples:

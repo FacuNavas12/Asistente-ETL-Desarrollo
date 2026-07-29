@@ -27,6 +27,14 @@ class ColumnProfile(BaseModel):
     casing_distribution: dict[str, float]
     min_length: Optional[int] = None
     max_length: Optional[int] = None
+    # Rango numérico estructural (CHECK col >= lit / col <= lit / BETWEEN del
+    # DDL) — no son datos de fila, son el contrato declarado por el schema,
+    # mismo criterio que required/default_kind.
+    minimum: Optional[str] = None
+    maximum: Optional[str] = None
+    # Valores válidos estructurales (CHECK col IN (...) del DDL) — igual que
+    # minimum/maximum, viene del contrato, no de una muestra de datos reales.
+    enum: Optional[list[str]] = None
     # Descriptor only: "YYYY-MM-DD", regex pattern, "enum-like (N distinct values)".
     # NEVER the actual category list or real sample values.
     format_hint: Optional[str] = None
