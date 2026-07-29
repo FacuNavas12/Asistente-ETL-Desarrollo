@@ -940,6 +940,12 @@ o escriban tablas de DWH (dim_*, fact_*) — eso lo cubre KTR_2 en otra llamada.
 Cada tabla de staging listada abajo DEBE recibirse en un step `TableOutput`
 (sink) al final de su rama — no hay ningún step posterior que la consuma en
 este archivo.
+Staging es un contenedor FIEL del origen (truncate + load, copia estructural).
+Este tramo NO conoce reglas de negocio — no recibiste ninguna a propósito. NO
+generes `FilterRows` ni ningún otro step de validación/filtrado de datos por
+regla de negocio: eso se materializa exclusivamente en KTR_2 (staging→DWH).
+Los únicos steps además de lectura/escritura permitidos acá son de
+transformación técnica (tipos, renombres, campos de auditoría/metadata).
 
 ## ESQUEMA DE ORIGEN (perfilado — sin datos crudos)
 {origen_txt}
@@ -948,9 +954,6 @@ este archivo.
 
 Definición completa (inferida y confirmada por el usuario):
 {req.stg_definition}
-
-## REGLAS DE NEGOCIO
-{reglas}
 
 ---
 

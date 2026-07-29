@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-07-29 (D41)
+**Última actualización:** 2026-07-29 (D42)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -58,6 +58,7 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D39 | `validate_business_rules()` (D23) removido — responsabilidad se traslada a DDL + futura herramienta Data Validator (PDI), fuera de esta sesión | Ejecutado |
 | D40 | H29 — recuperación determinista de `table` por contenido (no posición); `TABLE_BEARING_STEPS` explícito en vez de `required_keys`; nace `ktr_builder/validators/` | Ejecutado |
 | D41 | H40 — nuevo pass `flag_dead_computed_fields` (warning, no repara) para `Calculator` sin consumidor downstream; corrige de paso un bug de wiring en D40 (prefijo `TABLE_KEY_PREFIX` se aplicaba a TODOS los findings de `run_passes()`, no solo a los de `recover_table_key`) | Ejecutado |
+| D42 | H39 — prompt `origen_stg` deja de recibir `## REGLAS DE NEGOCIO`; staging queda como copia fiel del origen (truncate+load) sin steps de validación de negocio, por diseño de prompt, no por validador post-hoc | Ejecutado |
 
 ---
 
@@ -1035,6 +1036,25 @@ Default SCD1 respaldado por F2: *"most data warehouses start out with Type 1 as 
 **Dónde vive:** `backend/app/services/ktr_builder/validators/dead_computed_fields.py`, sumado a `PRE_EMIT_PASSES` (mismo punto de wiring temprano que D40 ya dejó armado — `etl_generator.py` + red de seguridad en `build.py`, sin cambios ahí más allá del fix de prefijo).
 
 **Verificado:** `backend/tests/test_dead_computed_fields.py` (7 tests: warning cuando no hay consumidor, sin warning si mapea a `TableOutput`, sin warning si lo consume un `DBLookup` más adelante en la cadena, sin warning si `removed_from_result=Y`, tipos no-`Calculator` ignorados, hop deshabilitado no cuenta como alcanzable, `run_passes()` corre ambos passes sin que uno pise el prefijo del otro) + `test_table_key_recovery.py` (7, sin cambios de comportamiento tras el fix de prefijo). Suite completa corrida (excluyendo `test_api.py`/`test_ktr_build_job_api.py`, que ya requerían servidor vivo antes de esta sesión): 587 verdes, 2 fallos preexistentes sin relación (`test_ktr_xml_validator.py`, `test_structured_outputs.py` — mismos que documenta D40), cero regresión nueva.
+
+**Estado:** ejecutado, esta misma sesión (2026-07-29).
+
+<a id="d42"></a>
+### D42 — H39: staging deja de recibir reglas de negocio en el prompt; causa raíz más profunda que el gap de `system_etl.txt` original `[F4]`
+
+**Contexto:** H39 (`01-hallazgos.md`) — el LLM generó un `FilterRows` de validación de negocio duplicado, con condición distinta e incompleta, tanto en KTR_1 (origen→staging) como en KTR_2 (staging→DWH). El resultado final coincidió con lo esperado de casualidad (2+2 productos filtrados por separado sumando los 4 esperados) — un cambio futuro de reglas en el DWH hubiera dejado esos productos inalcanzables porque nunca llegaban a staging, rompiendo en silencio el contrato documentado de esa tabla ("Truncate y Load", copia completa).
+
+**Causa raíz real, encontrada al investigar el hallazgo — más profunda que el gap de `system_etl.txt` regla 6 (línea 143) / checklist ítem 4 (línea 598) con el que abre H39:** `etl_generator.py::_build_prompt_from_inference` arma 2 prompts distintos por `mode` (`origen_stg`/`stg_dwh`, flujo 2-KTR de D20), pero el bloque `## REGLAS DE NEGOCIO {reglas}` se pegaba **verbatim, texto completo, en las dos llamadas**. El bloque `## ALCANCE DE ESTA LLAMADA` de `origen_stg` ya restringía tablas/steps de DWH explícitamente — pero no decía nada sobre reglas de negocio. El LLM veía la regla completa en ambas llamadas, sin ningún fence que le dijera que en KTR_1 no aplica, y la aplicó (mal, parcial) en las dos.
+
+**Decisión:** en vez de agregar una prohibición más al lado de un texto que el modelo igual ve y puede razonar mal sobre — **se saca el bloque `## REGLAS DE NEGOCIO` del prompt `origen_stg` directamente.** Nada que leer, nada que razonar, nada que materializar en el KTR equivocado. Alternativa descartada: dejar el texto y solo agregar una prohibición explícita (era el plan original, caminos (a)/(b) del hallazgo) — el usuario pidió ir más allá y remover la necesidad de razonar sobre reglas de negocio en esta etapa, no solo prohibirlo con una frase que compite con el resto del prompt por atención del modelo.
+
+**Alcance — solo `origen_stg`, no toca `mode=None` (legacy monolítico) ni `stg_dwh`:** `stg_dwh` sigue recibiendo `## REGLAS DE NEGOCIO` sin cambios — es la única llamada donde corresponde materializarlas. El bloque `## ALCANCE DE ESTA LLAMADA` de `origen_stg` gana texto reforzando el rol de staging como "contenedor FIEL del origen (truncate + load, copia estructural)" y prohibiendo explícito `FilterRows`/steps de validación de negocio ahí — defensa adicional por si el modelo infiere una regla de negocio del esquema mismo (nombres de columna, tipos) sin que el texto se la haya dado.
+
+**Camino (b) de H39 (pase validador nuevo en `ktr_builder/validators/`, mismo paquete que D40/D41) queda descartado, no pospuesto:** con la causa raíz cerrada en el prompt, no hay nada que detectar post-hoc — el modelo ya no tiene con qué razonar mal en `origen_stg`. Si en el futuro se observa un `FilterRows` de negocio en KTR_1 pese a este fix (el modelo lo infiere del esquema sin que el prompt se lo haya dado), es hallazgo nuevo, no reapertura de H39.
+
+**No tocado — `system_etl.txt` regla 6/checklist ítem 4 siguen sin nombrar la capa:** siguen siendo texto genérico, compartido por las dos llamadas vía `system` prompt. Se dejan así a propósito: con `origen_stg` sin bloque de reglas, esas líneas del checklist no tienen contra qué materializar nada en esa llamada. No se tocan para no acumular cambios fuera del alcance decidido esta sesión.
+
+**Verificado:** cambio de prompt puro, sin lógica nueva — `python -m ast` sobre `etl_generator.py` sin errores de sintaxis. Sin test existente que fije el contenido de `_build_prompt_from_inference(mode="origen_stg")` (grep de `REGLAS DE NEGOCIO`/`origen_stg` en `backend/tests/` no encontró ninguno acoplado a este prompt específico) — no hay regresión de suite que correr. Pendiente de verificación real: correr el flujo 2-KTR completo contra el caso de `fixes_flujo_completo_stg_dwh.md` (mismo insumo que originó H38/H39/H40) y confirmar que KTR_1 ya no genera el `FilterRows` duplicado — no se hizo en esta sesión, no hay conexión/DDL real a mano. Anotado en `04-verificacion.md` si corresponde.
 
 **Estado:** ejecutado, esta misma sesión (2026-07-29).
 

@@ -718,6 +718,8 @@ Revisado `system_etl.txt`: la regla 6 (línea 143, "Aplica todas las reglas de n
 
 **Estado:** abierto, sin dueño de track. Dos caminos no excluyentes: (a) regla nueva en `system_etl.txt` ("los steps de validación de reglas de negocio van únicamente en el KTR con destino staging→DWH; origen→staging se limita a lectura, metadata técnica y truncate/load"); (b) pase determinista nuevo en `ktr_builder/validators/` (mismo paquete que nace en D40) que marque como error/warning cualquier `FilterRows`/step de validación en un KTR cuyo target resuelto sea `stg_*`.
 
+**2026-07-29 — cerrado por D42 (`02-decisiones.md`).** Causa raíz real, más profunda que el gap de `system_etl.txt` con el que abre este hallazgo: `etl_generator.py::_build_prompt_from_inference` pegaba el bloque `## REGLAS DE NEGOCIO` completo en LAS DOS llamadas (`origen_stg` y `stg_dwh`), sin ningún fence en el bloque `## ALCANCE DE ESTA LLAMADA` de `origen_stg` que dijera que ahí no aplican. Fix ejecutado: el prompt de `origen_stg` deja de recibir `reglas` — nada que razonar, nada que materializar mal — y su bloque de alcance ahora declara explícito el rol de staging (copia fiel, truncate+load, sin `FilterRows` ni validación de negocio). Camino (b) (pase validador) queda descartado por D42 — innecesario con la causa raíz cerrada.
+
 ---
 
 ## H40 — Campo calculado sin consumidor downstream no genera warning (cómputo muerto silencioso)
