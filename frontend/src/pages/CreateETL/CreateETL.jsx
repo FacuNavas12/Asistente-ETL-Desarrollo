@@ -21,6 +21,7 @@ import { useToast } from "@/components/ui/Toast";
 import { downloadEtlSkeleton, downloadLlmRaw, downloadLlmStage } from "@/utils/etlExport";
 import { importEtlSkeleton, importModelResponse } from "@/utils/etlImport";
 import { stagesArrayToMap, mergeProgressLogs } from "./utils/progressLog";
+import { tryAutoDownloadRawSteps } from "./utils/tempAutoDownloadRawSteps"; // TEMPORAL — ver ese archivo
 import CreateETLOptions from "./components/CreateETLOptions";
 import { listConnections } from "@/api/connections";
 import "./css/createETL.css";
@@ -118,6 +119,8 @@ export default function CreateETL() {
   // directo con connectionsMapRef.current sin volver a pedirlas.
   const connectionsDecidedRef   = useRef(false);
   const pollTimeoutRef          = useRef(null);
+  // TEMPORAL — jobIds ya auto-descargados (ver utils/tempAutoDownloadRawSteps.js)
+  const autoDownloadedJobIdsRef = useRef(new Set());
   // D29: último seq de progreso ya volcado a ktrLogs — el poll solo agrega
   // los eventos nuevos, no reconstruye la lista entera en cada tick.
   const lastProgressSeqRef      = useRef(-1);
@@ -459,6 +462,8 @@ export default function CreateETL() {
         // checkpointeó, sin esperar a que la etapa 2 también termine.
         const stagesMap = stagesArrayToMap(status.stages);
         setModelStages(stagesMap);
+        // TEMPORAL — ver utils/tempAutoDownloadRawSteps.js
+        tryAutoDownloadRawSteps({ stagesMap, jobId: job_id, etlName, downloadedJobIdsRef: autoDownloadedJobIdsRef });
 
         if (status.build_status === "built") {
           const raw = (stagesMap.origen_stg?.data && stagesMap.stg_dwh?.data)
