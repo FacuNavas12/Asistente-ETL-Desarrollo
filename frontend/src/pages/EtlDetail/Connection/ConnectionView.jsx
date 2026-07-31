@@ -7,6 +7,7 @@ import DestinationConnectionForm, {
   EMPTY_DESTINATION_CONNECTION,
   isDestinationConnectionComplete,
 } from "@/pages/CreateETL/components/Input/DestinationConnectionForm";
+import SavedConnectionSelect from "@/pages/CreateETL/components/Input/SavedConnectionSelect";
 import "../etlDetail-global.css";
 import "./ConnectionView.css";
 
@@ -14,6 +15,19 @@ const _toDestinationValue = (raw) =>
   raw && typeof raw === "object" ? { ...EMPTY_DESTINATION_CONNECTION, ...raw } : EMPTY_DESTINATION_CONNECTION;
 
 const _toPayload = (value) => ({ ...value, port: Number(value.port) });
+
+// Connection guardada (ConnectionRead) → shape del DestinationConnectionForm.
+// Solo metadata: el password nunca viaja (ver decisión de no-custodia de
+// credenciales) — queda como variable Kettle en el .ktr, igual que si se
+// cargaran los campos a mano.
+const _connToValue = (conn) => ({
+  db_type: conn.db_type,
+  host: conn.host,
+  port: conn.port,
+  database: conn.database,
+  username: conn.username,
+  ssl_mode: conn.ssl_mode ?? EMPTY_DESTINATION_CONNECTION.ssl_mode,
+});
 
 // Mismo formulario/checkbox que DestinationConnections (armado del ETL) pero
 // disponible para un ETL YA generado: permite adaptar la conexión de
@@ -42,19 +56,27 @@ export default function ConnectionView({ etl }) {
   const [origenIdStale, setOrigenIdStale] = useState(false);
   const origenIsSavedId = rawOrigenIsSavedId && !origenIdStale;
 
+  // Conexiones guardadas del usuario (las mismas que se usan para el origen al
+  // armar el ETL) — se ofrecen acá para precargar staging/DWH/origen inline sin
+  // re-tipear host/usuario/base a mano.
+  const [savedConns, setSavedConns] = useState([]);
+
   useEffect(() => {
-    if (!rawOrigenIsSavedId) return;
     let cancelled = false;
     listConnections()
       .then(conns => {
         if (cancelled) return;
-        const exists = Array.isArray(conns) && conns.some(c => c.id === connectionsMap.conn_origen);
-        if (!exists) setOrigenIdStale(true);
+        const list = Array.isArray(conns) ? conns : [];
+        setSavedConns(list);
+        // Confirmar que el origen guardado (si lo hay) todavía existe.
+        if (rawOrigenIsSavedId && !list.some(c => c.id === connectionsMap.conn_origen)) {
+          setOrigenIdStale(true);
+        }
       })
       .catch(() => {
         // No se pudo confirmar (red, backend caído) — mejor pedir el origen a
         // mano que arriesgar reenviar un id que puede ya no existir.
-        if (!cancelled) setOrigenIdStale(true);
+        if (!cancelled && rawOrigenIsSavedId) setOrigenIdStale(true);
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,7 +141,16 @@ export default function ConnectionView({ etl }) {
               Completar en Spoon (dejar host/usuario/base sin completar acá)
             </label>
             {!origenSkip && (
-              <DestinationConnectionForm value={origenValue} onChange={setOrigenValue} />
+              <>
+                <SavedConnectionSelect
+                  conns={savedConns}
+                  value=""
+                  onSelect={c => c && setOrigenValue(_connToValue(c))}
+                  label="Usar una conexión guardada (precarga los campos)"
+                  emptyLabel="Elegir conexión guardada…"
+                />
+                <DestinationConnectionForm value={origenValue} onChange={setOrigenValue} />
+              </>
             )}
           </>
         )}
@@ -131,7 +162,16 @@ export default function ConnectionView({ etl }) {
           Completar en Spoon (dejar host/usuario/base sin completar acá)
         </label>
         {!stagingSkip && (
-          <DestinationConnectionForm value={stagingValue} onChange={setStagingValue} />
+          <>
+            <SavedConnectionSelect
+              conns={savedConns}
+              value=""
+              onSelect={c => c && setStagingValue(_connToValue(c))}
+              label="Usar una conexión guardada (precarga los campos)"
+              emptyLabel="Elegir conexión guardada…"
+            />
+            <DestinationConnectionForm value={stagingValue} onChange={setStagingValue} />
+          </>
         )}
       </CollapsibleSection>
 
@@ -141,7 +181,16 @@ export default function ConnectionView({ etl }) {
           Completar en Spoon (dejar host/usuario/base sin completar acá)
         </label>
         {!dwhSkip && (
-          <DestinationConnectionForm value={dwhValue} onChange={setDwhValue} />
+          <>
+            <SavedConnectionSelect
+              conns={savedConns}
+              value=""
+              onSelect={c => c && setDwhValue(_connToValue(c))}
+              label="Usar una conexión guardada (precarga los campos)"
+              emptyLabel="Elegir conexión guardada…"
+            />
+            <DestinationConnectionForm value={dwhValue} onChange={setDwhValue} />
+          </>
         )}
       </CollapsibleSection>
 

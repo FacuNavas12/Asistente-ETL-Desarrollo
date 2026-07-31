@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createConnection, testConnection, listConnections } from "@/api/connections";
+import SavedConnectionSelect from "./SavedConnectionSelect";
 import "../../css/shared.css";
 import "../../css/inputConnection.css";
 
@@ -144,24 +145,11 @@ export default function ConnectionForm({ onConnected, submitLabel }) {
   return (
     <div>
       {/* Conexiones guardadas: reusar sin re-ingresar todo (solo se tipea el password) */}
-      {savedConns.length > 0 && (
-        <div className="form-grid form-grid--mb">
-          <div className="form-field">
-            <label>Conexiones guardadas</label>
-            <select
-              value={reuseId ?? ""}
-              onChange={e => handlePickSaved(e.target.value)}
-            >
-              <option value="">— Nueva conexión —</option>
-              {savedConns.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name} · {c.host}:{c.port}/{c.database} ({c.db_type})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
+      <SavedConnectionSelect
+        conns={savedConns}
+        value={reuseId ?? ""}
+        onSelect={c => handlePickSaved(c ? c.id : "")}
+      />
 
       {reuseId && (
         <p className="conn-reuse-hint">
