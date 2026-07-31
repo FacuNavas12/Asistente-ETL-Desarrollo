@@ -71,7 +71,11 @@
 /* Paneles STG + DWH */
 .infer-review__panels {
   display: grid;
-  grid-template-columns: 1fr;
+  /* Dos columnas cuando hay lugar; al achicar la pantalla cada card baja
+     debajo de la otra automáticamente (auto-fit colapsa a 1 columna cuando
+     el track de 420px ya no entra). min(100%, 420px) evita desborde en
+     viewports muy angostos. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
   gap: 16px;
 }
 
