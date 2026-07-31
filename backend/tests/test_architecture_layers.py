@@ -35,6 +35,13 @@ DOMAIN_MODULES = {
     "services.ktr_builder.dimension_step_policy",
     "services.ktr_builder.fields_validate",
     "services.ktr_builder.validate",
+    # validators/base.py: Finding/ValidationContext/KtrPass — dataclasses +
+    # Protocol puros de stdlib, el contrato que adoptan los passes pre-emisión
+    # (D40). fragmentation.py lo importa desde D50 (Fase 0,
+    # docs/refactor/03c-investigacion-vocabulario-dimension-kettle.md) para
+    # tipar compute_cut()/split_ktr_by_cut() con severidad real — domain→domain,
+    # sin excepción real que registrar en FROZEN_R1.
+    "services.ktr_builder.validators.base",
     # step_types.py: identidad de tipo de step (STEP_TYPE_ALIASES) + completitud
     # mínima (_CRITICAL_FIELDS) — mitad domain del split de registry.py (sesión
     # de arquitectura). La mitad infra (STEP_BUILDERS, STEP_CONFIG_KEYS) quedó
@@ -54,10 +61,24 @@ DOMAIN_MODULES = {
     # archivo). type_mappings.py NO entra acá — se reclasificó a infra en la
     # misma sesión (traduce vendor concreto, consumido solo por otro adaptador).
     "domain.canonical_types",
-    # scd.py: criterio determinista de SCD1/SCD2 (D37) + derive_dimension_step_type
-    # (movida desde dimension_step_policy.py, que la reexporta) — vocabulario de
-    # dominio compartido entre la etapa de inferencia y la de generación de KTR.
+    # scd.py: criterio determinista de SCD1/SCD2 (D37) + vocabulario de step por
+    # rol, derive_dimension_loader_step/derive_fact_lookup_step/
+    # derive_attribute_update_mode (D44/D51, movidas desde dimension_step_policy.py,
+    # que las reexporta) — vocabulario de dominio compartido entre la etapa de
+    # inferencia y la de generación de KTR.
     "domain.scd",
+    # table_layer.py: inferencia de capa (staging/dwh) por prefijo de nombre
+    # de tabla (D45 punto 2, docs/refactor/02-decisiones.md) — extraído de
+    # connection.py para que fragmentation.py (matriz (connection, table)) y
+    # el emisor de conexiones lean la misma lista. Tuplas de string + stdlib,
+    # sin infraestructura.
+    "domain.table_layer",
+    # sql_resolution.py: SqlResolution/SqlTableResolver — dataclass + Protocol
+    # puros de stdlib, el contrato inyectado que build_rw_matrix (fragmentation.py)
+    # usa para resolver TableInput.sql/ExecSQL sin importar sqlglot directo
+    # (D45 punto 1). La implementación real vive en
+    # services/adapters/sql_table_resolver.py (infra, sqlglot).
+    "domain.sql_resolution",
 }
 
 # Invariante que sostiene 2.b del cierre de la sesión de arquitectura: nada de

@@ -42,9 +42,9 @@ el caller (etl_generator.py) lo promueve a Validacion tipo="error".
 from __future__ import annotations
 
 from app.services.adapters.ddl_adapter import parse_ddl
+from app.services.adapters.sql_table_resolver import resolve_sql_tables
 from app.services.ktr_builder.contracts import normalize_config, parse_cfg
-from app.services.ktr_builder.fragmentation import build_rw_matrix
-from app.services.lineage_builder import _extract_table
+from app.services.ktr_builder.fragmentation import MatrixKey, build_rw_matrix
 from app.schemas.canonical import CanonicalSchema
 
 CONTRACT_PREFIX = "[Contrato entre KTR] "
@@ -59,44 +59,31 @@ _WRITER_TABLE_FIELD_SOURCES: dict[str, tuple[tuple[str, str, str], ...]] = {
 }
 
 
-def _per_file_table_roles(ktr_data: dict, step_type_aliases: dict[str, str]) -> dict[str, str]:
-    """{tabla_lower: "R"|"W"|"RW"} — colapsa build_rw_matrix (por step) a
-    nivel archivo: ¿este archivo, en conjunto, escribe/lee esta tabla?
+def _per_file_table_roles(ktr_data: dict, step_type_aliases: dict[str, str]) -> dict[MatrixKey, str]:
+    """{(conexión, tabla_lower): "R"|"W"|"RW"} — colapsa build_rw_matrix (por
+    step) a nivel archivo: ¿este archivo, en conjunto, escribe/lee esta
+    (conexión, tabla)? D45 punto 2: clave normalizada, no `table.lower().strip()`
+    a secas — ver fragmentation.py.
 
-    build_rw_matrix() NO resuelve tabla para TableInput con SQL crudo — mira
-    únicamente cfg["table"], que un TableInput no declara (el nombre vive en
-    cfg["sql"]). Es el caso de lectura más común del pipeline (KTR_2 leyendo
-    STG vía SELECT), así que se agrega acá como "R" reusando el mismo regex
-    que ya usa lineage_builder para el linaje — sin tocar build_rw_matrix
-    (lo usa compute_cut/F3 para decidir cortes; ampliarlo ahí cambiaría esa
-    decisión de fragmentación, fuera de alcance de D23)."""
-    matrix = build_rw_matrix(ktr_data, step_type_aliases)
-    roles: dict[str, str] = {}
-    for table, step_roles in matrix.items():
+    D45 punto 1 (docs/refactor/02-decisiones.md): build_rw_matrix ya resuelve
+    TableInput por SQL real (resolve_sql_tables inyectado, sqlglot) — este
+    módulo no es DOMAIN_MODULES (importa ddl_adapter/sqlglot libremente), así
+    que pasa la implementación real directo, sin protocolo. Antes de D45 acá
+    vivía un segundo resolver por regex (workaround documentado como
+    deliberado en D23) que duplicaba lo que build_rw_matrix ahora hace nativo
+    — "un solo resolver para los dos" (D45), se borra sin reemplazo."""
+    matrix, _resolution_findings = build_rw_matrix(ktr_data, step_type_aliases, resolve_sql_tables)
+    roles: dict[MatrixKey, str] = {}
+    for key, step_roles in matrix.items():
         vals = set(step_roles.values())
         writes = "W" in vals or "RW" in vals
         reads = "R" in vals or "RW" in vals
         if writes and reads:
-            roles[table] = "RW"
+            roles[key] = "RW"
         elif writes:
-            roles[table] = "W"
+            roles[key] = "W"
         elif reads:
-            roles[table] = "R"
-
-    for step in ktr_data.get("steps", []):
-        canonical = step_type_aliases.get(step.get("type", ""), step.get("type", ""))
-        if canonical != "TableInput":
-            continue
-        cfg = normalize_config(canonical, parse_cfg(step.get("config", {})))
-        tablas = _extract_table("TableInput", cfg)
-        if not tablas:
-            continue
-        for raw in tablas.split(","):
-            t = raw.strip().lower()
-            if not t:
-                continue
-            roles[t] = "RW" if roles.get(t) == "W" else roles.get(t, "R")
-
+            roles[key] = "R"
     return roles
 
 
@@ -179,12 +166,13 @@ def validate_ktr_contracts(
         return []
 
     roles_by_file = [_per_file_table_roles(k, step_type_aliases) for k in ktr_data_list]
-    tables = {t for roles in roles_by_file for t in roles}
+    keys = {k for roles in roles_by_file for k in roles}
 
     messages: list[str] = []
-    for table in sorted(tables):
-        writer_files = [i for i, r in enumerate(roles_by_file) if r.get(table) in ("W", "RW")]
-        reader_files = [j for j, r in enumerate(roles_by_file) if r.get(table) in ("R", "RW")]
+    for key in sorted(keys):
+        _connection, table = key
+        writer_files = [i for i, r in enumerate(roles_by_file) if r.get(key) in ("W", "RW")]
+        reader_files = [j for j, r in enumerate(roles_by_file) if r.get(key) in ("R", "RW")]
         if not writer_files or not reader_files:
             continue
 

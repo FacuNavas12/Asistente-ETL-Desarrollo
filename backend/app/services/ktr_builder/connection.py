@@ -10,10 +10,8 @@ import re
 import uuid
 from xml.etree.ElementTree import Element, SubElement
 
+from app.domain.table_layer import infer_table_layer
 from app.services.ktr_builder.common import _sub
-
-_STAGING_PREFIXES = ("stg_", "staging_", "tmp_", "temp_", "ods_", "raw_", "wrk_", "work_")
-_DWH_PREFIXES     = ("dim_", "fact_", "fct_", "hecho_", "ft_", "dwh_", "bridge_", "br_", "rel_")
 
 # Step types que requieren un tag <connection> en el XML
 _STEPS_NEEDING_CONNECTION = {
@@ -52,10 +50,11 @@ def _resolve_connection(
             return inferred
 
     table = (cfg.get("table") or cfg.get("schema_table") or "").lower().strip()
+    layer = infer_table_layer(table)
 
-    if any(table.startswith(p) for p in _DWH_PREFIXES):
+    if layer == "dwh":
         inferred = "conn_dwh"
-    elif any(table.startswith(p) for p in _STAGING_PREFIXES):
+    elif layer == "staging":
         inferred = "conn_staging"
     elif canonical_type == "TableInput":
         inferred = "conn_origen"
@@ -241,6 +240,21 @@ _GENERIC_DRIVER_CLASS = "org.postgresql.Driver"
 # _GENERIC_DRIVER_CLASS), no a MSSQLNATIVE.
 _POSTGRES_LIKE_TYPES = {"POSTGRESQL", "GENERIC"}
 
+# D49 (docs/refactor/02-decisiones.md): PREFERRED_SCHEMA_NAME obligatorio en
+# toda <connection> emitida -- sin esto, un <schema/> vacío en un step (todo
+# step de este builder lo deja vacío, ver steps/output.py) resuelve vía el
+# search_path de la sesión JDBC en vez del artefacto, no reproducible desde
+# el .ktr (C-4, confirmado en fuente contra DatabaseMeta.getQuotedSchemaTableCombination,
+# investigacion-pentaho-C10-C11-C12.md §C.11). Alcance mínimo (C.11a): un
+# default fijo por motor, mismo criterio de "public" que superset_export ya
+# asume para el DWH -- no hay todavía un campo de schema por conexión en el
+# contrato (dim_contracts/modelo de staging/DDL), eso es C.11b, sin decidir.
+_DEFAULT_SCHEMA_BY_TYPE: dict[str, str] = {
+    "POSTGRESQL":  "public",
+    "GENERIC":     "public",  # fallback siempre apunta a org.postgresql.Driver
+    "MSSQLNATIVE": "dbo",
+}
+
 
 def _add_attribute(attributes: Element, code: str, value: str) -> None:
     attr = SubElement(attributes, "attribute")
@@ -310,6 +324,10 @@ def _build_connection(trans: Element, conn: dict, real: dict | None = None) -> l
     _sub(c, "index_tablespace")
     attributes = SubElement(c, "attributes")
     conn_type_upper = str(conn_type).strip().upper()
+    _add_attribute(
+        attributes, "PREFERRED_SCHEMA_NAME",
+        _DEFAULT_SCHEMA_BY_TYPE.get(conn_type_upper, "public"),
+    )
     if conn_type_upper == "GENERIC":
         var = _generic_var(name)
         custom_url = f"jdbc:postgresql://${{{var}_HOST}}:${{{var}_PORT}}/${{{var}_DATABASE}}"

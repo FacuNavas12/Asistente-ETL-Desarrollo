@@ -25,11 +25,13 @@ def _err1_like_ktr():
     acoplar este archivo a los internals de ese módulo de test."""
     return {
         "steps": [
-            {"name": "Leer Staging Productos", "type": "TableInput", "config": {"connection": "c", "sql": "SELECT 1"}},
+            {"name": "Leer Staging Productos", "type": "TableInput",
+             "config": {"connection": "c", "sql": "SELECT * FROM stg_producto"}},
             {"name": "Cargar Dim Producto", "type": "DimensionLookup",
              "config": {"table": "dim_producto", "connection": "conn_dwh", "returnfield": "sk_producto",
                         "keys": [{"stream_field": "id_producto", "table_field": "id_producto"}]}},
-            {"name": "Leer Staging Ventas", "type": "TableInput", "config": {"connection": "c", "sql": "SELECT 1"}},
+            {"name": "Leer Staging Ventas", "type": "TableInput",
+             "config": {"connection": "c", "sql": "SELECT * FROM stg_venta"}},
             {"name": "Lookup Dim Producto", "type": "DimensionLookup",
              "config": {"table": "dim_producto", "connection": "conn_dwh", "returnfield": "sk_producto",
                         "update": "N",
@@ -84,7 +86,17 @@ def test_build_ktr_stage_calls_build_ktr_once_per_group(monkeypatch):
     built, warnings = etl_generator._build_ktr_stage(_err1_like_ktr(), "stg_dwh")
 
     assert len(built) == 2
-    assert warnings == []
+    # D45 punto 1: 'stg_producto'/'stg_venta' ahora se resuelven por SQL real
+    # (antes invisibles) — V2 (severity="warning", tabla leída sin writer en
+    # ESTA etapa, legítimo: se escribe en origen->stg) es esperado acá, no un
+    # error de este contrato de wiring.
+    assert warnings == [
+        "Tabla 'stg_producto (conexión 'c')': leída por 'Leer Staging Productos' pero ningún step "
+        "de esta etapa la escribe (V2) — verificar que se cargue en otra etapa/archivo antes de "
+        "ejecutar en Spoon.",
+        "Tabla 'stg_venta (conexión 'c')': leída por 'Leer Staging Ventas' pero ningún step de esta "
+        "etapa la escribe (V2) — verificar que se cargue en otra etapa/archivo antes de ejecutar en Spoon.",
+    ]
     assert [c[0] for c in calls] == ["stg_dwh_1", "stg_dwh_2"]
     assert calls[0][1] == ["Leer Staging Productos", "Cargar Dim Producto"]
     assert calls[1][1] == ["Leer Staging Ventas", "Lookup Dim Producto", "Cargar Fact Venta"]

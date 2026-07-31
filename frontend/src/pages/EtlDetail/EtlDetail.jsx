@@ -31,8 +31,23 @@ export default function EtlDetail() {
   const isPending = etl.status === "pending";
   const lineage   = etl.result?.lineage ?? null;
   const art       = readEtlArtifacts(etl.result);
+  // Fase 0 (S-14, docs/refactor/03c-investigacion-vocabulario-dimension-kettle.md):
+  // un Validacion tipo="error" (integridad de campos/contrato entre KTR/catálogo
+  // de errores/validación pre-emisión) no bloquea la descarga (D15) pero exige
+  // reconocimiento explícito antes de bajar el .ktr — ya no alcanza con que
+  // viva distinguido en el panel de "Validaciones".
+  const errorValidations = (etl.result?.validaciones ?? []).filter(v => v.tipo === "error");
 
   const handleDownloadKtr = async () => {
+    if (errorValidations.length > 0) {
+      const proceed = window.confirm(
+        `Este ETL tiene ${errorValidations.length} validación(es) de tipo error ` +
+        "(ver sección «Validaciones» más abajo) — pueden causar que el .ktr falle " +
+        "o produzca datos incorrectos en Spoon/Kitchen/Pan.\n\n" +
+        "¿Descargar de todas formas?"
+      );
+      if (!proceed) return;
+    }
     try {
       await downloadKtrZipFromEtl(etl);
     } catch (err) {

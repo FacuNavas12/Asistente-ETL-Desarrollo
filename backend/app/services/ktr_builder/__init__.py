@@ -23,17 +23,26 @@ from app.services.ktr_builder.connection import (
     resolve_real_connections,
 )
 from app.services.ktr_builder.dimension_step_policy import (
+    ATTRIBUTE_UPDATE_TYPE_CODES,
     OVERRIDE_STEP_PREFIX,
-    derive_dimension_step_type,
+    derive_attribute_update_mode,
+    derive_dimension_loader_step,
+    derive_fact_lookup_step,
     enforce_dimension_step_policy,
 )
-from app.services.ktr_builder.fragmentation import compute_cut, split_ktr_by_cut
+from app.services.ktr_builder.fragmentation import compute_cut, split_ktr_by_cut, validate_stage_contract
 from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.step_emitters import STEP_BUILDERS
 from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 from app.services.ktr_builder.repair import repair_integrity_gaps, repair_ktr_steps
 from app.services.ktr_builder.validate import _validate_ktr
-from app.services.ktr_builder.validators import TABLE_KEY_PREFIX, ValidationContext, run_passes
+from app.services.ktr_builder.validators import (
+    PRE_EMIT_ERROR_PREFIX,
+    TABLE_KEY_PREFIX,
+    ValidationContext,
+    run_passes,
+    split_findings_by_severity,
+)
 
 __all__ = [
     "build_ktr",
@@ -43,16 +52,22 @@ __all__ = [
     "STEP_BUILDERS",
     "repair_ktr_steps",
     "repair_integrity_gaps",
-    "derive_dimension_step_type",
+    "derive_dimension_loader_step",
+    "derive_fact_lookup_step",
+    "derive_attribute_update_mode",
+    "ATTRIBUTE_UPDATE_TYPE_CODES",
     "enforce_dimension_step_policy",
     "OVERRIDE_STEP_PREFIX",
     "normalize_step_configs",
     "ConfigParseError",
     "compute_cut",
     "split_ktr_by_cut",
+    "validate_stage_contract",
     "validate_ktr_contracts",
     "CONTRACT_PREFIX",
     "run_passes",
     "ValidationContext",
     "TABLE_KEY_PREFIX",
+    "PRE_EMIT_ERROR_PREFIX",
+    "split_findings_by_severity",
 ]

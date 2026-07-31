@@ -627,3 +627,49 @@ def test_insert_update_value_name_is_table_column_not_stream_field(step_type):
     value = step.find("lookup").find("value")
     assert value.findtext("name") == "fk_producto", "name debe ser la columna de tabla (updateLookup)"
     assert value.findtext("rename") == "sk_producto", "rename debe ser el campo de stream (updateStream)"
+
+
+def _insert_update_ktr(fields: list) -> dict:
+    return _minimal_ktr(
+        steps=[
+            {"name": "In", "type": "TableInput", "config": {"sql": "SELECT id_venta FROM stg_x"}},
+            {
+                "name": "Cargar Fact Venta", "type": "InsertUpdate",
+                "config": {
+                    "table": "fact_venta", "connection": "conn_origen",
+                    "keys": [{"stream_field": "id_venta", "table_field": "id_venta"}],
+                    "fields": fields,
+                },
+            },
+        ],
+        hops=[{"from": "In", "to": "Cargar Fact Venta"}],
+    )
+
+
+def test_insert_update_bypassed_tag_present_and_n_with_updatable_value():
+    # R-K7 (docs/refactor/03c-investigacion-vocabulario-dimension-kettle.md,
+    # D51): el tag <update_bypassed> no se emitía NUNCA antes de este fix —
+    # InsertUpdateMeta.readData() interpreta esa ausencia como "N".
+    ktr = _insert_update_ktr([{"stream_field": "monto", "table_field": "monto", "update": True}])
+    xml, _, _ = build_ktr(ktr)
+    step = _find_step(xml, "Cargar Fact Venta")
+    assert step.findtext("update_bypassed") == "N"
+
+
+def test_insert_update_bypassed_defaults_to_y_when_no_updatable_value():
+    # Sin ningún <value> en update=Y, dejar update_bypassed=N (default de
+    # Kettle si el tag falta) arma un "UPDATE ... SET" vacío que revienta en
+    # la primera fila (InsertUpdateMeta.prepareUpdate()) -- el emisor
+    # bypassea automáticamente en este caso, sin que el LLM lo declare.
+    ktr = _insert_update_ktr([{"stream_field": "monto", "table_field": "monto", "update": False}])
+    xml, _, _ = build_ktr(ktr)
+    step = _find_step(xml, "Cargar Fact Venta")
+    assert step.findtext("update_bypassed") == "Y"
+
+
+def test_insert_update_bypassed_respects_explicit_config():
+    ktr = _insert_update_ktr([{"stream_field": "monto", "table_field": "monto", "update": True}])
+    ktr["steps"][1]["config"]["update_bypassed"] = "Y"
+    xml, _, _ = build_ktr(ktr)
+    step = _find_step(xml, "Cargar Fact Venta")
+    assert step.findtext("update_bypassed") == "Y"

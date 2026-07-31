@@ -42,8 +42,24 @@ def _step_TableOutput(el: Element, cfg: dict) -> None:
 
 def _step_InsertUpdate(el: Element, cfg: dict) -> None:
     table = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or ""
+    fields = cfg.get("fields", [])
+    has_updatable_value = any(f.get("update", True) for f in fields)
     _sub(el, "connection", cfg.get("connection", ""))
     _sub(el, "commit",     "100")
+    # R-K7 (docs/refactor/03c-investigacion-vocabulario-dimension-kettle.md,
+    # D51): InsertUpdateMeta.readData() hace
+    # "Y".equalsIgnoreCase(getTagValue(stepnode, "update_bypassed")) -- tag
+    # AUSENTE equivale a "N". Antes de esto el tag no se emitía NUNCA, así que
+    # cualquier InsertUpdate con todos sus <value> en update="N" caía siempre
+    # en el modo peligroso: prepareUpdate() arma un "UPDATE t SET ... WHERE
+    # ..." con SET vacío y explota en la primera fila. Default seguro: bypass
+    # automático (Y) cuando no hay ningún <value> updatable, salvo que cfg lo
+    # declare explícito (ver validators/insert_update_bypass.py para el
+    # chequeo de la combinación contradictoria explícita).
+    update_bypassed = cfg.get("update_bypassed")
+    if update_bypassed is None:
+        update_bypassed = not has_updatable_value
+    _sub(el, "update_bypassed", _yn(update_bypassed, default=not has_updatable_value))
     # InsertUpdateMeta.readData() lee schema/table anidados en <lookup>
     # (getTagValue(stepnode, "lookup", "schema"/"table")), no como hijos
     # directos del step — si van sueltos, tableName queda null.

@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Cada H se escribe una vez y no se reescribe — una actualización nueva se agrega como párrafo nuevo dentro de la misma entrada, con fecha. El índice al tope sí se edita en el momento en que el estado de un hallazgo cambia.
 
-**Última actualización:** 2026-07-29 (H40 cerrado — D41)
+**Última actualización:** 2026-07-30 (H50 abierto — D45 Sesión A, puntos 3/4/5/7)
 
 Cada entrada: qué se encontró, evidencia (`archivo:línea`), de qué sesión salió, y estado. Estado se evalúa contra [`02-decisiones.md`](02-decisiones.md) — si una decisión ya cerró el hallazgo, dice cuál.
 
@@ -56,6 +56,17 @@ El cuerpo de cada H es evidencia, no repite estado por fuera de lo ya escrito en
 | H38 | `CHECK` constraints del DDL nunca se parsean; `FieldConstraints.minimum/maximum` existe en el schema pero nadie lo popula, en ningún adapter | Abierto, sin dueño de track — causa raíz de un bug real ya corregido a mano (ver evidencia) | borde-entrada / contenido-LLM | F4 |
 | H39 | `system_etl.txt` no fija que los steps de validación de reglas de negocio van únicamente en el KTR con destino staging→DWH — permite duplicarlos también en origen→staging | Abierto, sin dueño de track — causa raíz de un bug real ya corregido a mano (ver evidencia) | contenido-LLM / prompt | F4 |
 | H40 | Un campo calculado (`Calculator`/similar) que ningún step downstream consume ni se mapea a ninguna columna de destino no genera warning — cómputo muerto silencioso | Cerrado — D41 (pass `flag_dead_computed_fields`, alcance `Calculator`) | validación | F4 |
+| H41 | `CombinationLookup` no mantiene atributos no-clave (confirmado en fuente Kettle, R-K3) | Cerrado — D44 | G-step | F4 |
+| H42 | Rama `scd_type` 0/1 (`CombinationLookup`) matemáticamente incortable — `_ALWAYS_RW` + un solo writer, inmune a C1/C1-bis | Cerrado — D44 | S | F3, F4 |
+| H43 | Asimetría de namespace: `table_key_recovery._bare()` quita el schema al escribir `cfg["table"]`, el camino feliz lo deja — dos namespaces en la misma matriz | Cerrado — D45 (clave `(connection, table)` normalizada) | S | F3 |
+| H44 | `scd_type` no determinista sobre la misma entrada — medido por diff byte a byte entre Set B pre-fix y Set A crudo, mismo caso, mismo backend, sin mano humana | Abierto — motiva Fase 2-bis (S-15), no cerrado por D44 solo | G-step | F4 |
+| H45 | `FilterRows` de saneamiento derivado de CHECK del DDL, incompleto en los dos modelos (1 de 3 columnas, distinta cada uno) → error de contrato, no de modelo | Abierto — D43 ya extrae el dato (`minimum`/`maximum`/`enum`), sintetizar el filtro queda pendiente | D-integridad | F4 |
+| H46 | La fila "unknown" la crea `Dimension lookup/update` (`checkDimZero`, solo con `update=Y`), `CombinationLookup` nunca la crea. Contiene `tk=0`, `version=1`, todo el resto NULL — no `'DESCONOCIDO'`. Solape con D21 (miembro inferido) por evaluar: la etiqueta `'DESCONOCIDO'` observada en corrida real no puede salir de `checkDimZero` | Abierto — requiere verificar en corrida si hay un segundo escritor (sembrado por DDL/`ExecSQL`) sobre la dimensión | D-integridad | F4 |
+| H47 | `checkDimZero` (`insert into t(tk, version) values (0, 1)`, 2 columnas) choca con `date_from TIMESTAMP NOT NULL` sin DEFAULT que `prompt_validacion_src.txt:24-26` exige a TODA dimensión de `dim_contracts`, sin excepción por `scd_type` — INSERT viola NOT NULL, `KettleDatabaseException`, transformación abortada en la primera fila, no warning. Invisible hasta ahora porque solo dispara contra tabla vacía (`count==0`) y `scd_type` 0/1 usaba `CombinationLookup` (no llama `checkDimZero`). D44 generaliza `DimensionLookup(update=Y)` a todo `scd_type` — expande el radio a TODA dimensión | Cerrado — D47 | bloqueante-runtime | F4 |
+| H48 | `InsertUpdate` nunca emitía `<update_bypassed>` — ausencia equivale a `"N"` en Kettle; con todos los `<value>` en `update="N"`, `prepareUpdate()` arma un `UPDATE ... SET` vacío y falla en runtime. Lateral a la investigación R-K7 (Postura B, `InsertUpdate` evaluado como loader SCD0) | Cerrado — D51 | bloqueante-runtime | F4 |
+| H49 | Centinelas de rango del calendario pre-poblado (DDL-2): sin checker posible (backend no ve filas reales) — cerrado solo con texto de advertencia más preciso en K18, el error puede seguir repitiéndose si el usuario no lo lee/sigue. Camino no explorado: generar el script `generate_series` como artefacto propio con centinelas hardcodeados (mismo patrón que D47) | Abierto, sin dueño de track | G-step | F4 |
+| H50 | D45 punto 5 (hops que cruzan grupos) es inalcanzable por el caso real con el algoritmo de corte actual — un grupo es siempre unión de componentes completos, solo dispara hoy por hop-colgante | Abierto, sin dueño de track — D48 lo vuelve alcanzable | S | F3 |
+| H51 | Loader de dimensión con `update="N"` (equivale a solo-lectura, nunca inserta/actualiza) pasa sin detectar — ni `enforce_dimension_step_policy` ni `check_dimension_lookup_fields` verifican el flag para rol loader | Abierto, sin dueño de track — visto en corrida real Fase 4 (sonnet-01) | validación | F4 |
 
 ---
 
@@ -759,6 +770,149 @@ Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (20
 | R12 | D-dialecto | Dedup de staging vía `DISTINCT ON (...) ORDER BY ... DESC` + flag de auditoría | F4 (contenido) + D12/C.1 | Tercera ocurrencia real — nota en D12 (junto a R10). **Cerrado 2026-07-24 (prompt, D22)** — K19 + checklist-22 en `system_etl.txt` |
 
 **Excepción de corte (self-lookup/insert-new-only, sección 3 del `extracto_corte_F2.md`):** no es una regla R con número propio en la bitácora, pero es una tercera conclusión de corte junto a R3 y la reconciliación de C1-bis — documentada en **H21** (arriba) y en el Reporte F2 (`03b-reportes.md`).
+
+---
+
+## H41 — `CombinationLookup` no mantiene atributos no-clave (confirmado en fuente Kettle)
+
+**Qué:** confirmación en documentación oficial Pentaho (no solo inferencia sobre el emisor) de que `Combination lookup/update` **solo** mantiene la clave — cualquier atributo no-clave requiere un step de update posterior por `tk`.
+
+**Evidencia:** cita textual de la documentación oficial (ver `03c-investigacion-vocabulario-dimension-kettle.md`, investigación R-K3, `investigacion-kettle-RK1-RK6.md` §3): *"The Combination lookup/update step will maintain the key information only."* Coincide con el emisor de este repo, `_step_CombinationLookup` (`ktr_builder/steps/lookups.py:121-135`), que emite únicamente `<key>`. El único caso legítimo del step es junk/technical dimension (todo atributo es clave) — no dimensiones con atributos descriptivos.
+
+**Sesión de origen:** investigación Fase 1 de `03c-investigacion-vocabulario-dimension-kettle.md`, 2026-07-30.
+
+**Estado: cerrado — D44.** A-2 (dimensión sin atributos) es real y sistémico, no un caso de configuración incompleta. `CombinationLookup` sale de la derivación por defecto; queda solo vía override registrado para el caso junk dimension.
+
+---
+
+## H42 — Rama `scd_type` 0/1 matemáticamente incortable
+
+**Qué:** `CombinationLookup ∈ _ALWAYS_RW` y la regla de corte C1 exige `any(r not in writers)` (`fragmentation.py:152`) — una tabla cuyo único step visible es RW es su propio lector y escritor, inmune a C1; con un solo writer, inmune también a C1-bis. `TableInput` no aporta tabla a la matriz (vive en `cfg["sql"]`, fuera de `TABLE_BEARING_STEPS`) y `StreamLookup` no está en ninguna lista de `_step_rw` — no existe input estructural que haga cortar esta rama.
+
+**Evidencia:** `fragmentation.py:152`, `contracts.py` (`_ALWAYS_RW`, `TABLE_BEARING_STEPS`) — verificado en código, sección "Context" de `03c-investigacion-vocabulario-dimension-kettle.md`.
+
+**Sesión de origen:** análisis de dos corridas del mismo caso (`analisis-fragmentacion-setA-vs-setB.md`), verificado contra código 2026-07-30.
+
+**Estado: cerrado — D44.** El fix de H41 (vocabulario uniforme, `DimensionLookup` para todo `scd_type`) elimina la razón de H42: el loader deja de ser la rama sin lookup de solo lectura, entra a la matriz R/W como cualquier otro caso.
+
+---
+
+## H43 — Asimetría de namespace en la clave de la matriz R/W
+
+**Qué:** `table_key_recovery._bare()` (`table_key_recovery.py:53`) quita el schema al escribir `cfg["table"]` de vuelta; el camino feliz (step que ya trae `table` sin pasar por recovery) lo deja tal cual venga. Dos namespaces distintos conviven en la misma matriz según si la tabla se resolvió por recovery o no.
+
+**Evidencia:** `table_key_recovery.py:53`, ver sección "Context" de `03c-investigacion-vocabulario-dimension-kettle.md`.
+
+**Sesión de origen:** revisión con evidencia de ejecución real (`hallazgos-y-sugerencias-para-code.md`), verificado contra código 2026-07-30.
+
+**Estado: abierto, ruteado a Fase 3 — cerrará con D45.** La clave `(connection, table)` normalizada (Fase 3, ítem 2) resuelve la asimetría de raíz al pasar los dos caminos por la misma normalización. No se toca fuera de esa fase.
+
+---
+
+## H44 — `scd_type` no determinista sobre la misma entrada
+
+**Qué:** el mismo caso (catálogo de productos), mismo backend, sin intervención humana, produjo `scd_type` 0/1 en una corrida y 2 en otra. Confirmado con evidencia dura, no solo hipótesis: diff entre Set B pre-fix (salida cruda del backend) y post-fix devuelve **solo** el bloque `<connection>` y la condición de un `FilterRows` — los dos `DimensionLookup` de carga, los modos por atributo, el `update=N` del lookup, el corte en dos archivos y el `.kjb` intermedio son idénticos byte a byte entre las dos corridas. La rama segura la produjo el sistema, no una corrección humana; la rama insegura (Set A) también.
+
+**Evidencia:** diff byte a byte descrito en "Segunda ronda de evidencia" de `03c-investigacion-vocabulario-dimension-kettle.md`.
+
+**Sesión de origen:** segunda ronda de evidencia, 2026-07-30.
+
+**Estado: abierto.** No lo cierra D44 por sí sola — D44 unifica el vocabulario de step pero no toca qué decide `scd_type`. Motiva la Fase 2-bis (S-15): sin ella, la no-determinancia deja de ser visible (hoy se nota porque la rama 0/1 produce una dimensión rota) y pasa a producir artefactos impecables con semántica de historización distinta y silenciosa. Se cierra cuando la Fase 2-bis (finding informativo + regla dura sobre columnas monetarias + confirmación explícita del usuario + medición de varianza en Fase 4) esté implementada y verificada, no antes.
+
+---
+
+## H45 — `FilterRows` de saneamiento derivado de CHECK del DDL, incompleto en los dos modelos
+
+**Qué:** Set A validó 1 de 3 columnas con CHECK en el DDL; Set B crudo, 1 de 3 pero **distinta** columna. El mismo tipo de error (completitud del filtro de saneamiento) en los dos modelos independientes → señal de contrato, no de estilo de un modelo puntual.
+
+**Evidencia:** comparación de los dos `FilterRows` generados contra los CHECK del DDL de origen, sección "Fase 2-ter" de `03c-investigacion-vocabulario-dimension-kettle.md`.
+
+**Sesión de origen:** segunda ronda de evidencia, 2026-07-30.
+
+**Estado: abierto, sin dueño de track todavía.** D43 (commit `6bfd018`) ya extrae el dato necesario (`minimum`/`maximum`/`enum` del `CanonicalField`, constraints nombrados). Sintetizar el `FilterRows` desde ahí es el camino completo; el mínimo aceptable es un checker: por cada CHECK de no-negatividad en la tabla destino, debe existir condición sobre esa columna aguas arriba con el tipo correcto de la constante (cierra además la mitad de A-5 sin cobertura). No implementado en esta sesión — ruteo a Fase 2-ter cuando se tome.
+
+---
+
+## H46 — La fila "unknown" la crea `Dimension lookup/update`, `CombinationLookup` nunca
+
+**Qué:** `checkDimZero` (Kettle, `DimensionLookup.java`) crea la fila técnica `tk=0` **solo** cuando el loader corre con `update=Y`, en la copia 0, en la primera fila. Inserta únicamente `tk` y `version` — todo lo demás (incluidos `date_from`/`date_to` y atributos descriptivos) queda NULL. No es `'DESCONOCIDO'`. `CombinationLookup` nunca la crea (no tiene ese mecanismo).
+
+**Evidencia:** `DimensionLookup.java` (`checkDimZero`, `:1633-1682`), `BaseDatabaseMeta.getNotFoundTK` — citas completas en `investigacion-kettle-RK1-RK6.md` §2.3 y §5.
+
+**Sesión de origen:** investigación Fase 1, R-K4, 2026-07-30.
+
+**Estado: abierto — condiciona D21.** `IfNull → 0` es correcto, no casual, pero **condicionado**: (a) el loader corre con `update=Y` antes que el lookup, (b) el DDL permite el INSERT de 2 columnas (ver H47 — hoy no lo permite), (c) el motor es Postgres. Y la fila que apunta no trae etiqueta legible — si el reporting espera `'DESCONOCIDO'`, eso no lo aporta el step. **Solape sin resolver con D21:** la corrida real reportó `DESCONOCIDO` como etiqueta, lo cual `checkDimZero` no puede producir. Requiere verificar en la corrida si hay un segundo escritor sobre la dimensión (sembrado por DDL o `ExecSQL`) — pendiente, no se cierra sin esa verificación.
+
+---
+
+## H47 — `checkDimZero` choca con `date_from NOT NULL` sin DEFAULT — bloqueante runtime nuevo
+
+**Qué:** `checkDimZero` emite `insert into <tabla>(<tk>, <version>) values (0, 1)` — nombra exactamente dos columnas. `prompt_validacion_src.txt:24-26` (V1/V3) exige `date_from TIMESTAMP NOT NULL` (sin DEFAULT) en **toda** dimensión de `dim_contracts`, "sea scd_type 0, 1 o 2, no hay excepcion por tipo". Cualquier columna `NOT NULL` sin DEFAULT en la dimensión hace fallar ese INSERT con `KettleDatabaseException` → la transformación aborta en la primera fila, no es un warning. Se extiende a cualquier otra columna `NOT NULL` sin default de la dimensión (clave natural, descripciones, códigos).
+
+**Por qué estuvo invisible hasta ahora:** (1) solo dispara contra una dimensión con tabla vacía (`count == 0` en el chequeo previo de `checkDimZero`); (2) hoy la rama `scd_type` 0/1 usa `CombinationLookup`, que no llama a `checkDimZero` en absoluto — el problema hoy solo podría tocar `scd_type == 2`, y ni siquiera ahí está confirmado que las corridas de referencia (Set A/B) hayan partido de tabla vacía.
+
+**Por qué esto pasa a ser bloqueante con D44:** D44 generaliza el loader a `DimensionLookup(update=Y)` para **todo** `scd_type`, incluido 0 y 1 — expande el radio de este choque a toda dimensión del sistema, no solo a las `scd_type == 2` de hoy.
+
+**Evidencia:** `DimensionLookup.java` (`checkDimZero`, `:1633-1682`), `prompt_validacion_src.txt:24-26` — citas completas en `investigacion-kettle-RK1-RK6.md` §2.3.
+
+**Sesión de origen:** investigación Fase 1, corolario de R-K2, 2026-07-30. No estaba en el checklist original de 12 preguntas — apareció investigando R-K1 en detalle.
+
+**Estado: abierto, bloqueante — ver C.12 en `02-decisiones.md`.** No decidido en esta sesión cuál de las tres opciones (DEFAULT en `date_from`, pre-sembrado vía `ExecSQL` antes del primer `DimensionLookup`, o relajar `date_from` a NULLable) se toma — requiere decisión de producto/DDL, no una elección técnica unilateral. D44 se escribe con esta salvedad explícita: el vocabulario es correcto en diseño pero no ejecuta limpio contra el DDL actual en una dimensión vacía hasta que esto se resuelva. Gate de la Fase 4 (§8 de `investigacion-kettle-RK1-RK6.md`, ya señalado ahí): correr contra una dimensión vacía es la única forma de confirmarlo en runtime.
+
+**2026-07-30 — cerrado por D47 (`02-decisiones.md`).** Investigación de seguimiento contra documentación oficial de Pentaho (`investigacion-pentaho-C10-C11-C12.md`, §C.12) confirma el bloqueante textualmente (*"If you have 'NOT NULL' fields in your table, adding this empty row and then the entire step will fail!"*) y **prescribe el remedio: pre-sembrar la fila `tk=0` antes de la primera corrida** — no relajar el DDL. El 4º camino (checkbox "Do not check or insert the 'unknown' row") existe en Apache Hop, confirmado **ausente** en PDI/Kettle (bundle i18n del step sin etiqueta equivalente, `checkDimZero()` con un único guard `!meta.isUpdate()`) — no es opción para este sistema. El propio generador de DDL del step (botón *SQL*, `PostgreSQLDatabaseMeta.getFieldDefinition`) emite `date_from`/`date_to` NULLable sin `NOT NULL` — el DDL que V1/V3 exige hoy es más estricto que el del fabricante, exactamente en la columna que causa la falla documentada. D47 fija el mecanismo: sembrado embebido en el DDL (Parte 3 de `prompt_validacion_src.txt`), `tk=0`/`version=1` obligatorios en la fila sembrada.
+
+---
+
+## H48 — `InsertUpdate` nunca emitía `<update_bypassed>`; ausencia equivale a `"N"` en Kettle
+
+**Qué:** `steps/output.py:_step_InsertUpdate` no emitía el tag `<update_bypassed>` bajo ninguna configuración. `InsertUpdateMeta.readData()` hace `updateBypassed = "Y".equalsIgnoreCase(getTagValue(stepnode, "update_bypassed"))` — tag ausente equivale a `false`/`"N"`. Con `update_bypassed=N` (el único valor posible antes de este fix) y **todos** los `<value>` de un `InsertUpdate` en `update="N"` (caso legítimo: un `InsertUpdate` que solo inserta, sin actualizar ninguna columna en la fila existente), `prepareUpdate()` arma un `UPDATE t SET ... WHERE ...` con la cláusula `SET` vacía y falla en runtime con SQL inválido — no al guardar el `.ktr`.
+
+**Por qué estuvo invisible:** el caso solo se manifiesta cuando TODOS los `<value>` de un `InsertUpdate` real (tablas de hechos, K10 de `system_etl.txt`) quedan en `update="N"` — un patrón infrecuente pero legítimo (ej. una tabla de hechos append-only donde el `InsertUpdate` solo existe para no duplicar por clave, sin querer actualizar ningún atributo si la fila ya existe).
+
+**Sesión de origen:** encontrado al leer `InsertUpdateMeta` para evaluar la Postura B de R-K7 (`InsertUpdate` como loader de dimensión SCD0) — lateral al objetivo de esa investigación, mismo tipo de bug (`SET` vacío en runtime) que motivó revisar el emisor completo.
+
+**Estado: cerrado — D51.** `_step_InsertUpdate` emite `<update_bypassed>` siempre, con default seguro (bypass automático a `"Y"` si no hay ningún `<value>` updatable, salvo declaración explícita en `cfg`). `validators/insert_update_bypass.py` (pass pre-emisión nuevo) cubre la combinación contradictoria restante: `update_bypassed=N` declarado explícito con cero values updatable.
+
+---
+
+## H49 — Centinelas de rango del calendario pre-poblado: sin checker posible, sin generación tampoco (DDL-2 se cerró solo con texto de prompt)
+
+**Qué:** DDL-2 (`06-contrato-ddl.md`) quedó cerrado en D51 únicamente reforzando el texto de advertencia de K18 (`system_etl.txt`) con los centinelas exactos de Kettle (`1900-01-01 00:00:00` / `2199-12-31 23:59:59.999` / `version=1`). Se descartó un checker Python porque el backend nunca ve las filas reales de una tabla pre-poblada externamente (principio de diseño: solo estructura llega al LLM, nunca datos) — no hay nada en `ktr_data`/DDL que un pass pre-emisión pueda inspeccionar para confirmar que el script que el usuario corrió a mano tiene los valores correctos. Si el usuario ignora la advertencia (o la lee mal, o copia un script de otro lado), el error se repite exactamente igual que antes de esta sesión: el lookup de FK no matchea nunca, devuelve la clave "desconocido" para toda fecha, sin error visible en Spoon ni en el backend.
+
+**Camino no explorado en esta sesión — sí sería código, no solo texto:** en vez de describir el script en una `validaciones[].mensaje`, **generar el script de sembrado `generate_series` como artefacto propio** (junto al `.ktr`/`.kjb`, o como bloque en `dwh_ddl`) con los centinelas hardcodeados por el backend, mismo patrón que D47 usó para el INSERT semilla de `tk=0` (embebido, determinista, no delegado a que el usuario lo escriba bien). Cierra el gap para todo usuario que use el script generado — el residual que queda (usuario ignora el script generado y escribe el suyo) es un riesgo de proceso, no de código, y es aceptable con el mismo criterio que cualquier otro paso manual de este sistema (ej. completar `kettle.properties`). Requiere decidir: ¿el script sale como archivo separado en el ZIP de descarga, o como comentario SQL al final de `dwh_ddl`? Y si el calendario alguna vez pasa de `DBLookup` (K18 actual) a `Dimension lookup/update` (unificando con el resto del vocabulario D44/D51, mencionado como no decidido en DDL-2), este script pasa de "conveniencia" a "obligatorio para que el lookup funcione en absoluto".
+
+**Sesión de origen:** registrado a pedido explícito del usuario tras cerrar D51 — la salida "no es código, es texto de prompt" no cierra el riesgo, solo lo documenta; el usuario pidió dejar constancia de que el error puede seguir repitiéndose para retomarlo a fondo.
+
+**Estado: abierto, sin dueño de track.** No bloquea nada de lo ya ejecutado (D44/D51 siguen siendo correctos y ejecutables sin esto) — es un gap de robustez sobre un mecanismo (K18/`dim_tiempo` vía `DBLookup`) que hoy es infrecuente y ya tenía este mismo problema sin relación con esta sesión. Candidato natural para la Fase 2-ter o para una sesión propia de "artefactos generados además del .ktr/.kjb", no decidido cuál.
+
+---
+
+## H50 — D45 punto 5 (hops que cruzan grupos) es inalcanzable por el caso real con el algoritmo de corte actual
+
+**Qué:** al implementar D45 punto 5 (Sesión A, 2026-07-30) se confirmó que, con `compute_cut()` tal como está — un grupo es siempre la unión completa de 1 o más componentes conexos del grafo de hops — un hop `enabled` con sus dos extremos conocidos **nunca** puede cruzar un grupo: sus dos extremos comparten componente por construcción, y un componente entero cae siempre en un solo grupo. El chequeo nuevo agregado a `split_ktr_by_cut` (Finding `severity="error"` por hop cruzado) solo puede disparar hoy por el caso hop-colgante (`from`/`to` que referencia un nombre de step inexistente en `ktr_data["steps"]`) — un caso de datos corruptos, no el caso que D45 punto 5 quería cubrir (dependencia real entre grupos que el corte separa).
+
+**Por qué no lo vio ni D45 ni la investigación 03c:** el punto 5 de D45 (`02-decisiones.md:1128`) y la Fase 3 punto 5 de `03c-investigacion-vocabulario-dimension-kettle.md:203` describen el caso como si fuera alcanzable hoy ("Set B no explotó porque los grupos ya estaban desconectados — el camino peligroso está sin probar"), sin notar que la propiedad "grupo = unión de componentes completos" lo vuelve estructuralmente imposible mientras esa propiedad se mantenga.
+
+**Cuándo deja de ser cierto:** D48 (materialización de hops cruzados vía tabla de staging) es justamente el mecanismo que, una vez implementado, generaría el caso real — dos steps (`Table output` en el grupo emisor, `Table input` en el receptor) sin hop directo entre sí pero con relación de tabla cruzando grupos. Hasta entonces, el chequeo del punto 5 queda como invariante afirmada, no como cobertura ejercida por ningún caso real del corpus.
+
+**Sesión de origen:** implementación de D45 puntos 3/4/5/7 (Sesión A), 2026-07-30.
+
+**Estado: abierto, sin dueño de track — no bloquea nada de lo ejecutado.** El chequeo se deja igual (correcto y barato de mantener) porque D48 lo va a volver alcanzable; no hay nada que corregir en el código de la Sesión A, solo la brecha entre lo que D45/03c describían como motivación y lo que el algoritmo actual permite.
+
+---
+
+## H51 — Loader de dimensión con `update="N"` pasa sin detectar (rol loader, ningún checker lo verifica)
+
+**Qué:** en la corrida real de Fase 4 (`docs/refactor/fase4_manual/sonnet/`, modelo sonnet, único caso de entrada, único run), el step `Cargar dim_producto` (`DimensionLookup`, rol loader, `stg_dwh/KTR_2_stg_dwh_20260730_224900.ktr:472-554`) sale con `<update>N</update>` — en Kettle, `update="N"` en `DimensionLookup` significa **solo lectura**: el step no inserta ni actualiza ninguna fila, solo busca y devuelve la surrogate key. `dim_producto` nunca se puebla. Esto contradice: (a) el propio texto de `validaciones` del mismo JSON crudo ("Ambas dimensiones usan SCD tipo 1... DimensionLookup se configura con update=Y y todos los atributos en modo Update"), y (b) el step hermano `Cargar dim_categoria` (`stg_dwh/KTR_1_stg_dwh_20260730_224900.ktr:150-202`), que sí sale con `update="Y"` para el mismo rol (loader, misma dimensión-tipo, mismo `dim_contracts`). El defecto ya está en `raw_llm_data.ktr_2` del JSON exportado — no lo introduce `ktr_builder`.
+
+**Por qué no lo atrapó nada:** dos passes tocan el flag `update` de `DimensionLookup` y ninguno cubre este caso:
+- `enforce_dimension_step_policy` (`dimension_step_policy.py:259-298`) fuerza `update="N"` cuando el rol es `fact_lookup` (evita doble escritor), pero para rol `loader` el chequeo es `if canonical == expected: continue` (`:300`) — compara solo el *tipo* de step (`DimensionLookup` vs `CombinationLookup`), nunca el valor de `update`. Un loader con tipo correcto y `update` incorrecto pasa de largo.
+- `check_dimension_lookup_fields` (`validators/dimension_lookup_fields.py`) valida `date_from`/`date_to`/`fields[].type`, pero no lee `cfg.get("update")` en ningún punto.
+- `error_catalog_checks.py` no tiene un checker equivalente (verificado por ausencia de `"update"` en el archivo).
+
+**Sesión de origen:** análisis de la corrida real de Fase 4, 2026-07-31 (fecha de export del JSON: 2026-07-30/31 según reloj de la sesión que la generó).
+
+**Estado: abierto, sin dueño de track.** No bloquea el cierre de lo ya ejecutado (D44-D53) — es un gap de cobertura nuevo, encontrado por evidencia real, no una regresión de esas decisiones. Candidato natural: extender `enforce_dimension_step_policy` para que el rol `loader` también verifique `update="Y"` (mismo patrón que ya usa para `fact_lookup` con `update="N"`), o agregar el chequeo a `check_dimension_lookup_fields`.
 
 ---
 

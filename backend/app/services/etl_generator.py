@@ -25,22 +25,31 @@ from app.schemas.etl_schemas import (
 )
 from app.schemas.llm_output_schemas import ETL_OUTPUT_SCHEMA
 from app.services import context_builder
+from app.domain.canonical_types import CanonicalType
+from app.domain.scd import is_calendar_dimension
 from app.services.adapters.ddl_adapter import parse_ddl
+from app.services.adapters.sql_table_resolver import resolve_sql_tables
 from app.services.ddl_validation import validate_and_correct_ddl
 from app.services.ktr_builder import (
     build_ktr,
-    derive_dimension_step_type,
+    derive_attribute_update_mode,
+    derive_dimension_loader_step,
+    derive_fact_lookup_step,
     enforce_dimension_step_policy,
     normalize_step_configs,
     repair_integrity_gaps,
     repair_ktr_steps,
     split_ktr_by_cut,
+    validate_stage_contract,
     STEP_TYPE_ALIASES,
     ValidationContext,
     run_passes,
+    PRE_EMIT_ERROR_PREFIX,
+    split_findings_by_severity,
 )
 from app.services.ktr_builder.build import _sanitize
 from app.services.ktr_builder.contract_validate import CONTRACT_PREFIX, validate_ktr_contracts
+from app.services.ktr_builder.error_catalog_checks import ERROR_CATALOG_PREFIX, MONEY_FIELD_HINTS
 from app.services.ktr_builder.fields_validate import FIELD_INTEGRITY_PREFIX
 from app.services.lineage_builder import stitch_lineage_many
 from app.services.job_progress import ProgressSink, active_sink, current_sink
@@ -48,11 +57,14 @@ from app.services.job_progress import ProgressSink, active_sink, current_sink
 
 def _split_integrity_warnings(warnings: list[str]) -> tuple[list[str], list[Validacion]]:
     """Separa las advertencias de integridad de campos (ver FIELD_INTEGRITY_PREFIX
-    en fields_validate.py) y de contrato entre KTR (ver CONTRACT_PREFIX en
-    contract_validate.py, D23) del resto de warnings cosméticos. Ambas se
-    promueven a Validacion tipo="error" — la severidad más alta que EtlDetail
-    sabe renderizar — en vez de perderse entre las buenas prácticas. D15/D23
-    punto 4: mismo canal de severidad, sin caso especial."""
+    en fields_validate.py), de contrato entre KTR (ver CONTRACT_PREFIX en
+    contract_validate.py, D23), del catálogo E1-E14 (ver ERROR_CATALOG_PREFIX
+    en error_catalog_checks.py, D50) y de los passes pre-emisión con severidad
+    real (ver PRE_EMIT_ERROR_PREFIX en validators/base.py, D50) del resto de
+    warnings cosméticos. Las cuatro se promueven a Validacion tipo="error" —
+    la severidad más alta que EtlDetail sabe renderizar — en vez de perderse
+    entre las buenas prácticas. D15/D23 punto 4: mismo canal de severidad,
+    sin caso especial."""
     plain: list[str] = []
     integridad: list[Validacion] = []
     for w in warnings:
@@ -67,6 +79,18 @@ def _split_integrity_warnings(warnings: list[str]) -> tuple[list[str], list[Vali
                 tipo="error",
                 campo="contrato_ktr",
                 mensaje=w[len(CONTRACT_PREFIX):],
+            ))
+        elif w.startswith(ERROR_CATALOG_PREFIX):
+            integridad.append(Validacion(
+                tipo="error",
+                campo="catalogo_errores_ktr",
+                mensaje=w[len(ERROR_CATALOG_PREFIX):],
+            ))
+        elif w.startswith(PRE_EMIT_ERROR_PREFIX):
+            integridad.append(Validacion(
+                tipo="error",
+                campo="validacion_pre_emision",
+                mensaje=w[len(PRE_EMIT_ERROR_PREFIX):],
             ))
         else:
             plain.append(w)
@@ -184,6 +208,42 @@ def _staging_table_names_from_ddl(stg_ddl: str) -> list[str]:
     return [schema.source_name for schema in schemas]
 
 
+def _dwh_column_check_constraints(dwh_ddl: str) -> dict[str, dict[str, dict]]:
+    """{tabla_lower: {columna: {"minimum":.., "maximum":.., "type":..}}} —
+    solo columnas con CHECK de rango (minimum/maximum no ambos None, D43).
+    Cada tabla queda indexada dos veces (nombre completo del DDL y nombre
+    'bare' sin schema, mismo criterio informal que table_key_recovery._bare())
+    porque cfg["table"] de un step normalmente llega sin calificar — insumo
+    de ValidationContext.dwh_constraints (Fase 2-ter, S-4/H45,
+    docs/refactor/03c-investigacion-vocabulario-dimension-kettle.md).
+    Best-effort: DDL no parseable -> {}, solo loggeado."""
+    result: dict[str, dict[str, dict]] = {}
+    if not dwh_ddl or not dwh_ddl.strip():
+        return result
+    try:
+        schemas = parse_ddl(dwh_ddl, dialect=None)
+    except Exception as exc:
+        _log.warning("No se pudo parsear DDL DWH para CHECK de rango: %s", exc)
+        return result
+    for schema in schemas:
+        cols: dict[str, dict] = {}
+        for f in schema.fields:
+            if f.constraints.minimum is None and f.constraints.maximum is None:
+                continue
+            cols[f.name] = {
+                "minimum": f.constraints.minimum,
+                "maximum": f.constraints.maximum,
+                "type": f.type.value,
+            }
+        if not cols:
+            continue
+        full = schema.source_name.strip().lower()
+        bare = full.rsplit(".", 1)[-1]
+        result[full] = cols
+        result[bare] = cols
+    return result
+
+
 def _known_table_names(*ddls: str) -> frozenset[str]:
     """Nombres de tabla física reales (lowercase, todas las tablas del/los
     DDL, sin filtrar por si tienen columnas NOT NULL) — insumo de
@@ -203,14 +263,33 @@ def _known_table_names(*ddls: str) -> frozenset[str]:
     return frozenset(names)
 
 
-def _recover_table_keys(ktr_data: dict, known_tables: frozenset[str]) -> list[str]:
-    """Corre validators.recover_table_key temprano (H29) y devuelve los
-    findings ya formateados como warnings — llamar SIEMPRE junto a
-    normalize_step_configs(), antes de enforce_dimension_step_policy() y de
-    split_ktr_by_cut() (build_rw_matrix): ambos corren antes de build_ktr()
-    y necesitan ver 'table' ya recuperado (ver validators/README.md)."""
-    findings = run_passes(ValidationContext(ktr_data, STEP_TYPE_ALIASES, known_tables))
-    return [f.message for f in findings]
+def _recover_table_keys(
+    ktr_data: dict,
+    known_tables: frozenset[str],
+    dwh_constraints: dict[str, dict[str, dict]] | None = None,
+) -> list[str]:
+    """Corre TODO PRE_EMIT_PASSES (H29 recover_table_key + el resto, ver
+    validators/__init__.py) y devuelve los findings ya formateados como
+    warnings — llamar SIEMPRE junto a normalize_step_configs(), antes de
+    enforce_dimension_step_policy() y de split_ktr_by_cut() (build_rw_matrix):
+    ambos corren antes de build_ktr() y necesitan ver 'table' ya recuperado
+    (ver validators/README.md).
+
+    dwh_constraints (Fase 2-ter, docs/refactor/03c-investigacion-vocabulario-
+    dimension-kettle.md): {} si el caller no tiene DDL DWH disponible en este
+    punto (ej. camino de reuso de respuesta LLM, H29 arriba) — check_constraint_
+    filter_rows no-opea sin esto, mismo criterio best-effort que el resto del
+    módulo.
+
+    Fase 0 (D50): findings severity=="error" (tabla no recuperable, sin match
+    o ambigua; CHECK de rango sin FilterRows; FilterRows de negocio en
+    staging) llevan PRE_EMIT_ERROR_PREFIX — _split_integrity_warnings los
+    promueve a Validacion tipo=error en vez de perderse entre
+    advertencias_buenas_practicas."""
+    findings = run_passes(ValidationContext(
+        ktr_data, STEP_TYPE_ALIASES, known_tables, dwh_constraints or {},
+    ))
+    return split_findings_by_severity(findings)
 
 
 def _format_dim_contracts(dim_contracts: list) -> str:
@@ -233,20 +312,94 @@ def _format_dim_contracts(dim_contracts: list) -> str:
         # Un override (volumen alto, matching difuso, full refresh) es válido
         # pero tiene que registrarse en `validaciones` con el prefijo
         # OVERRIDE_STEP_PREFIX y campo=<tabla> — ver system_etl.txt.
-        step_requerido = derive_dimension_step_type(c.scd_type)
+        # D44/D51: loader y lookup de FK son AMBOS 'DimensionLookup' para todo
+        # scd_type (incluido 0/1, R-K2/R-K7) — difieren solo en update=Y|N,
+        # que resuelve el LLM al configurar el step (ver system_etl.txt "STEP
+        # DE DIMENSIONES" / "LOOKUP DE FK DEL LADO DEL HECHO").
+        step_requerido = derive_dimension_loader_step(c.scd_type)
+        step_lookup_fk = derive_fact_lookup_step(c.scd_type)
         # D37: attributes_scd1/attributes_scd2 se le exigen al LLM de inferencia
         # y llegan al validador de DDL (ddl_validation.py), pero hasta acá la
         # fase de generación de steps nunca los veía — el juicio de "qué
         # atributos versionan" se calculaba y se tiraba.
+        # D44/D51/S-8: el modo (Insert/Update) se resuelve por atributo, no
+        # por dimensión — se le entrega al LLM ya resuelto, mismo criterio que
+        # step_requerido (la decisión no es suya).
+        modos = ", ".join(
+            f"{attr}={derive_attribute_update_mode(attr, c.attributes_scd1, c.attributes_scd2)}"
+            for attr in (*c.attributes_scd1, *c.attributes_scd2)
+        ) or "(sin atributos no-clave)"
         line = (
-            f"- {c.table}: step_requerido={step_requerido}, technical_key={c.technical_key}, "
-            f"version_field={c.version_field}, date_from={c.date_from}, date_to={c.date_to}, "
+            f"- {c.table}: step_requerido={step_requerido}, step_lookup_fk={step_lookup_fk}, "
+            f"technical_key={c.technical_key}, version_field={c.version_field}, "
+            f"date_from={c.date_from}, date_to={c.date_to}, "
             f"natural_keys={list(c.natural_keys)}, unknown_key_value={c.unknown_key_value}, "
             f"scd_type={c.scd_type}, attributes_scd1={list(c.attributes_scd1)}, "
-            f"attributes_scd2={list(c.attributes_scd2)}"
+            f"attributes_scd2={list(c.attributes_scd2)}, modo_por_atributo=[{modos}]"
         )
         lines.append(line)
     return "\n".join(lines)
+
+
+# ─── R-K7 (03c-investigacion-vocabulario-dimension-kettle.md, D51): guard de
+# scd_type==0 fuera del caso calendario ──────────────────────────────────────
+#
+# El colapso 0->1 (derive_dimension_loader_step) solo es seguro cuando la
+# dimensión es de calendario — el ETL nunca la carga (K18, system_etl.txt), la
+# rama del loader es inalcanzable. Si la inferencia declara scd_type=0 en una
+# dimensión que SÍ se carga, el colapso convierte una garantía de inmutabilidad
+# en sobrescritura silenciosa: pérdida de dato irreversible.
+#
+# El pre-check de calendario (structure_inferrer._build_scd_precheck_block)
+# corre sobre TABLAS DE ORIGEN y solo se serializa como texto del prompt — no
+# se persiste, no está indexado por nombre de dimensión DWH. No hay resultado
+# que reusar acá. Pero el mismo predicado (is_calendar_dimension) es
+# re-derivable sin agregar ningún campo al output del LLM: nombre de tabla
+# (DimContract.table), una sola clave natural (DimContract.natural_keys), y el
+# tipo de esa clave sale del DDL del DWH — que ya está en mano en este punto
+# del pipeline (mismo parse_ddl que _dim_contracts_anomaly_warning/
+# _column_types_from_ddl ya usan más arriba).
+def _scd_zero_calendar_guard(dwh_ddl: str, dim_contracts: list) -> list[str]:
+    """Findings PRE_EMIT_ERROR_PREFIX (severidad error, ver
+    validators/base.py) para toda dimensión scd_type==0 que NO es de
+    calendario — D15: no aborta, pero _split_integrity_warnings la promueve a
+    Validacion tipo=error en vez de perderse entre buenas prácticas. Best-
+    effort: DDL no parseable -> sin guard (mismo criterio que el resto de
+    funciones _*_from_ddl de este módulo), nunca corta el flujo."""
+    zero_type = [c for c in dim_contracts if c.scd_type == 0]
+    if not zero_type:
+        return []
+    if not dwh_ddl or not dwh_ddl.strip():
+        return []
+    try:
+        schemas = parse_ddl(dwh_ddl, dialect=None)
+    except Exception as exc:
+        _log.warning("No se pudo parsear dwh_model para el guard de scd_type=0: %s", exc)
+        return []
+    fields_by_table = {s.source_name.strip().lower(): s.fields for s in schemas}
+
+    findings: list[str] = []
+    for c in zero_type:
+        table_key = c.table.strip().split(".")[-1].lower()
+        fields = fields_by_table.get(table_key)
+        if fields is None:
+            # Sin DDL para esa tabla no se puede confirmar ni descartar — no
+            # es este guard el que reporta ese hueco (ver
+            # _dim_contracts_anomaly_warning / repair_integrity_gaps).
+            continue
+        date_cols = [f.name for f in fields if f.type in (CanonicalType.DATE, CanonicalType.DATETIME)]
+        if is_calendar_dimension(c.table, list(c.natural_keys), date_cols):
+            continue  # colapso 0->1 seguro — el ETL nunca carga el calendario (K18)
+        findings.append(
+            f"{PRE_EMIT_ERROR_PREFIX}dim_contracts declara '{c.table}' con scd_type=0, pero no "
+            "matchea la regla de dimensión de calendario (nombre de tabla + una sola clave "
+            "natural de tipo fecha) — R-K7: Kettle no tiene un modo 'no tocar si ya existe' en "
+            "Dimension lookup/update, así que scd_type=0 colapsa a scd_type=1 (sobrescritura) "
+            "para toda dimensión que el ETL SÍ carga. Si la intención es que este atributo nunca "
+            "se sobrescriba, no hay mecanismo — re-declará scd_type=1 explícito. Si es un error "
+            "de inferencia, corregí el contrato."
+        )
+    return findings
 
 
 def _dim_contracts_anomaly_warning(dwh_ddl: str, dim_contracts: list) -> list[str]:
@@ -348,6 +501,62 @@ def _inferred_member_notifications(dims: list[dict]) -> list[str]:
     ]
 
 
+# Fase 2-bis (03c-investigacion-vocabulario-dimension-kettle.md, mitigaciones
+# 1 y 2): D44/R-K7 volvieron el step de carga de dimensión idéntico ("Dimension
+# lookup/update") para todo scd_type — la Fase 2 sacó el síntoma visible de una
+# misinferencia de scd_type (H44: no determinista sobre la misma entrada) y sin
+# esto el sistema pasa a producir errores semánticos indetectables en
+# artefactos impecables (03c:270, "no opcional respecto de la Fase 2"). Las dos
+# funciones de abajo operan solo sobre dim_contracts — sin DDL, a diferencia de
+# _scd_zero_calendar_guard — así que valen en TODO camino que tenga
+# dim_contracts, incluido build_etl_from_raw (sin DDL disponible, ver su
+# docstring).
+def _scd_consequence_findings(dim_contracts: list) -> list[str]:
+    """Mitigación 1 (03c:172): un finding por dimensión con la consecuencia
+    concreta del scd_type elegido, no solo el número — convierte una decisión
+    invisible en revisable. scd_type==0 queda afuera: la rama no-calendario ya
+    la señala _scd_zero_calendar_guard como error, y la calendario no tiene
+    atributo que cambie."""
+    findings: list[str] = []
+    for c in dim_contracts:
+        if c.scd_type == 2:
+            attrs = ", ".join(c.attributes_scd2) or "(ninguno declarado)"
+            findings.append(
+                f"'{c.table}' cargada como SCD2: cada cambio en {attrs} genera una versión "
+                "nueva (histórico preservado, la tabla crece con cada cambio)."
+            )
+        elif c.scd_type == 1:
+            attrs = ", ".join(c.attributes_scd1) or "(ninguno declarado)"
+            findings.append(
+                f"'{c.table}' cargada como SCD1: cambios en {attrs} sobrescriben el valor "
+                "anterior (sin histórico)."
+            )
+    return findings
+
+
+def _monetary_scd2_guard(dim_contracts: list) -> list[str]:
+    """Mitigación 2 (03c:173): una columna de importe/monto no puede versionarse
+    como atributo de dimensión — cambia con cada transacción, no es lentamente
+    cambiante, y pertenece al hecho (cierra B-7). Reusa la misma señal que
+    v11_monetario_sin_bignumber (error_catalog_checks.MONEY_FIELD_HINTS),
+    aplicada acá al contrato antes de emitir en vez de al step ya emitido.
+    PRE_EMIT_ERROR_PREFIX -> _split_integrity_warnings la promueve a
+    Validacion tipo=error (D15: no aborta, pero no queda perdida entre buenas
+    prácticas)."""
+    findings: list[str] = []
+    for c in dim_contracts:
+        hits = [a for a in c.attributes_scd2 if any(h in a.lower() for h in MONEY_FIELD_HINTS)]
+        if not hits:
+            continue
+        findings.append(
+            f"{PRE_EMIT_ERROR_PREFIX}'{c.table}' tiene columna(s) de importe/monto en "
+            f"attributes_scd2 ({', '.join(hits)}) — un valor monetario no debe versionarse como "
+            "atributo de dimensión (cambia con cada transacción, no es lentamente cambiante); "
+            "pertenece al hecho, no a la dimensión. Revisar el modelo."
+        )
+    return findings
+
+
 def _build_ktr_stage(
     ktr_data: dict,
     base_name: str,
@@ -367,10 +576,26 @@ def _build_ktr_stage(
     D20 (02-decisiones.md): conectada de verdad en _build_response_from_data /
     _build_response_from_two_ktr_data — el flujo HTTP en vivo ahora parte
     físicamente cuando compute_cut() detecta groups>1, en vez de solo
-    notificarlo y entregar el .ktr sin partir."""
-    sub_dicts, notifications = split_ktr_by_cut(ktr_data, STEP_TYPE_ALIASES)
+    notificarlo y entregar el .ktr sin partir.
+
+    D45 punto 1: resolve_sql_tables real (sqlglot, services/adapters/
+    sql_table_resolver.py) inyectado acá — el único punto de wiring entre el
+    contrato de dominio (build_rw_matrix acepta un callable) y su
+    implementación real, para que fragmentation.py (DOMAIN_MODULES) siga sin
+    importar sqlglot."""
+    sub_dicts, notifications = split_ktr_by_cut(ktr_data, STEP_TYPE_ALIASES, resolve_sql_tables)
+    # D45 punto 6 (S-13): chequeo a nivel etapa sobre el CONJUNTO de sub_dicts
+    # que acaba de salir del corte — ver validate_stage_contract() para qué
+    # cubre (fragmento posterior que escribe lo que uno anterior ya lee) y
+    # qué no repite (orden del job, hop cruzado — garantizados/cubiertos arriba).
+    notifications = [*notifications, *validate_stage_contract(sub_dicts, STEP_TYPE_ALIASES, resolve_sql_tables)]
     built: list[tuple[dict, str, str]] = []
-    warnings: list[str] = list(notifications)
+    # D50: notifications ya son Finding (severity real) — split_findings_by_severity
+    # las vuelve string, marcando con PRE_EMIT_ERROR_PREFIX solo las severity=="error"
+    # (mismo componente sin relación segura / ciclo de orden), para que
+    # _split_integrity_warnings las promueva. V2 (lookup sin productor en esta
+    # etapa) queda "warning" tal cual.
+    warnings: list[str] = split_findings_by_severity(notifications)
     for i, sub in enumerate(sub_dicts):
         name = base_name if len(sub_dicts) == 1 else f"{base_name}_{i + 1}"
         # build_ktr() prioriza ktr_data["name"] por sobre el nombre que se le
@@ -844,6 +1069,11 @@ async def build_etl_from_raw(
                 raw_llm_data["ktr_2"].get("validaciones", []),
             )
             raw_llm_data["ktr_2"].setdefault("validaciones", []).extend(step_policy_results)
+            extra_warnings = [
+                *extra_warnings,
+                *_scd_consequence_findings(dim_contracts),
+                *_monetary_scd2_guard(dim_contracts),
+            ]
         return _build_response_from_two_ktr_data(
             raw_llm_data["ktr_1"], raw_llm_data["ktr_2"], metadata,
             real_connections=real_connections,
@@ -867,6 +1097,11 @@ async def build_etl_from_raw(
                 raw_llm_data.get("validaciones", []),
             )
             raw_llm_data.setdefault("validaciones", []).extend(step_policy_results)
+            extra_warnings = [
+                *extra_warnings,
+                *_scd_consequence_findings(dim_contracts),
+                *_monetary_scd2_guard(dim_contracts),
+            ]
     return _build_response_from_data(
         raw_llm_data, metadata,
         real_connections=real_connections,
@@ -1056,8 +1291,9 @@ async def generate_etl_from_inference(
     # split_ktr_by_cut interno de _build_response_from_two_ktr_data: ambos
     # necesitan 'table' ya recuperado (ver validators/README.md).
     known_tables = _known_table_names(req.stg_definition, dwh_ddl)
-    table_warnings_1 = _recover_table_keys(data_1["ktr"], known_tables)
-    table_warnings_2 = _recover_table_keys(data_2["ktr"], known_tables)
+    dwh_constraints = _dwh_column_check_constraints(dwh_ddl)
+    table_warnings_1 = _recover_table_keys(data_1["ktr"], known_tables, dwh_constraints)
+    table_warnings_2 = _recover_table_keys(data_2["ktr"], known_tables, dwh_constraints)
     context_text = f"{req.stg_definition}\n\n{dwh_ddl}"
     data_1["ktr"], repair_warnings_1 = await repair_ktr_steps(data_1["ktr"], llm, context_text)
     data_2["ktr"], repair_warnings_2 = await repair_ktr_steps(data_2["ktr"], llm, context_text)
@@ -1079,6 +1315,9 @@ async def generate_etl_from_inference(
         )
     ]
     dim_contract_warnings = _dim_contracts_anomaly_warning(dwh_ddl, req.dim_contracts)
+    scd_zero_warnings = _scd_zero_calendar_guard(dwh_ddl, req.dim_contracts)
+    scd_consequence_findings = _scd_consequence_findings(req.dim_contracts)
+    monetary_scd2_warnings = _monetary_scd2_guard(req.dim_contracts)
     inferred_member_warnings = _inferred_member_notifications(
         _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
     )
@@ -1092,8 +1331,9 @@ async def generate_etl_from_inference(
         extra_warnings=[
             *cfg_warnings_1, *cfg_warnings_2, *table_warnings_1, *table_warnings_2,
             *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
-            *type_warnings, *contract_warnings, *dim_contract_warnings, *inferred_member_warnings,
-            *ddl_change_warnings,
+            *type_warnings, *contract_warnings, *dim_contract_warnings, *scd_zero_warnings,
+            *scd_consequence_findings, *monetary_scd2_warnings,
+            *inferred_member_warnings, *ddl_change_warnings,
         ],
         extra_validaciones=[*ddl_result.conflictos, *[Validacion(**r) for r in step_policy_results]],
         dwh_ddl=dwh_ddl,
@@ -1131,6 +1371,7 @@ async def _stage_pipeline(
     llm: BaseLLM,
     sink: ProgressSink,
     known_tables: frozenset[str] = frozenset(),
+    dwh_constraints: dict[str, dict[str, dict]] | None = None,
 ) -> tuple[dict, Optional[LLMResponse], list[str]]:
     """Corre UNA etapa completa (llamada al modelo + normalize + los dos
     repairs) y emite progreso en cada hito. Extraído de lo que antes era una
@@ -1153,7 +1394,7 @@ async def _stage_pipeline(
     # H29 — antes de repair/integrity está bien (esos no tocan 'table'), pero
     # tiene que estar antes de enforce_dimension_step_policy/split_ktr_by_cut,
     # que corren después de que esta función retorna (ver validators/README.md).
-    table_warnings = _recover_table_keys(data["ktr"], known_tables)
+    table_warnings = _recover_table_keys(data["ktr"], known_tables, dwh_constraints)
 
     sink.emit(code="stage.repair.started", message=f"Revisando steps incompletos — {label}")
     data["ktr"], repair_warnings = await repair_ktr_steps(data["ktr"], llm, context_text)
@@ -1320,6 +1561,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                 system         = _load_system("system_etl.txt")
                 context_text   = f"{req.stg_definition}\n\n{dwh_ddl}"
                 known_tables   = _known_table_names(req.stg_definition, dwh_ddl)
+                dwh_constraints = _dwh_column_check_constraints(dwh_ddl)
 
                 # ── Etapa 1 (origen→STG) — reuso o llamada real ────────────────
                 if req.reuse_stage_1 is not None:
@@ -1328,7 +1570,10 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                     # puede venir de un archivo importado por el usuario, misma
                     # superficie de confianza que build-from-raw.
                     data_1["ktr"], stage_warnings_1 = normalize_step_configs(data_1["ktr"])
-                    stage_warnings_1 = [*stage_warnings_1, *_recover_table_keys(data_1["ktr"], known_tables)]
+                    stage_warnings_1 = [
+                        *stage_warnings_1,
+                        *_recover_table_keys(data_1["ktr"], known_tables, dwh_constraints),
+                    ]
                     resp_1 = None
                     sink.current_stage = "origen_stg"
                     sink.emit(
@@ -1341,7 +1586,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                     )
                     data_1, resp_1, stage_warnings_1 = await _stage_pipeline(
                         "origen_stg", prompt_1, system, context_text, llm, sink,
-                        known_tables=known_tables,
+                        known_tables=known_tables, dwh_constraints=dwh_constraints,
                     )
 
                 # CHECKPOINT 1 (D30): model_status sigue en "pending" — _try_build()
@@ -1374,7 +1619,7 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                 )
                 data_2, resp_2, stage_warnings_2 = await _stage_pipeline(
                     "stg_dwh", prompt_2, system, context_text, llm, sink,
-                    known_tables=known_tables,
+                    known_tables=known_tables, dwh_constraints=dwh_constraints,
                 )
             except Exception as exc:
                 _log.error("generate_etl_async: etapa %s falló (job_id=%s) — %s",
@@ -1416,6 +1661,9 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                 )
             ]
             dim_contract_warnings = _dim_contracts_anomaly_warning(dwh_ddl, req.dim_contracts)
+            scd_zero_warnings = _scd_zero_calendar_guard(dwh_ddl, req.dim_contracts)
+            scd_consequence_findings = _scd_consequence_findings(req.dim_contracts)
+            monetary_scd2_warnings = _monetary_scd2_guard(req.dim_contracts)
             inferred_member_warnings = _inferred_member_notifications(
                 _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
             )
@@ -1446,8 +1694,9 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                 "required_columns_by_table": _required_columns_from_ddl(req.stg_definition, dwh_ddl),
                 "repair_warnings": [
                     *stage_warnings_1, *stage_warnings_2,
-                    *type_warnings, *contract_warnings, *dim_contract_warnings, *inferred_member_warnings,
-                    *ddl_change_warnings, *reuse_tokens_note,
+                    *type_warnings, *contract_warnings, *dim_contract_warnings, *scd_zero_warnings,
+                    *scd_consequence_findings, *monetary_scd2_warnings,
+                    *inferred_member_warnings, *ddl_change_warnings, *reuse_tokens_note,
                 ],
                 # Persistido para que _try_build() (que corre después, cuando el
                 # usuario confirma las conexiones) pueda incluirlos en la

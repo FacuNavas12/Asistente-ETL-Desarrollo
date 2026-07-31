@@ -17,7 +17,7 @@ I4 La dimension de tiempo lleva UNIQUE sobre la fecha primaria. Sin el, reejecut
 I5 Multi-moneda: importe en moneda original + moneda_origen NOT NULL sin default. La columna convertida solo si hay fuente de tasa, con tasa_cambio_aplicada.
 I6 En SCD2, fecha_fin es NULLABLE. NOT NULL rompe el INSERT del primer registro de cada entidad.
 I7 CREATE TABLE en orden de dependencia: dimensiones antes que hechos, padres antes que hijos.
-I8 Toda dimension lleva fila 'desconocido' con SK fija sembrada por INSERT, y las fk_ del fact la usan como DEFAULT.
+I8 Toda dimension lleva fila 'desconocido' con SK fija sembrada por INSERT, y las fk_ del fact la usan como DEFAULT. El INSERT sembrado es SIEMPRE completo: resuelve TODA columna NOT NULL sin DEFAULT de la tabla, nunca solo technical_key. Motivo: Dimension lookup/update (Kettle) intenta su propio INSERT de esa fila si no la encuentra, pero solo nombra 2 columnas (technical_key, version_field) -- si alguna otra columna NOT NULL sin DEFAULT (ej. date_from, I6) queda sin valor, ese INSERT de Kettle rompe la transformacion en la primera fila. Sembrar completo en el DDL evita que Kettle llegue a intentarlo (encuentra la fila y no hace nada).
 I9 El fact conserva la clave degenerada del origen al grano declarado, con UNIQUE nombrado.
 
 ## VALIDACIONES DE ESTA FASE
@@ -25,7 +25,7 @@ V1 Cada dim_contracts[i].technical_key/version_field/date_from/date_to existe co
 V2 Cada natural_key de dim_contracts[i] existe como columna fisica y tiene UNIQUE (o el indice compuesto de I3 en SCD2). Si falta, AGREGALO y registralo.
 V3 El contrato completo (V1+V2) es obligatorio para TODA dimension listada en dim_contracts, sea scd_type 0, 1 o 2 -- no hay excepcion por tipo.
 V4 Ningun indice de vigencia usa predicado parcial (WHERE es_vigente / WHERE fecha_fin IS NULL) [I3/I4]. Si encontras uno, reemplazalo por el indice no parcial equivalente y registralo.
-V5 Toda tabla dim_* listada en dim_contracts tiene su fila 'desconocido' sembrada (INSERT con technical_key = unknown_key_value) [I8]. Si falta el INSERT, AGREGALO usando el unknown_key_value del contrato.
+V5 Toda tabla dim_* listada en dim_contracts tiene su fila 'desconocido' sembrada [I8], y ese INSERT es completo -- no alcanza con technical_key. Si falta el INSERT o esta incompleto (deja alguna columna NOT NULL sin DEFAULT sin valor), COMPLETALO con: technical_key=unknown_key_value (del contrato), version_field=1, date_from='1900-01-01 00:00:00', date_to='2199-12-31 23:59:59.999' (mismos centinelas que la dimension de calendario -- no arbitrarios, evitan que el lookup de fecha del lado del hecho matchee la fila "desconocido" por accidente), y cualquier otra columna de esa tabla NOT NULL sin DEFAULT que el DDL declare recibe 'DESCONOCIDO' si es texto o 0 si es numerica.
 V6 [NUEVA] Coherencia dim_contracts <-> DDL en la fila 'desconocido': el valor de technical_key en el INSERT semilla debe coincidir EXACTAMENTE con dim_contracts[i].unknown_key_value. Si divergen (ej. el contrato dice 0 pero el DDL sembro -1), NO corrijas -- no hay forma de saber cual de los dos valores es el correcto sin contexto de negocio. Reportalo en conflictos citando ambos valores y la tabla afectada.
 
 ## REGLA R8 -- REGISTRAR TODO AJUSTE

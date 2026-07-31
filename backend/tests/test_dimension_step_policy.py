@@ -3,12 +3,20 @@ Unit tests — Parte 4 (bloque A) de la serie dim_contracts: derivación
 determinista del step de dimensión a partir de scd_type, y su enforcement
 post-generación. Todo puro/sin LLM — el criterio de aceptación de esta parte
 es justamente que la decisión NO dependa del modelo.
+
+D44/D51 (docs/refactor/02-decisiones.md): vocabulario uniforme por rol —
+'Dimension lookup/update' para TODO scd_type, loader y fact_lookup difieren
+solo en update=Y|N. La única rama de auto-fix segura se invirtió: antes era
+DimensionLookup -> CombinationLookup (downgrade); ahora es CombinationLookup
+-> DimensionLookup (sintetizando fields/date_from/date_to/version_field desde
+el contrato). Varios tests de abajo están invertidos respecto de la versión
+anterior de este archivo — documentado en cada uno, no borrados en silencio.
 """
 from __future__ import annotations
 
 from app.services.ktr_builder.dimension_step_policy import (
     OVERRIDE_STEP_PREFIX,
-    derive_dimension_step_type,
+    derive_dimension_loader_step,
     enforce_dimension_step_policy,
     role_of_dimension_step,
 )
@@ -16,21 +24,33 @@ from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 
 
 class _FakeDimContract:
-    def __init__(self, table: str, scd_type: int):
+    def __init__(
+        self,
+        table: str,
+        scd_type: int,
+        *,
+        technical_key: str = "sk_x",
+        version_field: str = "version",
+        date_from: str = "fecha_inicio",
+        date_to: str = "fecha_fin",
+        attributes_scd1: list[str] | None = None,
+        attributes_scd2: list[str] | None = None,
+    ):
         self.table = table
         self.scd_type = scd_type
+        self.technical_key = technical_key
+        self.version_field = version_field
+        self.date_from = date_from
+        self.date_to = date_to
+        self.attributes_scd1 = attributes_scd1 or []
+        self.attributes_scd2 = attributes_scd2 or []
 
 
-def test_scd2_derives_dimension_lookup():
-    assert derive_dimension_step_type(2) == "DimensionLookup"
-
-
-def test_scd1_derives_combination_lookup():
-    assert derive_dimension_step_type(1) == "CombinationLookup"
-
-
-def test_scd0_derives_combination_lookup():
-    assert derive_dimension_step_type(0) == "CombinationLookup"
+def test_loader_step_is_dimension_lookup_for_every_scd_type():
+    """R-K7: scd_type==0 no tiene semántica propia en Kettle — colapsa a 1."""
+    assert derive_dimension_loader_step(0) == "DimensionLookup"
+    assert derive_dimension_loader_step(1) == "DimensionLookup"
+    assert derive_dimension_loader_step(2) == "DimensionLookup"
 
 
 def test_matching_step_is_left_untouched():
@@ -48,82 +68,70 @@ def test_matching_step_is_left_untouched():
     assert ktr_data["steps"][0]["type"] == "DimensionLookup"
 
 
-def test_dimension_lookup_downgraded_to_combination_when_scd_type_not_2():
-    """Downgrade seguro: CombinationLookup es un subconjunto del config de
-    DimensionLookup — no hace falta inventar nada para corregirlo."""
+def test_combination_lookup_loader_repaired_to_dimension_lookup():
+    """INVERTIDO (D44/D51): antes esta dirección (DimensionLookup ->
+    CombinationLookup) era el downgrade seguro; ahora es al revés —
+    CombinationLookup se repara a DimensionLookup sintetizando fields (con
+    modo por atributo)/date_from/date_to/version_field desde el contrato,
+    que ya los declara completos (V1/V3, prompt_validacion_src.txt)."""
     ktr_data = {
         "steps": [
-            {"name": "Cargar dim_pais", "type": "DimensionLookup",
+            {"name": "Cargar dim_pais", "type": "CombinationLookup",
              "config": {
-                 "table": "dim_pais", "connection": "conn_dwh", "returnfield": "sk_pais",
-                 "keys": [{"stream_field": "pais_id", "table_field": "id_pais_origen"}],
-                 "fields": [{"stream_field": "nombre", "table_field": "nombre", "type": "Insert"}],
-                 "date_from": "fecha_inicio", "date_to": "fecha_fin",
+                 "table": "dim_pais", "connection": "conn_dwh", "return_field": "sk_pais",
+                 "keys": [{"stream": "pais_id", "lookup": "id_pais_origen"}],
              }},
         ],
     }
-    contracts = [_FakeDimContract("dim_pais", 1)]
+    contracts = [_FakeDimContract(
+        "dim_pais", 1,
+        technical_key="sk_pais", version_field="version",
+        date_from="fecha_inicio", date_to="fecha_fin",
+        attributes_scd1=["nombre"], attributes_scd2=[],
+    )]
 
     results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
 
     step = ktr_data["steps"][0]
-    assert step["type"] == "CombinationLookup"
-    assert "keys" in step["config"]
-    assert "fields" not in step["config"]
-    assert "date_from" not in step["config"]
+    assert step["type"] == "DimensionLookup"
+    assert step["config"]["update"] == "Y"
+    assert step["config"]["date_from"] == "fecha_inicio"
+    assert step["config"]["date_to"] == "fecha_fin"
+    assert step["config"]["version_field"] == "version"
+    assert step["config"]["keys"] == [{"stream": "pais_id", "lookup": "id_pais_origen"}]  # preservado, no reconstruido
+    assert step["config"]["fields"] == [{"stream_field": "nombre", "table_field": "nombre", "type": "Update"}]
     assert len(results) == 1
     assert results[0]["tipo"] == "warning"
     assert results[0]["campo"] == "dim_pais"
 
 
-def test_combination_lookup_where_dimension_lookup_required_is_reported_not_fixed():
-    """No hay downgrade seguro en esta dirección: faltarían fields/date_from/
-    date_to que nadie puede inventar sin criterio de negocio — se reporta,
-    no se repara (mismo principio que check_missing_required_fields)."""
+def test_registered_override_keeps_combination_lookup():
+    """Con override registrado, el auto-fix NO se aplica — el step queda
+    como el modelo lo declaró explícitamente."""
     ktr_data = {
         "steps": [
-            {"name": "Cargar dim_cliente", "type": "CombinationLookup",
-             "config": {
-                 "table": "dim_cliente", "connection": "conn_dwh", "return_field": "sk_cliente",
-                 "keys": [{"stream_field": "cliente_id", "table_field": "id_cliente_origen"}],
-             }},
-        ],
-    }
-    contracts = [_FakeDimContract("dim_cliente", 2)]
-
-    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
-
-    assert ktr_data["steps"][0]["type"] == "CombinationLookup"  # sin tocar
-    assert len(results) == 1
-    assert results[0]["tipo"] == "error"
-    assert results[0]["campo"] == "dim_cliente"
-
-
-def test_registered_override_is_respected():
-    ktr_data = {
-        "steps": [
-            {"name": "Cargar dim_pais", "type": "DimensionLookup",
-             "config": {"table": "dim_pais", "connection": "conn_dwh", "returnfield": "sk_pais"}},
+            {"name": "Cargar dim_pais", "type": "CombinationLookup",
+             "config": {"table": "dim_pais", "connection": "conn_dwh", "return_field": "sk_pais"}},
         ],
     }
     contracts = [_FakeDimContract("dim_pais", 1)]
     validaciones = [{
         "tipo": "info", "campo": "dim_pais",
-        "mensaje": f"{OVERRIDE_STEP_PREFIX}DimensionLookup — motivo: hechos huérfanos necesitan fila desconocido.",
+        "mensaje": f"{OVERRIDE_STEP_PREFIX}CombinationLookup — motivo: dimensión junk, no mantiene atributos a propósito.",
     }]
 
     results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, validaciones)
 
     assert results == []
-    assert ktr_data["steps"][0]["type"] == "DimensionLookup"  # respetado, no degradado
+    assert ktr_data["steps"][0]["type"] == "CombinationLookup"  # respetado, no reparado
 
 
 def test_override_for_different_table_does_not_apply():
     """El override es por tabla — uno registrado para otra dimensión no exime a esta."""
     ktr_data = {
         "steps": [
-            {"name": "Cargar dim_pais", "type": "DimensionLookup",
-             "config": {"table": "dim_pais", "connection": "conn_dwh", "returnfield": "sk_pais"}},
+            {"name": "Cargar dim_pais", "type": "CombinationLookup",
+             "config": {"table": "dim_pais", "connection": "conn_dwh", "return_field": "sk_pais"}},
         ],
     }
     contracts = [_FakeDimContract("dim_pais", 1)]
@@ -131,7 +139,7 @@ def test_override_for_different_table_does_not_apply():
 
     results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, validaciones)
 
-    assert ktr_data["steps"][0]["type"] == "CombinationLookup"
+    assert ktr_data["steps"][0]["type"] == "DimensionLookup"
     assert len(results) == 1
 
 
@@ -150,6 +158,24 @@ def test_table_not_in_dim_contracts_is_ignored():
 def test_no_dim_contracts_short_circuits():
     ktr_data = {"steps": [{"name": "x", "type": "DimensionLookup", "config": {"table": "dim_x"}}]}
     assert enforce_dimension_step_policy(ktr_data, [], STEP_TYPE_ALIASES, []) == []
+
+
+def test_step_type_outside_dimension_vocabulary_is_reported_not_fixed():
+    """Un tipo totalmente ajeno (ni DimensionLookup ni CombinationLookup)
+    sobre una tabla de dim_contracts sigue sin corrección automática."""
+    ktr_data = {
+        "steps": [
+            {"name": "Cargar dim_pais", "type": "InsertUpdate",
+             "config": {"table": "dim_pais", "connection": "conn_dwh"}},
+        ],
+    }
+    contracts = [_FakeDimContract("dim_pais", 1)]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    assert ktr_data["steps"][0]["type"] == "InsertUpdate"  # sin tocar
+    assert len(results) == 1
+    assert results[0]["tipo"] == "error"
 
 
 # ─── D16 — role_of_dimension_step + Paso 4 (loader vs. fact-lookup) ─────────
@@ -224,22 +250,49 @@ def test_enforce_dimension_step_policy_already_readonly_is_left_untouched():
     assert results == []
 
 
-def test_enforce_dimension_step_policy_reports_not_repairs_fact_lookup_scd1():
-    """scd_type sin versionar: no hay date_from/date_to seguras para forzar
-    DimensionLookup+update=N — se reporta (no se repara), D16 residual."""
+def test_enforce_dimension_step_policy_repairs_fact_lookup_scd1():
+    """INVERTIDO (D44/D51/R-K2): antes (D16 residual) esto se reportaba sin
+    reparar porque CombinationLookup no tenía modo solo-lectura y
+    DimensionLookup+update=N se consideraba inseguro sin historial real.
+    R-K2 (rango [date_from, date_to) resuelve bien incluso sin historial)
+    cierra ese residual — ahora se repara igual que scd_type==2."""
     ktr_data = _err1_like_ktr()
-    contracts = [_FakeDimContract("dim_producto", 1)]  # SCD1 -> CombinationLookup esperado
+    contracts = [_FakeDimContract("dim_producto", 1)]  # SCD1 -> igual DimensionLookup (D44)
 
     results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
 
     lookup = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
-    assert lookup["type"] == "DimensionLookup"  # sin tocar — no repara
-    fact_lookup_errors = [r for r in results if r["tipo"] == "error" and "lookup de FK" in r["mensaje"]]
-    assert len(fact_lookup_errors) == 1
-    # El mensaje apunta al fix concreto (TableInput+StreamLookup, ver system_etl.txt),
-    # no a "revisar a mano" genérico — residual cerrado del lado de guía, D16.
-    assert "TableInput" in fact_lookup_errors[0]["mensaje"]
-    assert "StreamLookup" in fact_lookup_errors[0]["mensaje"]
+    assert lookup["type"] == "DimensionLookup"
+    assert lookup["config"]["update"] == "N"  # reparado, no solo reportado
+    assert any(r["tipo"] == "warning" and "solo lectura" in r["mensaje"] for r in results)
+    assert not any(r["tipo"] == "error" for r in results)
+
+
+def test_enforce_dimension_step_policy_repairs_combination_lookup_fact_lookup_role():
+    """Caso nuevo (D44/D51): el rol fact_lookup con CombinationLookup (que
+    nunca tuvo modo solo-lectura) también se repara, sintetizando el
+    DimensionLookup(update=N) equivalente desde el contrato — antes esta
+    combinación no estaba cubierta en absoluto (D16 residual la excluía)."""
+    ktr_data = _err1_like_ktr()
+    for step in ktr_data["steps"]:
+        if step["name"] == "Lookup Dim Producto":
+            step["type"] = "CombinationLookup"
+            step["config"] = {
+                "table": "dim_producto", "connection": "conn_dwh", "return_field": "sk_producto",
+                "keys": [{"stream": "id_producto", "lookup": "id_producto"}],
+            }
+    contracts = [_FakeDimContract("dim_producto", 1, technical_key="sk_producto")]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    lookup = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
+    assert lookup["type"] == "DimensionLookup"
+    assert lookup["config"]["update"] == "N"
+    assert "fields" not in lookup["config"]  # solo-lectura: no hace falta modo por atributo
+    assert lookup["config"]["date_from"] == "fecha_inicio"
+    assert lookup["config"]["date_to"] == "fecha_fin"
+    assert len(results) == 1
+    assert results[0]["tipo"] == "warning"
 
 
 def test_enforce_dimension_step_policy_respects_override_for_fact_lookup_role():

@@ -32,7 +32,12 @@ def _step_MergeJoin(el: Element, cfg: dict) -> None:
 
 
 def _step_DimensionLookup(el: Element, cfg: dict) -> None:
-    logger.warning("### DIMLOOKUP_MARKER — cfg recibido: %s ###", cfg)
+    # D44/D51/R-K7: los defaults de abajo (date_from/date_to/fields[].type)
+    # son red de contención del EMISOR — nunca deberían ejercerse en un .ktr
+    # sano. validators/dimension_lookup_fields.py corre ANTES (pre-emisión) y
+    # reporta severidad error si faltan, para que el hueco no llegue acá en
+    # silencio (ver ese módulo para el porqué: Kettle cae silenciosamente en
+    # semántica SCD2 ante un date_from/date_to/type ausente o no reconocido).
     table        = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or ""
     return_field = (cfg.get("return_field") or cfg.get("returnfield") or
                     cfg.get("sk_field") or cfg.get("surrogate_key") or "id_sk")

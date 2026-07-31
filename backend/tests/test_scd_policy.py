@@ -7,27 +7,86 @@ mecánicas y estructurales no dependan del modelo.
 from __future__ import annotations
 
 from app.domain.scd import (
+    ATTRIBUTE_UPDATE_TYPE_CODES,
     ScdVerdict,
     classify_scd_candidates,
-    derive_dimension_step_type,
+    derive_attribute_update_mode,
+    derive_dimension_loader_step,
+    derive_fact_lookup_step,
     detect_history_intent,
+    is_calendar_dimension,
 )
 from app.services.ktr_builder import dimension_step_policy
 
 
-# ─── Reexportación (D37): dimension_step_policy no debe bifurcar la función ───
+# ─── Reexportación (D44/D51): dimension_step_policy no debe bifurcar la función ───
 
-def test_derive_dimension_step_type_reexport_is_same_object():
-    assert dimension_step_policy.derive_dimension_step_type is derive_dimension_step_type
-
-
-def test_scd2_still_derives_dimension_lookup():
-    assert derive_dimension_step_type(2) == "DimensionLookup"
+def test_derive_dimension_loader_step_reexport_is_same_object():
+    assert dimension_step_policy.derive_dimension_loader_step is derive_dimension_loader_step
 
 
-def test_scd1_and_scd0_still_derive_combination_lookup():
-    assert derive_dimension_step_type(1) == "CombinationLookup"
-    assert derive_dimension_step_type(0) == "CombinationLookup"
+def test_derive_fact_lookup_step_reexport_is_same_object():
+    assert dimension_step_policy.derive_fact_lookup_step is derive_fact_lookup_step
+
+
+def test_derive_attribute_update_mode_reexport_is_same_object():
+    assert dimension_step_policy.derive_attribute_update_mode is derive_attribute_update_mode
+
+
+# ─── D44/D51/R-K7: vocabulario uniforme por rol — un solo step para TODO scd_type ───
+
+def test_loader_step_is_dimension_lookup_for_every_scd_type():
+    """R-K7 Postura A: scd_type==0 no tiene semántica propia en Kettle
+    (ningún modo de atributo significa 'no tocar si ya existe') — colapsa a
+    la misma configuración que scd_type==1. CombinationLookup sale de la
+    derivación por defecto (D44) — solo alcanzable vía override registrado."""
+    assert derive_dimension_loader_step(0) == "DimensionLookup"
+    assert derive_dimension_loader_step(1) == "DimensionLookup"
+    assert derive_dimension_loader_step(2) == "DimensionLookup"
+
+
+def test_fact_lookup_step_is_dimension_lookup_for_every_scd_type():
+    """R-K2: el rango [date_from, date_to) resuelve bien incluso en una
+    dimensión sin historial real — ya no hay excepción TableInput+StreamLookup
+    para scd_type 0/1 (D16 residual, cerrado)."""
+    assert derive_fact_lookup_step(0) == "DimensionLookup"
+    assert derive_fact_lookup_step(1) == "DimensionLookup"
+    assert derive_fact_lookup_step(2) == "DimensionLookup"
+
+
+def test_attribute_update_mode_scd2_is_insert_rest_is_update():
+    """S-8: el modo es propiedad del ATRIBUTO, no de la dimensión."""
+    assert derive_attribute_update_mode("categoria", attributes_scd1=[], attributes_scd2=["categoria"]) == "Insert"
+    assert derive_attribute_update_mode("nombre", attributes_scd1=["nombre"], attributes_scd2=["categoria"]) == "Update"
+    # scd_type==0 colapsado a 1: TODO atributo no-clave cae acá (ninguno en attributes_scd2).
+    assert derive_attribute_update_mode("anio", attributes_scd1=["anio", "mes"], attributes_scd2=[]) == "Update"
+
+
+def test_attribute_update_type_codes_matches_kettle_source():
+    """R-K7: DimensionLookupMeta.getUpdateType() typeCodes — cualquier literal
+    fuera de esta lista cae silenciosamente en 'Insert' (Kettle), sin error."""
+    assert ATTRIBUTE_UPDATE_TYPE_CODES == (
+        "Insert", "Update", "Punch through",
+        "DateInsertedOrUpdated", "DateInserted", "DateUpdated", "LastVersion",
+    )
+
+
+# ─── is_calendar_dimension: predicado único (D51), reusado por el guard de contrato ───
+
+def test_is_calendar_dimension_matches_name_single_key_date_type():
+    assert is_calendar_dimension("dim_fecha", ["fecha"], ["fecha"]) is True
+
+
+def test_is_calendar_dimension_false_without_name_match():
+    assert is_calendar_dimension("dim_cliente", ["id_cliente_origen"], ["cliente_fecha_alta"]) is False
+
+
+def test_is_calendar_dimension_false_with_two_keys():
+    assert is_calendar_dimension("dim_tiempo", ["fecha", "turno"], ["fecha"]) is False
+
+
+def test_is_calendar_dimension_false_when_key_not_date_typed():
+    assert is_calendar_dimension("dim_fecha", ["fecha"], []) is False
 
 
 # ─── Regla 0: sin clave natural durable ───────────────────────────────────────

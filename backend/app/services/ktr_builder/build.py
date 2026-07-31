@@ -23,6 +23,17 @@ from app.services.ktr_builder.connection import (
     build_kettle_properties_template,
 )
 from app.services.ktr_builder.contracts import ConfigParseError, missing_required_keys, normalize_config, parse_cfg
+from app.services.ktr_builder.error_catalog_checks import (
+    ERROR_CATALOG_PREFIX,
+    parse_ktr,
+    v4_select_values_sin_entradas,
+    v5_dimension_lookup_columnas_tecnicas,
+    v6_insert_update_mapeos,
+    v7_fact_table_output_sin_clave,
+    v8_truncate_sin_transaccional,
+    v11_monetario_sin_bignumber,
+    v13_lookup_key_incompleta,
+)
 from app.services.ktr_builder.fields_validate import (
     FIELD_INTEGRITY_PREFIX,
     repair_select_values_narrowing,
@@ -34,7 +45,7 @@ from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.step_emitters import STEP_BUILDERS, unmapped_config_keys
 from app.services.ktr_builder.step_types import _CRITICAL_FIELDS, STEP_TYPE_ALIASES
 from app.services.ktr_builder.validate import _validate_ktr
-from app.services.ktr_builder.validators import ValidationContext, run_passes
+from app.services.ktr_builder.validators import ValidationContext, run_passes, split_findings_by_severity
 from app.services.ktr_default_validator import (
     check_missing_required_fields,
     scrub_function_default_constants,
@@ -156,7 +167,7 @@ def build_ktr(
         else frozenset(k.lower() for k in (required_columns_by_table or {})),
     )
     table_findings = run_passes(table_ctx)
-    cfg_parse_warnings.extend(f.message for f in table_findings)
+    cfg_parse_warnings.extend(split_findings_by_severity(table_findings))
 
     warnings = cfg_parse_warnings + _validate_ktr(ktr_data)
     for w in warnings:
@@ -428,5 +439,31 @@ def build_ktr(
     # strict_connections) ya NO está en esa lista de fatales (D15) — vuelve acá
     # como warning y se anota junto con el resto en vez de abortar la emisión.
     warnings.extend(validate_ktr_xml(ktr_xml, strict_connections=strict_connections))
+
+    # Fase 0 (docs/refactor/03c-investigacion-vocabulario-dimension-kettle.md,
+    # D50 en 02-decisiones.md): catálogo E1-E14 sobre el XML YA serializado --
+    # "anota, no aborta", nunca level de KtrBuilderError. ddl_columns es
+    # best-effort: reusa required_columns_by_table (columnas NOT NULL sin
+    # default, la única fuente de columnas reales que build_ktr ya recibe) --
+    # no es el DDL completo, así que V5/V6 solo pueden CONFIRMAR una columna
+    # ahí presente, nunca objetar una columna real ausente de esa lista
+    # parcial. v8 entra cableado (a diferencia de lo que anticipaba el plan
+    # antes de cerrar Fase 1): R-K5 confirmó que <unique_connections> es el
+    # flag real, no un proxy -- ver docstring de v8_truncate_sin_transaccional.
+    ddl_columns = {t: set(cols) for t, cols in (required_columns_by_table or {}).items()}
+    catalog_root = parse_ktr(ktr_xml)
+    catalog_findings = [
+        *v4_select_values_sin_entradas(catalog_root),
+        *v5_dimension_lookup_columnas_tecnicas(catalog_root, ddl_columns),
+        *v6_insert_update_mapeos(catalog_root, ddl_columns),
+        *v7_fact_table_output_sin_clave(catalog_root),
+        *v8_truncate_sin_transaccional(catalog_root),
+        *v11_monetario_sin_bignumber(catalog_root),
+        *v13_lookup_key_incompleta(catalog_root),
+    ]
+    warnings.extend(
+        f"{ERROR_CATALOG_PREFIX}[{f.rule}/{f.error}] {f.step}: {f.message}"
+        for f in catalog_findings
+    )
 
     return ktr_xml, filename, warnings

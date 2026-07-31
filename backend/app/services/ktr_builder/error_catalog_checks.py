@@ -5,8 +5,10 @@ serializado. NO confundir con app.services.ktr_xml_validator (validate_ktr_xml
 build_ktr() (conexión GENERIC sin driver, step sin fields, hop huérfano) y
 FALLA duro. Este módulo es más angosto y más lento en volverse obsoleto: cada
 V-función corresponde a UN error puntual del catálogo (V4->E1, V5->E2, etc.),
-devuelve list[Finding] en vez de lanzar, y no está wireado a build_ktr() --
-corre standalone como diagnóstico (ver FASE 1/2/3 del trabajo que lo originó).
+devuelve list[Finding] en vez de lanzar. Cableado a build_ktr() desde Fase 0
+de docs/refactor/03c-investigacion-vocabulario-dimension-kettle.md (D50,
+docs/refactor/02-decisiones.md): "anota, no aborta" -- cada Finding llega a
+`warnings` con ERROR_CATALOG_PREFIX, nunca corta la emisión del .ktr.
 
 Cada V-función es pura: recibe el <transformation> ya parseado con
 xml.etree y devuelve list[Finding], sin logging ni mutación.
@@ -47,6 +49,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from xml.etree import ElementTree as ET
+
+ERROR_CATALOG_PREFIX = "[Catálogo de errores KTR] "
 
 MONEY_FIELD_HINTS = (
     "importe", "precio", "monto", "total", "subtotal", "valor", "costo", "price", "amount",

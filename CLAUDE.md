@@ -19,6 +19,7 @@ El sistema hoy fuerza todo ETL a 2 KTR fijos (Origen→STG, STG→DWH) + 1 KJB. 
 | ¿Cómo llegamos hasta acá? | `docs/refactor/03b-reportes.md` |
 | ¿Qué quedó sin verificar contra una corrida real? | `docs/refactor/04-verificacion.md` |
 | ¿Qué falla en más de un módulo a la vez? | `docs/refactor/05-transversales.md` |
+| ¿Qué le falta al contrato de DDL que el sistema exige/genera? | `docs/refactor/06-contrato-ddl.md` |
 | ¿Cuál es la arquitectura objetivo? | `docs/arquitectura-objetivo.md` (Track A, migración aparte, hoy mayormente pospuesta — la estructura `api/schemas/services/domain/ports/infrastructure/core` casi no está aplicada, con una excepción: `backend/app/domain/` existe físicamente desde D27, `02-decisiones.md`. El mapa capa↔directorio-actual vive en `arquitectura-objetivo.md`). Andamiaje ya escrito sin mover código: `backend/app/README.md` + un `README.md` por carpeta/subpaquete (capa, qué entra/sale, qué NO va ahí), y `backend/tests/test_architecture_layers.py` (test AST en modo "no empeorar" — R1/R3/R4 en un recorte acotado, ver su docstring) + `backend/tests/test_pdi_step_coherence.py` (coherencia prompt↔alias↔builder de PDI) |
 | ¿Qué es dominio y qué es infraestructura cuando no es obvio? | Ver "Criterio de capas: dominio vs. infraestructura" acá abajo — regla direccional + el criterio específico de este proyecto (vocabulario PDI es dominio) |
 
