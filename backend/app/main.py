@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import settings
 from app.core.log_filters import PasswordFilter
 from app.routers import ai, connections, schema
 from app.routers import etl as etl_router
@@ -106,7 +107,7 @@ app = FastAPI(title="Acelerador ETL — API", version="0.1.0", lifespan=lifespan
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # frontend dev
+    allow_origins=settings.allowed_origins_list,  # dev: localhost:5173; prod: dominio de Vercel (ALLOWED_ORIGINS)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

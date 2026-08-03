@@ -1,4 +1,6 @@
-export const API = "http://localhost:8000";
+// Base del backend: VITE_API_BASE en producción (URL de Railway), fallback a
+// localhost para desarrollo. Mismo criterio que api/connections.js y api/schema.js.
+export const API = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
 // timeoutMs es opcional — sin él, fetch espera indefinidamente (comportamiento
 // previo, usado por polling y flujos en background). Pasarlo en llamadas
