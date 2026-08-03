@@ -164,6 +164,18 @@ def _step_ExcelInput(el: Element, cfg: dict) -> None:
     _sub(el, "accept_filenames", "N")
     _sub(el, "accept_field")
     _sub(el, "accept_stepname")
+    # ExcelInputMeta.readData(): SpreadSheetType.valueOf(getTagValue(...)) --
+    # tag ausente o no-parseable cae, en un catch, a SpreadSheetType.JXL (motor
+    # legado que no lee .xlsx). El emisor nunca lo escribía, así que todo
+    # ExcelInput caía siempre a JXL sin importar el archivo real
+    # (docs/refactor/investigacion-tags-validos-por-step.md § A.6). Valores
+    # reales del enum: JXL, POI, SAX_POI, ODS (SpreadSheetType.java). Por
+    # extensión: .xls -> JXL (el motor que sí lo lee), cualquier otro caso
+    # (.xlsx/.xlsm/sin extensión) -> POI, que sí lee Excel 2007+.
+    spreadsheet_type = str(cfg.get("spreadsheet_type", "")).strip().upper()
+    if spreadsheet_type not in ("JXL", "POI", "SAX_POI", "ODS"):
+        spreadsheet_type = "JXL" if filename.lower().endswith(".xls") else "POI"
+    _sub(el, "spreadsheet_type", spreadsheet_type)
 
     file_el = SubElement(el, "file")
     _sub(file_el, "name",               filename)

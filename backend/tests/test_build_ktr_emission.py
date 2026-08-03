@@ -373,3 +373,26 @@ def test_unique_emits_case_insensitive_tag_with_correct_polarity():
     fields = step.findall("fields/field")
     assert fields[0].findtext("case_insensitive") == "N"
     assert fields[1].findtext("case_insensitive") == "N"
+
+
+def test_excel_input_emits_spreadsheet_type_by_extension():
+    """E-06 (investigacion-tags-validos-por-step.md § A.6) --
+    ExcelInputMeta.readData() cae a SpreadSheetType.JXL (motor legado, no lee
+    .xlsx) cuando 'spreadsheet_type' está ausente o no matchea el enum real
+    (JXL/POI/SAX_POI/ODS). El emisor nunca lo escribía."""
+    ktr_data = _minimal_ktr(
+        steps=[
+            {
+                "name": "Leer Ventas Xlsx", "type": "ExcelInput",
+                "config": {"filename": "ventas.xlsx", "fields": [{"name": "id"}]},
+            },
+            {
+                "name": "Leer Ventas Xls", "type": "ExcelInput",
+                "config": {"filename": "ventas.xls", "fields": [{"name": "id"}]},
+            },
+        ],
+        hops=[],
+    )
+    xml, _, _ = build_ktr(ktr_data)
+    assert _find_step(xml, "Leer Ventas Xlsx").findtext("spreadsheet_type") == "POI"
+    assert _find_step(xml, "Leer Ventas Xls").findtext("spreadsheet_type") == "JXL"
