@@ -38,7 +38,6 @@ import logging
 
 from app.domain.scd import (
     ATTRIBUTE_UPDATE_TYPE_CODES,
-    VALUE_META_TYPE_NAMES,
     derive_attribute_update_mode,
     derive_dimension_loader_step,
     derive_fact_lookup_step,
@@ -48,8 +47,6 @@ from app.services.ktr_builder.contracts import normalize_config, parse_cfg
 from app.services.ktr_builder.fields_validate import upstream_fields_for_step
 
 logger = logging.getLogger(__name__)
-
-_VALID_VALUE_META_NAMES = {c.lower() for c in VALUE_META_TYPE_NAMES}
 
 __all__ = [
     "OVERRIDE_STEP_PREFIX",
@@ -539,32 +536,19 @@ def enforce_dimension_step_policy(
                     and str(cfg.get("update", "Y")).strip().upper() == "N"
                 )
                 if already_readonly:
-                    # D58: mismo defecto de clase que H51 (continue mudo de
-                    # la línea ~329 antes de su fix) y que D57 ya cerró para
-                    # el branch de reclasificación de abajo — acá el step ya
-                    # llegó en modo N, pero eso no garantiza que 'fields'
-                    # tenga vocabulario de modo N (D-1). No se repara (no hay
-                    # contrato para inventar qué hacer con columnas de
-                    # retorno legítimas en modo N, D5/D45 pt.1 "reporta, no
-                    # repara") — se valida y se reporta si está cruzado, en
-                    # vez de dar el step por bueno en silencio.
-                    crossed = [
-                        f.get("stream_field") or f.get("stream") or f.get("name") or "?"
-                        for f in (cfg.get("fields") or [])
-                        if str(f.get("type") or "").strip().lower() not in _VALID_VALUE_META_NAMES
-                    ]
-                    if crossed:
-                        results.append({
-                            "tipo": "error",
-                            "campo": table,
-                            "mensaje": (
-                                f"Step '{step.get('name')}' para '{table}': ya en modo N (solo lectura), "
-                                f"pero {len(crossed)} campo(s) en 'fields' ({', '.join(crossed)}) usa(n) "
-                                "vocabulario fuera de modo N (String/Number/Integer/BigNumber/Date/"
-                                "Boolean/Binary/Timestamp) — vocabulario cruzado (D-1), no corregido "
-                                "automáticamente."
-                            ),
-                        })
+                    # D58/D60 (Bloque 1, 10-estabilizar-emision.md § Alcance
+                    # punto 2): acá el step ya llegó en modo N, pero eso no
+                    # garantiza que 'fields' tenga vocabulario de modo N (D-1).
+                    # No se repara (no hay contrato para inventar qué hacer con
+                    # columnas de retorno legítimas en modo N, D5/D45 pt.1
+                    # "reporta, no repara"). El chequeo de vocabulario cruzado
+                    # para ESTE caso vivía acá duplicado con
+                    # validators/dimension_lookup_fields.py::check_dimension_lookup_fields
+                    # — ese pass corre incondicional en build_ktr() para TODO
+                    # DimensionLookup (ambos modos), así que reportaba el mismo
+                    # step con otra redacción. Canal canónico decidido: el
+                    # validador (corre sobre el cfg final, cubre modo Y y N).
+                    # Este bloque ya no repite el chequeo.
                     continue
                 if canonical == "CombinationLookup":
                     # D44/D51: CombinationLookup no tiene modo solo-lectura —

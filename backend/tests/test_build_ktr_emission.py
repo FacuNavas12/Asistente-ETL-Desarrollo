@@ -13,11 +13,8 @@ from __future__ import annotations
 
 from xml.etree import ElementTree as ET
 
-import pytest
-
 from app.domain.scd import ATTRIBUTE_UPDATE_TYPE_CODES, VALUE_META_TYPE_NAMES
 from app.services.ktr_builder import build_ktr
-from app.services.ktr_builder.common import KtrBuilderError
 from app.services.ktr_builder.dimension_step_policy import enforce_dimension_step_policy
 from app.services.ktr_builder.validators import ValidationContext
 from app.services.ktr_builder.validators.dimension_lookup_fields import check_dimension_lookup_fields
@@ -132,10 +129,13 @@ def test_concat_fields_emits_nested_concatfields_block():
     assert concat_el.findtext("removeSelectedFields") == "N"
 
 
-def test_cross_vocabulary_dimension_lookup_raises_and_validator_flags_error():
-    """REV3: modo N + type='Insert' (vocabulario Y-mode) — el emisor no debe
-    dejarlo pasar (KtrBuilderError), y check_dimension_lookup_fields() debe
-    reportarlo por separado (severity='error'), los dos gates cubiertos."""
+def test_cross_vocabulary_dimension_lookup_emits_literal_and_validator_flags_error():
+    """D60 (Sitio 4, docs/refactor/02-decisiones.md): modo N + type='Insert'
+    (vocabulario Y-mode) — nunca abortar todo el build por el contenido de un
+    step. build_ktr() emite el 'type' literal tal como llegó (sin coaccionar
+    a un valor 'corregido') y check_dimension_lookup_fields() reporta el
+    vocabulario cruzado por separado (severity='error'), citando el efecto
+    real en Kettle — canal canónico decidido en D60 Bloque 1."""
     ktr_data = _minimal_ktr(
         steps=[
             {
@@ -152,12 +152,14 @@ def test_cross_vocabulary_dimension_lookup_raises_and_validator_flags_error():
         hops=[],
     )
 
-    with pytest.raises(KtrBuilderError):
-        build_ktr(ktr_data)
+    xml, _, _ = build_ktr(ktr_data)  # no debe levantar KtrBuilderError
+    step = _find_step(xml, "Lookup Dim Producto")
+    field = step.find("fields/field")
+    assert field.findtext("update") == "Insert"  # literal, no coaccionado
 
     ctx = ValidationContext(ktr_data, STEP_TYPE_ALIASES, frozenset())
     findings = check_dimension_lookup_fields(ctx)
-    assert any(f.severity == "error" for f in findings)
+    assert any(f.severity == "error" and "TYPE_NONE" in f.message for f in findings)
 
 
 def test_policy_reclassified_fact_lookup_does_not_emit_crossed_vocabulary():

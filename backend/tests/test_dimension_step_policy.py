@@ -456,12 +456,16 @@ def test_single_dimension_lookup_step_per_table_resolves_loader_not_fact_lookup(
 
 # ─── D58 — already_readonly ya no da por bueno el vocabulario en silencio ───
 
-def test_already_readonly_fact_lookup_with_crossed_vocabulary_reports_error():
-    """D58: rol fact_lookup genuino (2 steps candidatos para dim_producto,
-    BFS legítimamente aplicable) que llega YA en update=N pero con 'fields'
-    heredado en vocabulario modo Y — antes de este fix, 'already_readonly'
-    cortaba con `continue` mudo sin mirar 'fields'. Ahora valida y reporta
-    error; no repara (sin contrato para saber qué hacer con esas columnas)."""
+def test_already_readonly_fact_lookup_with_crossed_vocabulary_is_left_untouched():
+    """D58/D60 (Bloque 1, docs/refactor/02-decisiones.md): rol fact_lookup
+    genuino (2 steps candidatos para dim_producto, BFS legítimamente
+    aplicable) que llega YA en update=N pero con 'fields' heredado en
+    vocabulario modo Y — 'already_readonly' corta con `continue` sin tocar
+    'fields' (no hay contrato para saber qué hacer con esas columnas) y SIN
+    reportar acá: el reporte de vocabulario cruzado es responsabilidad única
+    de validators/dimension_lookup_fields.py (canal canónico decidido en D60
+    para evitar el mismo problema reportado dos veces con dos redacciones —
+    ver test_dimension_lookup_fields.py para la cobertura de ESE chequeo)."""
     ktr_data = _err1_like_ktr()
     lookup_step = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
     lookup_step["config"]["update"] = "N"
@@ -475,11 +479,8 @@ def test_already_readonly_fact_lookup_with_crossed_vocabulary_reports_error():
     lookup = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
     assert lookup["config"]["fields"] == [
         {"stream_field": "nombre", "table_field": "nombre", "type": "Update"},
-    ]  # no reparado, D58 solo valida y reporta
-    assert any(
-        r["tipo"] == "error" and "vocabulario cruzado" in r["mensaje"] and r["campo"] == "dim_producto"
-        for r in results
-    )
+    ]  # no reparado
+    assert not any(r["campo"] == "dim_producto" and "vocabulario cruzado" in r["mensaje"] for r in results)
 
 
 # ─── D58 (segunda vuelta) — 1 candidato no basta, tiene que traer los atributos

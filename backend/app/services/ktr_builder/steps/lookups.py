@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from xml.etree.ElementTree import Element, SubElement
 
-from app.domain.scd import ATTRIBUTE_UPDATE_TYPE_CODES, VALUE_META_TYPE_NAMES
-from app.services.ktr_builder.common import KtrBuilderError
 from app.services.ktr_builder.xml_helpers import _sub
 
 logger = logging.getLogger(__name__)
@@ -76,25 +74,18 @@ def _step_DimensionLookup(el: Element, cfg: dict) -> None:
         # LLM puede usar stream/stream_field/name para el campo del stream
         _sub(ke, "name",   k.get("stream") or k.get("stream_field") or k.get("name", ""))
         _sub(ke, "lookup", k.get("lookup") or k.get("table_field") or k.get("name", ""))
-    # D-1: vocabulario válido por modo del step, no por si 'fields' está vacío
-    # (getFields() 776-803 de DimensionLookupMeta.java — en modo N, 'fields'
-    # es el mecanismo de retorno de columnas adicionales, no un residuo de
-    # modo loader). check_dimension_lookup_fields.py corre ANTES y ya debió
-    # reportar severity=error si el vocabulario no matchea el modo — este
-    # KtrBuilderError es la red de contención del emisor, no el gate normal.
-    valid_vocab = ATTRIBUTE_UPDATE_TYPE_CODES if step_update_mode == "Y" else VALUE_META_TYPE_NAMES
+    # D60 (docs/refactor/02-decisiones.md, Alcance punto 2 de
+    # 10-estabilizar-emision.md, Sitio 4): nunca abortar todo el build por el
+    # vocabulario de un campo. validators/dimension_lookup_fields.py corre
+    # ANTES (pre-emisión, incondicional para todo DimensionLookup) y reporta
+    # Finding(severity="error") si type no pertenece al vocabulario del modo
+    # asignado, citando el efecto real en Kettle. Este emisor ya no coacciona
+    # ni aborta — emite field_value tal como llegó, incluso si no matchea.
     for f in cfg.get("fields", []):
         field = SubElement(fe, "field")
         _sub(field, "name",   f.get("stream") or f.get("stream_field") or f.get("name", ""))
         _sub(field, "lookup", f.get("lookup") or f.get("table_field") or f.get("name", ""))
         field_value = f.get("type")
-        if field_value not in valid_vocab:
-            raise KtrBuilderError(
-                f"DimensionLookup '{el.findtext('name', '?')}': campo con type={field_value!r} fuera "
-                f"del vocabulario de modo {step_update_mode} ({', '.join(valid_vocab)}) — "
-                "check_dimension_lookup_fields.py debió reportar esto antes; no se emite XML con "
-                "vocabulario cruzado (D-1)."
-            )
         _sub(field, "update", field_value)
     # DimensionLookupMeta espera <date><name>/<from>/<to></date> (readData L920-923).
     # "name" = campo stream con la fecha de referencia; vacío = usa fecha de

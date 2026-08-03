@@ -67,9 +67,27 @@ def check_dimension_lookup_fields(ctx: ValidationContext) -> list[Finding]:
         step_update_mode = "Y" if str(cfg.get("update", "Y")).strip().upper() != "N" else "N"
         valid_vocab = _VALID_TYPE_CODES if step_update_mode == "Y" else _VALID_VALUE_META_NAMES
         vocab_literals = ATTRIBUTE_UPDATE_TYPE_CODES if step_update_mode == "Y" else VALUE_META_TYPE_NAMES
+        # D60 (Bloque 0, 10-estabilizar-emision.md § Alcance punto 2): el
+        # efecto real en Kettle difiere por modo — getUpdateType()/
+        # getIdForValueMeta() (ambos equalsIgnoreCase/case-insensitive,
+        # verificado contra fuente) caen SILENCIOSAMENTE a un sentinel
+        # distinto según el modo cuando el literal no matchea.
+        effect = (
+            "cae SILENCIOSAMENTE a 'Insert' (TYPE_UPDATE_DIM_INSERT) — versiona "
+            "el atributo en vez del modo que se quiso, sin error ni warning en "
+            "Spoon (R-K7)."
+            if step_update_mode == "Y" else
+            "ValueMetaFactory.getIdForValueMeta() cae SILENCIOSAMENTE a TYPE_NONE "
+            "— Kettle trata la columna como si no tuviera value-meta reconocido."
+        )
 
         for f in cfg.get("fields", []):
             raw_field_type = f.get("type")
+            # D60 (Bloque 0, hueco 0a): el chequeo de vocabulario usa el valor
+            # SIN normalizar espacios — Kettle compara con equalsIgnoreCase(),
+            # que NO recorta whitespace, así que ' Insert' es tan inválido para
+            # Kettle como 'SCD1'. field_type (con .strip()) solo sirve para
+            # detectar ausencia real; stripped-y-vacío = "no vino nada".
             field_type = str(raw_field_type or "").strip()
             field_name = f.get("stream_field") or f.get("stream") or f.get("name") or "?"
             if not field_type:
@@ -78,16 +96,17 @@ def check_dimension_lookup_fields(ctx: ValidationContext) -> list[Finding]:
                     message=(
                         f"{DIMENSION_LOOKUP_FIELDS_PREFIX}Step '{step_name}' (modo {step_update_mode}), "
                         f"atributo '{field_name}': sin 'type' explícito. "
-                        f"Literales válidos para este modo: {', '.join(vocab_literals)}."
+                        f"Literales válidos para este modo: {', '.join(vocab_literals)}. "
+                        f"Efecto en Kettle si se emite así: {effect}"
                     ),
                 ))
-            elif field_type.lower() not in valid_vocab:
+            elif str(raw_field_type).lower() not in valid_vocab:
                 findings.append(Finding(
                     severity="error", step_name=step_name,
                     message=(
                         f"{DIMENSION_LOOKUP_FIELDS_PREFIX}Step '{step_name}' (modo {step_update_mode}), "
-                        f"atributo '{field_name}': type='{raw_field_type}' no pertenece al vocabulario de "
-                        f"este modo — {', '.join(vocab_literals)}."
+                        f"atributo '{field_name}': type={raw_field_type!r} no pertenece al vocabulario de "
+                        f"este modo — {', '.join(vocab_literals)}. Efecto en Kettle si se emite así: {effect}"
                     ),
                 ))
     return findings
