@@ -1,0 +1,90 @@
+{
+  "type": "etl_skeleton",
+  "version": "1.0",
+  "exportedAt": "2026-07-31T01:06:40.748Z",
+  "name": "Test-01_haiku_fase4",
+  "formData": {
+    "etlName": "Test-01_haiku_fase4",
+    "descripcionObjetivo": "Consolidar el catálogo de productos de una tienda online integrando las tablas de categorías y productos en un Data Warehouse para análisis de inventario: valor de stock por categoría, identificación de productos activos y comparación de precios unitarios.",
+    "origenTables": [
+      {
+        "tableName": "categorias",
+        "connection_id": "9ab7fbd2-6d4c-4026-82fb-bcf9ba8115f2",
+        "schema_name": "public",
+        "columns": [
+          {
+            "name": "cod_categoria",
+            "dataType": "string",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "nombre_categoria",
+            "dataType": "string",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          }
+        ]
+      },
+      {
+        "tableName": "productos",
+        "connection_id": "9ab7fbd2-6d4c-4026-82fb-bcf9ba8115f2",
+        "schema_name": "public",
+        "columns": [
+          {
+            "name": "cod_producto",
+            "dataType": "string",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "nombre_producto",
+            "dataType": "string",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "categoria",
+            "dataType": "string",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "precio_lista",
+            "dataType": "float",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "precio_unitario",
+            "dataType": "float",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "stock",
+            "dataType": "int",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "bk_producto",
+            "dataType": "string",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          }
+        ]
+      }
+    ],
+    "reglasNegocio": "1. Quitar precios negativos.\n\n2. Calcular el valor de inventario de cada producto como precio_unitario \\* stock.\n\n3. Generar una clave de negocio (BK) por producto concatenando cod_categoria y cod_producto separados por guion.\n\n4. Normalizar los nombres de columnas a snake_case, sin tildes ni espacios."
+  }
+}

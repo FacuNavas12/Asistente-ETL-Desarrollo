@@ -1,0 +1,5 @@
+Error al Inferir: Error al inferir estructuras: La respuesta del modelo no contiene stg_ddl o dwh_ddl.
+
+Code: no es un bug de tu código ni de orden de llamadas — es una diferencia real de garantías entre las dos APIs, y se nota más con un modelo chico (claude-haiku-4-5) en un schema grande (7 campos + array anidado con 11 campos c/u). Con Sonnet/Opus de Anthropic probablemente no lo verías tan seguido, pero seguís sin tener la garantía dura que sí tenés con Gemini.
+
+Voy a usar sonnet a partir de ahora.

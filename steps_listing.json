@@ -1,0 +1,2034 @@
+[
+  {
+    "name": "TransStepUtil.java",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/TransStepUtil.java",
+    "sha": "a8dc8d35d62a036b2e9e705fcbb6019ba250fd2b",
+    "size": 969,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/TransStepUtil.java?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/blob/master/engine/src/main/java/org/pentaho/di/trans/steps/TransStepUtil.java",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/blobs/a8dc8d35d62a036b2e9e705fcbb6019ba250fd2b",
+    "download_url": "https://raw.githubusercontent.com/pentaho/pentaho-kettle/master/engine/src/main/java/org/pentaho/di/trans/steps/TransStepUtil.java",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/TransStepUtil.java?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/blobs/a8dc8d35d62a036b2e9e705fcbb6019ba250fd2b",
+      "html": "https://github.com/pentaho/pentaho-kettle/blob/master/engine/src/main/java/org/pentaho/di/trans/steps/TransStepUtil.java"
+    }
+  },
+  {
+    "name": "calculator",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/calculator",
+    "sha": "37359dd67c1d454e611871f8c4c523f0efe56754",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/calculator?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/calculator",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/37359dd67c1d454e611871f8c4c523f0efe56754",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/calculator?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/37359dd67c1d454e611871f8c4c523f0efe56754",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/calculator"
+    }
+  },
+  {
+    "name": "common",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/common",
+    "sha": "4503d164385aad8ed34764ff0d61012113569e77",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/common?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/common",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/4503d164385aad8ed34764ff0d61012113569e77",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/common?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/4503d164385aad8ed34764ff0d61012113569e77",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/common"
+    }
+  },
+  {
+    "name": "constant",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/constant",
+    "sha": "09558a2858f3fef1b9cc5b67276fdb9ea6ed4160",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/constant?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/constant",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/09558a2858f3fef1b9cc5b67276fdb9ea6ed4160",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/constant?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/09558a2858f3fef1b9cc5b67276fdb9ea6ed4160",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/constant"
+    }
+  },
+  {
+    "name": "csvinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/csvinput",
+    "sha": "99b9c3bee7770a10c02167e5e3dd3168bb4740cb",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/csvinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/csvinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/99b9c3bee7770a10c02167e5e3dd3168bb4740cb",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/csvinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/99b9c3bee7770a10c02167e5e3dd3168bb4740cb",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/csvinput"
+    }
+  },
+  {
+    "name": "databasejoin",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/databasejoin",
+    "sha": "874e81536972d4cd5c4096747f156b9494ada9b1",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/databasejoin?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/databasejoin",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/874e81536972d4cd5c4096747f156b9494ada9b1",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/databasejoin?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/874e81536972d4cd5c4096747f156b9494ada9b1",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/databasejoin"
+    }
+  },
+  {
+    "name": "databaselookup",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/databaselookup",
+    "sha": "60f4f4668a7ac74751a46f19da0c9305b886d0d8",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/databaselookup?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/databaselookup",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/60f4f4668a7ac74751a46f19da0c9305b886d0d8",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/databaselookup?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/60f4f4668a7ac74751a46f19da0c9305b886d0d8",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/databaselookup"
+    }
+  },
+  {
+    "name": "datagrid",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/datagrid",
+    "sha": "54abd3773c381eda70efb647a1f5cc3c32a99ceb",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/datagrid?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/datagrid",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/54abd3773c381eda70efb647a1f5cc3c32a99ceb",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/datagrid?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/54abd3773c381eda70efb647a1f5cc3c32a99ceb",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/datagrid"
+    }
+  },
+  {
+    "name": "dbproc",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/dbproc",
+    "sha": "28484c0d728355b74b5bce5510931f9780ab9cc1",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/dbproc?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/dbproc",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/28484c0d728355b74b5bce5510931f9780ab9cc1",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/dbproc?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/28484c0d728355b74b5bce5510931f9780ab9cc1",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/dbproc"
+    }
+  },
+  {
+    "name": "delete",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/delete",
+    "sha": "69572e2e886b7e160a3eab45046ec169da228f7b",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/delete?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/delete",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/69572e2e886b7e160a3eab45046ec169da228f7b",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/delete?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/69572e2e886b7e160a3eab45046ec169da228f7b",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/delete"
+    }
+  },
+  {
+    "name": "denormaliser",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/denormaliser",
+    "sha": "c1526a3dc5f87df211ba48f8a4a348a0625a26d0",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/denormaliser?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/denormaliser",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c1526a3dc5f87df211ba48f8a4a348a0625a26d0",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/denormaliser?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c1526a3dc5f87df211ba48f8a4a348a0625a26d0",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/denormaliser"
+    }
+  },
+  {
+    "name": "detectemptystream",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/detectemptystream",
+    "sha": "73c244f425e4078d5b4e201d8da413d7d02f6bdd",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/detectemptystream?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/detectemptystream",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/73c244f425e4078d5b4e201d8da413d7d02f6bdd",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/detectemptystream?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/73c244f425e4078d5b4e201d8da413d7d02f6bdd",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/detectemptystream"
+    }
+  },
+  {
+    "name": "detectlastrow",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/detectlastrow",
+    "sha": "0ba8895b4708e0c62d9925f8c0c4a8c46c63ca54",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/detectlastrow?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/detectlastrow",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0ba8895b4708e0c62d9925f8c0c4a8c46c63ca54",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/detectlastrow?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0ba8895b4708e0c62d9925f8c0c4a8c46c63ca54",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/detectlastrow"
+    }
+  },
+  {
+    "name": "dimensionlookup",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/dimensionlookup",
+    "sha": "a94ffe9ca0ab58ee3725940d74df6577d96a7a2d",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/dimensionlookup?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/dimensionlookup",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/a94ffe9ca0ab58ee3725940d74df6577d96a7a2d",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/dimensionlookup?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/a94ffe9ca0ab58ee3725940d74df6577d96a7a2d",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/dimensionlookup"
+    }
+  },
+  {
+    "name": "dummytrans",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/dummytrans",
+    "sha": "8d6c99db0971e0ffcbff2a626495410f4edf154b",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/dummytrans?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/dummytrans",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/8d6c99db0971e0ffcbff2a626495410f4edf154b",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/dummytrans?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/8d6c99db0971e0ffcbff2a626495410f4edf154b",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/dummytrans"
+    }
+  },
+  {
+    "name": "dynamicsqlrow",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/dynamicsqlrow",
+    "sha": "3ca5e9711b61487aec916addfd6abb955e24d0b5",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/dynamicsqlrow?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/dynamicsqlrow",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/3ca5e9711b61487aec916addfd6abb955e24d0b5",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/dynamicsqlrow?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/3ca5e9711b61487aec916addfd6abb955e24d0b5",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/dynamicsqlrow"
+    }
+  },
+  {
+    "name": "execprocess",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/execprocess",
+    "sha": "bb272bf3b83d4e8a06941d8b02d36a74fa5a3617",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/execprocess?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/execprocess",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/bb272bf3b83d4e8a06941d8b02d36a74fa5a3617",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/execprocess?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/bb272bf3b83d4e8a06941d8b02d36a74fa5a3617",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/execprocess"
+    }
+  },
+  {
+    "name": "execsqlrow",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/execsqlrow",
+    "sha": "67d5a32806a5085706524e77c7dbeaaead4f9e06",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/execsqlrow?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/execsqlrow",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/67d5a32806a5085706524e77c7dbeaaead4f9e06",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/execsqlrow?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/67d5a32806a5085706524e77c7dbeaaead4f9e06",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/execsqlrow"
+    }
+  },
+  {
+    "name": "fieldschangesequence",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/fieldschangesequence",
+    "sha": "0ef0a9f1df6023af65e6fd65b11fceedce562134",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fieldschangesequence?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fieldschangesequence",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0ef0a9f1df6023af65e6fd65b11fceedce562134",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fieldschangesequence?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0ef0a9f1df6023af65e6fd65b11fceedce562134",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fieldschangesequence"
+    }
+  },
+  {
+    "name": "fieldsplitter",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/fieldsplitter",
+    "sha": "5039374a242cb89f7c88469683f39a877758e91e",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fieldsplitter?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fieldsplitter",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/5039374a242cb89f7c88469683f39a877758e91e",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fieldsplitter?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/5039374a242cb89f7c88469683f39a877758e91e",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fieldsplitter"
+    }
+  },
+  {
+    "name": "file",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/file",
+    "sha": "c757552b13e2e19c96ddbf93c578cf8846775bf7",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/file?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/file",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c757552b13e2e19c96ddbf93c578cf8846775bf7",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/file?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c757552b13e2e19c96ddbf93c578cf8846775bf7",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/file"
+    }
+  },
+  {
+    "name": "fileexists",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/fileexists",
+    "sha": "0f647dea972cdf31cfb60d7dffd0145f1dce4fab",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fileexists?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fileexists",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0f647dea972cdf31cfb60d7dffd0145f1dce4fab",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fileexists?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0f647dea972cdf31cfb60d7dffd0145f1dce4fab",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fileexists"
+    }
+  },
+  {
+    "name": "fileinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/fileinput",
+    "sha": "1763636151dbc7e2cc3e076d6885e8386992527f",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fileinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fileinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/1763636151dbc7e2cc3e076d6885e8386992527f",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fileinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/1763636151dbc7e2cc3e076d6885e8386992527f",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fileinput"
+    }
+  },
+  {
+    "name": "filelocked",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/filelocked",
+    "sha": "2db8ab328984ade0eb57e2673bfad94c3c9738b7",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/filelocked?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/filelocked",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/2db8ab328984ade0eb57e2673bfad94c3c9738b7",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/filelocked?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/2db8ab328984ade0eb57e2673bfad94c3c9738b7",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/filelocked"
+    }
+  },
+  {
+    "name": "filesfromresult",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/filesfromresult",
+    "sha": "70f924fc200e59af53cf53e68a8b54aaaf05fad7",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/filesfromresult?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/filesfromresult",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/70f924fc200e59af53cf53e68a8b54aaaf05fad7",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/filesfromresult?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/70f924fc200e59af53cf53e68a8b54aaaf05fad7",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/filesfromresult"
+    }
+  },
+  {
+    "name": "filestoresult",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/filestoresult",
+    "sha": "c39cc8261460f153f3e0e32aa33a3022a707ba85",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/filestoresult?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/filestoresult",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c39cc8261460f153f3e0e32aa33a3022a707ba85",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/filestoresult?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c39cc8261460f153f3e0e32aa33a3022a707ba85",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/filestoresult"
+    }
+  },
+  {
+    "name": "filterrows",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/filterrows",
+    "sha": "0426b4f539a35882323cb365f7b401e2d7b41d72",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/filterrows?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/filterrows",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0426b4f539a35882323cb365f7b401e2d7b41d72",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/filterrows?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0426b4f539a35882323cb365f7b401e2d7b41d72",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/filterrows"
+    }
+  },
+  {
+    "name": "fixedinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/fixedinput",
+    "sha": "bb0d5610b2e7f821dcc1ecec30e29652b5a765fd",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fixedinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fixedinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/bb0d5610b2e7f821dcc1ecec30e29652b5a765fd",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fixedinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/bb0d5610b2e7f821dcc1ecec30e29652b5a765fd",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fixedinput"
+    }
+  },
+  {
+    "name": "flattener",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/flattener",
+    "sha": "be3a3be9e3764d5ede463211227d835f8744b0a0",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/flattener?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/flattener",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/be3a3be9e3764d5ede463211227d835f8744b0a0",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/flattener?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/be3a3be9e3764d5ede463211227d835f8744b0a0",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/flattener"
+    }
+  },
+  {
+    "name": "formula",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/formula",
+    "sha": "13765d93237e69dc839628eca2c168e2c39942f1",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/formula?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/formula",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/13765d93237e69dc839628eca2c168e2c39942f1",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/formula?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/13765d93237e69dc839628eca2c168e2c39942f1",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/formula"
+    }
+  },
+  {
+    "name": "fuzzymatch",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/fuzzymatch",
+    "sha": "62dbba9301dcc73a84b67786cf19244a8069dae2",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fuzzymatch?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fuzzymatch",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/62dbba9301dcc73a84b67786cf19244a8069dae2",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/fuzzymatch?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/62dbba9301dcc73a84b67786cf19244a8069dae2",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/fuzzymatch"
+    }
+  },
+  {
+    "name": "getfilenames",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/getfilenames",
+    "sha": "1708ba9113fc625b5b13f4994b760ea335198f9d",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/getfilenames?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/getfilenames",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/1708ba9113fc625b5b13f4994b760ea335198f9d",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/getfilenames?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/1708ba9113fc625b5b13f4994b760ea335198f9d",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/getfilenames"
+    }
+  },
+  {
+    "name": "getfilesrowscount",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/getfilesrowscount",
+    "sha": "3992a89eb462166cb56f6a4999f7cea879dc077e",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/getfilesrowscount?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/getfilesrowscount",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/3992a89eb462166cb56f6a4999f7cea879dc077e",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/getfilesrowscount?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/3992a89eb462166cb56f6a4999f7cea879dc077e",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/getfilesrowscount"
+    }
+  },
+  {
+    "name": "getslavesequence",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/getslavesequence",
+    "sha": "7e5d990f6f30006cbc14a2ab258ade68d7733c84",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/getslavesequence?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/getslavesequence",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/7e5d990f6f30006cbc14a2ab258ade68d7733c84",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/getslavesequence?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/7e5d990f6f30006cbc14a2ab258ade68d7733c84",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/getslavesequence"
+    }
+  },
+  {
+    "name": "getsubfolders",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/getsubfolders",
+    "sha": "0bff2d5b148a1b23a4ecfa6208ab630e8fb2319f",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/getsubfolders?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/getsubfolders",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0bff2d5b148a1b23a4ecfa6208ab630e8fb2319f",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/getsubfolders?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0bff2d5b148a1b23a4ecfa6208ab630e8fb2319f",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/getsubfolders"
+    }
+  },
+  {
+    "name": "gettablenames",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/gettablenames",
+    "sha": "b85dcd3d4b24a7436155e8382a5082973f1d22af",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/gettablenames?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/gettablenames",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b85dcd3d4b24a7436155e8382a5082973f1d22af",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/gettablenames?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b85dcd3d4b24a7436155e8382a5082973f1d22af",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/gettablenames"
+    }
+  },
+  {
+    "name": "getvariable",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/getvariable",
+    "sha": "c952ae4bcf4062424b222e72fb7cb7f257f38dd8",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/getvariable?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/getvariable",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c952ae4bcf4062424b222e72fb7cb7f257f38dd8",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/getvariable?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c952ae4bcf4062424b222e72fb7cb7f257f38dd8",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/getvariable"
+    }
+  },
+  {
+    "name": "groupby",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/groupby",
+    "sha": "d3dd12ee26def8629183b3af497e4bdeffbd99e3",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/groupby?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/groupby",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d3dd12ee26def8629183b3af497e4bdeffbd99e3",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/groupby?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d3dd12ee26def8629183b3af497e4bdeffbd99e3",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/groupby"
+    }
+  },
+  {
+    "name": "http",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/http",
+    "sha": "88c91dbc88897804d08bae585ff60f86e8540306",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/http?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/http",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/88c91dbc88897804d08bae585ff60f86e8540306",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/http?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/88c91dbc88897804d08bae585ff60f86e8540306",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/http"
+    }
+  },
+  {
+    "name": "httppost",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/httppost",
+    "sha": "faebebf00b2319ed662549c942e7f6b88c271f92",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/httppost?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/httppost",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/faebebf00b2319ed662549c942e7f6b88c271f92",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/httppost?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/faebebf00b2319ed662549c942e7f6b88c271f92",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/httppost"
+    }
+  },
+  {
+    "name": "ifnull",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/ifnull",
+    "sha": "17e4f68ebbc4785f06a15cc04fa832e875e16a47",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/ifnull?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/ifnull",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/17e4f68ebbc4785f06a15cc04fa832e875e16a47",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/ifnull?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/17e4f68ebbc4785f06a15cc04fa832e875e16a47",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/ifnull"
+    }
+  },
+  {
+    "name": "injector",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/injector",
+    "sha": "0dbdc83131bbf894ef771cde35e58705c39199e4",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/injector?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/injector",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0dbdc83131bbf894ef771cde35e58705c39199e4",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/injector?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0dbdc83131bbf894ef771cde35e58705c39199e4",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/injector"
+    }
+  },
+  {
+    "name": "insertupdate",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/insertupdate",
+    "sha": "24a7ac815421c401d52627850a4ca9fe54652e0a",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/insertupdate?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/insertupdate",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/24a7ac815421c401d52627850a4ca9fe54652e0a",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/insertupdate?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/24a7ac815421c401d52627850a4ca9fe54652e0a",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/insertupdate"
+    }
+  },
+  {
+    "name": "janino",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/janino",
+    "sha": "5707edbc1f472a7c0308524fc5062f2988eea3f0",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/janino?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/janino",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/5707edbc1f472a7c0308524fc5062f2988eea3f0",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/janino?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/5707edbc1f472a7c0308524fc5062f2988eea3f0",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/janino"
+    }
+  },
+  {
+    "name": "javafilter",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/javafilter",
+    "sha": "0daab1bacbebf11c9ed3f2a80f7ee5d7c2652c00",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/javafilter?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/javafilter",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0daab1bacbebf11c9ed3f2a80f7ee5d7c2652c00",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/javafilter?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0daab1bacbebf11c9ed3f2a80f7ee5d7c2652c00",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/javafilter"
+    }
+  },
+  {
+    "name": "jobexecutor",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/jobexecutor",
+    "sha": "e44eeb2d027e0ef7556c54620ac3e69eea0e26ca",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/jobexecutor?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/jobexecutor",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/e44eeb2d027e0ef7556c54620ac3e69eea0e26ca",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/jobexecutor?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/e44eeb2d027e0ef7556c54620ac3e69eea0e26ca",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/jobexecutor"
+    }
+  },
+  {
+    "name": "joinrows",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/joinrows",
+    "sha": "df333eab5c781dc9ff0a86f94f93aa9b8b7f2d50",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/joinrows?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/joinrows",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/df333eab5c781dc9ff0a86f94f93aa9b8b7f2d50",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/joinrows?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/df333eab5c781dc9ff0a86f94f93aa9b8b7f2d50",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/joinrows"
+    }
+  },
+  {
+    "name": "ldifinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/ldifinput",
+    "sha": "1a12c8529daa1aa21b29170620cbf6f516586f45",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/ldifinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/ldifinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/1a12c8529daa1aa21b29170620cbf6f516586f45",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/ldifinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/1a12c8529daa1aa21b29170620cbf6f516586f45",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/ldifinput"
+    }
+  },
+  {
+    "name": "loadfileinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/loadfileinput",
+    "sha": "275203b7998f6bd0b8a4e29d58796e5835a632a9",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/loadfileinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/loadfileinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/275203b7998f6bd0b8a4e29d58796e5835a632a9",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/loadfileinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/275203b7998f6bd0b8a4e29d58796e5835a632a9",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/loadfileinput"
+    }
+  },
+  {
+    "name": "mapping",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/mapping",
+    "sha": "248c389b48dda43edb3b450eed1db54e42df337d",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/mapping?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/mapping",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/248c389b48dda43edb3b450eed1db54e42df337d",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/mapping?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/248c389b48dda43edb3b450eed1db54e42df337d",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/mapping"
+    }
+  },
+  {
+    "name": "mappinginput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/mappinginput",
+    "sha": "964bf296495f84abb2ede9c68d1161b3e1fbe519",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/mappinginput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/mappinginput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/964bf296495f84abb2ede9c68d1161b3e1fbe519",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/mappinginput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/964bf296495f84abb2ede9c68d1161b3e1fbe519",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/mappinginput"
+    }
+  },
+  {
+    "name": "mappingoutput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/mappingoutput",
+    "sha": "05372c7bcbef89230ae5f96fcfa132683b5600f1",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/mappingoutput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/mappingoutput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/05372c7bcbef89230ae5f96fcfa132683b5600f1",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/mappingoutput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/05372c7bcbef89230ae5f96fcfa132683b5600f1",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/mappingoutput"
+    }
+  },
+  {
+    "name": "memgroupby",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/memgroupby",
+    "sha": "973aa08de43a7bef4d60522908a33d3441b0fb0e",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/memgroupby?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/memgroupby",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/973aa08de43a7bef4d60522908a33d3441b0fb0e",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/memgroupby?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/973aa08de43a7bef4d60522908a33d3441b0fb0e",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/memgroupby"
+    }
+  },
+  {
+    "name": "mergejoin",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/mergejoin",
+    "sha": "d49c01cf7a9c51ecc577cdce86c85796714840d8",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/mergejoin?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/mergejoin",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d49c01cf7a9c51ecc577cdce86c85796714840d8",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/mergejoin?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d49c01cf7a9c51ecc577cdce86c85796714840d8",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/mergejoin"
+    }
+  },
+  {
+    "name": "mergerows",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/mergerows",
+    "sha": "3ace3469563650fc2737ca1c1b151cabc5784625",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/mergerows?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/mergerows",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/3ace3469563650fc2737ca1c1b151cabc5784625",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/mergerows?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/3ace3469563650fc2737ca1c1b151cabc5784625",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/mergerows"
+    }
+  },
+  {
+    "name": "missing",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/missing",
+    "sha": "e1764c81c389fa6e17a6d991f213535f921484eb",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/missing?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/missing",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/e1764c81c389fa6e17a6d991f213535f921484eb",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/missing?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/e1764c81c389fa6e17a6d991f213535f921484eb",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/missing"
+    }
+  },
+  {
+    "name": "multimerge",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/multimerge",
+    "sha": "b2310188e4f791740f3e0287efe179415d2a5ad3",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/multimerge?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/multimerge",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b2310188e4f791740f3e0287efe179415d2a5ad3",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/multimerge?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b2310188e4f791740f3e0287efe179415d2a5ad3",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/multimerge"
+    }
+  },
+  {
+    "name": "named",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/named",
+    "sha": "4d178bb14ee2752fd0a5a896256f3dcc5709ccbb",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/named?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/named",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/4d178bb14ee2752fd0a5a896256f3dcc5709ccbb",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/named?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/4d178bb14ee2752fd0a5a896256f3dcc5709ccbb",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/named"
+    }
+  },
+  {
+    "name": "normaliser",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/normaliser",
+    "sha": "4ce7dfee8e45b3abddf1f98105b7b107191a2ee2",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/normaliser?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/normaliser",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/4ce7dfee8e45b3abddf1f98105b7b107191a2ee2",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/normaliser?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/4ce7dfee8e45b3abddf1f98105b7b107191a2ee2",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/normaliser"
+    }
+  },
+  {
+    "name": "nullif",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/nullif",
+    "sha": "aa342cbf5b6aa1fd62b5eb0463e3be85634171f8",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/nullif?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/nullif",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/aa342cbf5b6aa1fd62b5eb0463e3be85634171f8",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/nullif?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/aa342cbf5b6aa1fd62b5eb0463e3be85634171f8",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/nullif"
+    }
+  },
+  {
+    "name": "numberrange",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/numberrange",
+    "sha": "15c6ce2622ef769aee32ad23624b387d1a6955d2",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/numberrange?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/numberrange",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/15c6ce2622ef769aee32ad23624b387d1a6955d2",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/numberrange?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/15c6ce2622ef769aee32ad23624b387d1a6955d2",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/numberrange"
+    }
+  },
+  {
+    "name": "olapinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/olapinput",
+    "sha": "7ca3a284bb21fe3af9cdf88a9876f7b9d5609e51",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/olapinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/olapinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/7ca3a284bb21fe3af9cdf88a9876f7b9d5609e51",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/olapinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/7ca3a284bb21fe3af9cdf88a9876f7b9d5609e51",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/olapinput"
+    }
+  },
+  {
+    "name": "parallelgzipcsv",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/parallelgzipcsv",
+    "sha": "720136abd482c8ffd9e898979bbae971da0b83e5",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/parallelgzipcsv?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/parallelgzipcsv",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/720136abd482c8ffd9e898979bbae971da0b83e5",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/parallelgzipcsv?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/720136abd482c8ffd9e898979bbae971da0b83e5",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/parallelgzipcsv"
+    }
+  },
+  {
+    "name": "pgpdecryptstream",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/pgpdecryptstream",
+    "sha": "b367038594cf1de98fb326e189541cfe1015015a",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/pgpdecryptstream?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/pgpdecryptstream",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b367038594cf1de98fb326e189541cfe1015015a",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/pgpdecryptstream?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b367038594cf1de98fb326e189541cfe1015015a",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/pgpdecryptstream"
+    }
+  },
+  {
+    "name": "pgpencryptstream",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/pgpencryptstream",
+    "sha": "b6127681e6ce7a9e34564938bdb8679ea14c52f5",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/pgpencryptstream?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/pgpencryptstream",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b6127681e6ce7a9e34564938bdb8679ea14c52f5",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/pgpencryptstream?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b6127681e6ce7a9e34564938bdb8679ea14c52f5",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/pgpencryptstream"
+    }
+  },
+  {
+    "name": "prioritizestreams",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/prioritizestreams",
+    "sha": "2bca0f8708bf1c5c349b46cf23537d428d639ecb",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/prioritizestreams?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/prioritizestreams",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/2bca0f8708bf1c5c349b46cf23537d428d639ecb",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/prioritizestreams?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/2bca0f8708bf1c5c349b46cf23537d428d639ecb",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/prioritizestreams"
+    }
+  },
+  {
+    "name": "processfiles",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/processfiles",
+    "sha": "cab91089646fc1f64246ba42b0bd6d4d50aca0e0",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/processfiles?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/processfiles",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/cab91089646fc1f64246ba42b0bd6d4d50aca0e0",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/processfiles?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/cab91089646fc1f64246ba42b0bd6d4d50aca0e0",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/processfiles"
+    }
+  },
+  {
+    "name": "propertyinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/propertyinput",
+    "sha": "8ee5f79f4b2b1f64d8eacbd3f8c226a776a9b952",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/propertyinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/propertyinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/8ee5f79f4b2b1f64d8eacbd3f8c226a776a9b952",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/propertyinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/8ee5f79f4b2b1f64d8eacbd3f8c226a776a9b952",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/propertyinput"
+    }
+  },
+  {
+    "name": "propertyoutput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/propertyoutput",
+    "sha": "734513ee9b05543462578c330a2fd8455a329f8d",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/propertyoutput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/propertyoutput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/734513ee9b05543462578c330a2fd8455a329f8d",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/propertyoutput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/734513ee9b05543462578c330a2fd8455a329f8d",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/propertyoutput"
+    }
+  },
+  {
+    "name": "randomvalue",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/randomvalue",
+    "sha": "02adf96959fca378e8a43cbb6c031fe60c2b0504",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/randomvalue?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/randomvalue",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/02adf96959fca378e8a43cbb6c031fe60c2b0504",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/randomvalue?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/02adf96959fca378e8a43cbb6c031fe60c2b0504",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/randomvalue"
+    }
+  },
+  {
+    "name": "recordsfromstream",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/recordsfromstream",
+    "sha": "54bb9cb38bcd9d076dd8891a257d1feae061bcd0",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/recordsfromstream?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/recordsfromstream",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/54bb9cb38bcd9d076dd8891a257d1feae061bcd0",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/recordsfromstream?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/54bb9cb38bcd9d076dd8891a257d1feae061bcd0",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/recordsfromstream"
+    }
+  },
+  {
+    "name": "regexeval",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/regexeval",
+    "sha": "18dfff5d2bd37e17c8a6af8476973265527b57c7",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/regexeval?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/regexeval",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/18dfff5d2bd37e17c8a6af8476973265527b57c7",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/regexeval?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/18dfff5d2bd37e17c8a6af8476973265527b57c7",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/regexeval"
+    }
+  },
+  {
+    "name": "replacestring",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/replacestring",
+    "sha": "617db81489874f9fcf549e0a3a494e0676197795",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/replacestring?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/replacestring",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/617db81489874f9fcf549e0a3a494e0676197795",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/replacestring?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/617db81489874f9fcf549e0a3a494e0676197795",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/replacestring"
+    }
+  },
+  {
+    "name": "reservoirsampling",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/reservoirsampling",
+    "sha": "822de91f3081dedc8c0e64387dafb6b672c68c56",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/reservoirsampling?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/reservoirsampling",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/822de91f3081dedc8c0e64387dafb6b672c68c56",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/reservoirsampling?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/822de91f3081dedc8c0e64387dafb6b672c68c56",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/reservoirsampling"
+    }
+  },
+  {
+    "name": "rowgenerator",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/rowgenerator",
+    "sha": "d8a9abe907a3233704b50ae11676c6d63f3cebb2",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/rowgenerator?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/rowgenerator",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d8a9abe907a3233704b50ae11676c6d63f3cebb2",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/rowgenerator?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d8a9abe907a3233704b50ae11676c6d63f3cebb2",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/rowgenerator"
+    }
+  },
+  {
+    "name": "rowsfromresult",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/rowsfromresult",
+    "sha": "318aad3498a5b4c104da349464c69d81d83d39b1",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/rowsfromresult?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/rowsfromresult",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/318aad3498a5b4c104da349464c69d81d83d39b1",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/rowsfromresult?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/318aad3498a5b4c104da349464c69d81d83d39b1",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/rowsfromresult"
+    }
+  },
+  {
+    "name": "rowstoresult",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/rowstoresult",
+    "sha": "92b50513be20cc61f68220688345852405bcad2e",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/rowstoresult?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/rowstoresult",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/92b50513be20cc61f68220688345852405bcad2e",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/rowstoresult?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/92b50513be20cc61f68220688345852405bcad2e",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/rowstoresult"
+    }
+  },
+  {
+    "name": "samplerows",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/samplerows",
+    "sha": "80364d43f7b3b4fc30a4113fb5969e7c0c1e6810",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/samplerows?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/samplerows",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/80364d43f7b3b4fc30a4113fb5969e7c0c1e6810",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/samplerows?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/80364d43f7b3b4fc30a4113fb5969e7c0c1e6810",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/samplerows"
+    }
+  },
+  {
+    "name": "sasinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/sasinput",
+    "sha": "91b5b58666c8cae1c7734d74674648621ffd32a5",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/sasinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/sasinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/91b5b58666c8cae1c7734d74674648621ffd32a5",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/sasinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/91b5b58666c8cae1c7734d74674648621ffd32a5",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/sasinput"
+    }
+  },
+  {
+    "name": "script",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/script",
+    "sha": "d8a0dbec1f78bb3abb5a8b7b35e532dd9e46d3bf",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/script?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/script",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d8a0dbec1f78bb3abb5a8b7b35e532dd9e46d3bf",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/script?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d8a0dbec1f78bb3abb5a8b7b35e532dd9e46d3bf",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/script"
+    }
+  },
+  {
+    "name": "scriptvalues_mod",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/scriptvalues_mod",
+    "sha": "ff40f988afd32edb70aba870b6f6673ac0eba8ef",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/scriptvalues_mod?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/scriptvalues_mod",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/ff40f988afd32edb70aba870b6f6673ac0eba8ef",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/scriptvalues_mod?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/ff40f988afd32edb70aba870b6f6673ac0eba8ef",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/scriptvalues_mod"
+    }
+  },
+  {
+    "name": "selectvalues",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/selectvalues",
+    "sha": "20371fc1075b0ea50ecf9f39d13aeef277accddf",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/selectvalues?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/selectvalues",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/20371fc1075b0ea50ecf9f39d13aeef277accddf",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/selectvalues?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/20371fc1075b0ea50ecf9f39d13aeef277accddf",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/selectvalues"
+    }
+  },
+  {
+    "name": "setvalueconstant",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/setvalueconstant",
+    "sha": "418e72575ecd9b99214de50d80b8e561dbd5ccf8",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/setvalueconstant?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/setvalueconstant",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/418e72575ecd9b99214de50d80b8e561dbd5ccf8",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/setvalueconstant?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/418e72575ecd9b99214de50d80b8e561dbd5ccf8",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/setvalueconstant"
+    }
+  },
+  {
+    "name": "setvaluefield",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/setvaluefield",
+    "sha": "c535f97bf885721f999dbe4ec2b0fe2e0e03efc3",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/setvaluefield?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/setvaluefield",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c535f97bf885721f999dbe4ec2b0fe2e0e03efc3",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/setvaluefield?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c535f97bf885721f999dbe4ec2b0fe2e0e03efc3",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/setvaluefield"
+    }
+  },
+  {
+    "name": "setvariable",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/setvariable",
+    "sha": "d5424f7c28a4c32d28904791abf1ae2d412be7ea",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/setvariable?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/setvariable",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d5424f7c28a4c32d28904791abf1ae2d412be7ea",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/setvariable?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d5424f7c28a4c32d28904791abf1ae2d412be7ea",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/setvariable"
+    }
+  },
+  {
+    "name": "simplemapping",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/simplemapping",
+    "sha": "2e319de9f21a1a2c4b36e1985f4022b1d24b8564",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/simplemapping?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/simplemapping",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/2e319de9f21a1a2c4b36e1985f4022b1d24b8564",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/simplemapping?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/2e319de9f21a1a2c4b36e1985f4022b1d24b8564",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/simplemapping"
+    }
+  },
+  {
+    "name": "singlethreader",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/singlethreader",
+    "sha": "0d27d965dbd82b212635bb0fdef7b1b3c8b467b5",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/singlethreader?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/singlethreader",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0d27d965dbd82b212635bb0fdef7b1b3c8b467b5",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/singlethreader?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0d27d965dbd82b212635bb0fdef7b1b3c8b467b5",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/singlethreader"
+    }
+  },
+  {
+    "name": "socketreader",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/socketreader",
+    "sha": "e60d90fcff44098f3f5db1a816e60e7f13c02c50",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/socketreader?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/socketreader",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/e60d90fcff44098f3f5db1a816e60e7f13c02c50",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/socketreader?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/e60d90fcff44098f3f5db1a816e60e7f13c02c50",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/socketreader"
+    }
+  },
+  {
+    "name": "socketwriter",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/socketwriter",
+    "sha": "3c0e4ff5ab8d4b5e9639974db97c3bc53712d330",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/socketwriter?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/socketwriter",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/3c0e4ff5ab8d4b5e9639974db97c3bc53712d330",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/socketwriter?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/3c0e4ff5ab8d4b5e9639974db97c3bc53712d330",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/socketwriter"
+    }
+  },
+  {
+    "name": "sort",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/sort",
+    "sha": "9b9b2cf613642e3bc7d707c2e6a8c4a121aa1ffc",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/sort?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/sort",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/9b9b2cf613642e3bc7d707c2e6a8c4a121aa1ffc",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/sort?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/9b9b2cf613642e3bc7d707c2e6a8c4a121aa1ffc",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/sort"
+    }
+  },
+  {
+    "name": "sortedmerge",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/sortedmerge",
+    "sha": "0cde89e86049717ba621eb59322fcb7549ae0ea0",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/sortedmerge?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/sortedmerge",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0cde89e86049717ba621eb59322fcb7549ae0ea0",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/sortedmerge?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0cde89e86049717ba621eb59322fcb7549ae0ea0",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/sortedmerge"
+    }
+  },
+  {
+    "name": "splitfieldtorows",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/splitfieldtorows",
+    "sha": "345f0917ec49b1299dab39910005d6df503bec9a",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/splitfieldtorows?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/splitfieldtorows",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/345f0917ec49b1299dab39910005d6df503bec9a",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/splitfieldtorows?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/345f0917ec49b1299dab39910005d6df503bec9a",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/splitfieldtorows"
+    }
+  },
+  {
+    "name": "sql",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/sql",
+    "sha": "e0f8bb541c9cd3337444c613cb33472ba1f45a4f",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/sql?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/sql",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/e0f8bb541c9cd3337444c613cb33472ba1f45a4f",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/sql?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/e0f8bb541c9cd3337444c613cb33472ba1f45a4f",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/sql"
+    }
+  },
+  {
+    "name": "sqlfileoutput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/sqlfileoutput",
+    "sha": "1b0a2ae6df61d3292c7afb5b4dea5f15511716bc",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/sqlfileoutput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/sqlfileoutput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/1b0a2ae6df61d3292c7afb5b4dea5f15511716bc",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/sqlfileoutput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/1b0a2ae6df61d3292c7afb5b4dea5f15511716bc",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/sqlfileoutput"
+    }
+  },
+  {
+    "name": "ssh",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/ssh",
+    "sha": "d18e94387ad6606d965f0ebd4c8d7a32bac1c830",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/ssh?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/ssh",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d18e94387ad6606d965f0ebd4c8d7a32bac1c830",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/ssh?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d18e94387ad6606d965f0ebd4c8d7a32bac1c830",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/ssh"
+    }
+  },
+  {
+    "name": "stepmeta",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/stepmeta",
+    "sha": "d1e60b054393d989b7e4915a515964d56b44333f",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/stepmeta?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/stepmeta",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d1e60b054393d989b7e4915a515964d56b44333f",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/stepmeta?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/d1e60b054393d989b7e4915a515964d56b44333f",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/stepmeta"
+    }
+  },
+  {
+    "name": "stepsmetrics",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/stepsmetrics",
+    "sha": "8a4c6c767644602529c31fe4c9a410a07d80ee64",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/stepsmetrics?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/stepsmetrics",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/8a4c6c767644602529c31fe4c9a410a07d80ee64",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/stepsmetrics?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/8a4c6c767644602529c31fe4c9a410a07d80ee64",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/stepsmetrics"
+    }
+  },
+  {
+    "name": "streamlookup",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/streamlookup",
+    "sha": "21bafb26317c3cb37bd3dd5714e133caae54f3ae",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/streamlookup?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/streamlookup",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/21bafb26317c3cb37bd3dd5714e133caae54f3ae",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/streamlookup?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/21bafb26317c3cb37bd3dd5714e133caae54f3ae",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/streamlookup"
+    }
+  },
+  {
+    "name": "stringcut",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/stringcut",
+    "sha": "7bda9560c135ea2f3ad2e182819ed4d33e285e47",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/stringcut?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/stringcut",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/7bda9560c135ea2f3ad2e182819ed4d33e285e47",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/stringcut?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/7bda9560c135ea2f3ad2e182819ed4d33e285e47",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/stringcut"
+    }
+  },
+  {
+    "name": "stringoperations",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/stringoperations",
+    "sha": "c13194e555c4f4d31b53ea2fbae5de2d4e9189d1",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/stringoperations?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/stringoperations",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c13194e555c4f4d31b53ea2fbae5de2d4e9189d1",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/stringoperations?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c13194e555c4f4d31b53ea2fbae5de2d4e9189d1",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/stringoperations"
+    }
+  },
+  {
+    "name": "switchcase",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/switchcase",
+    "sha": "8acd7d5a64c5611a24995e5a378ecbe5f45c5a69",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/switchcase?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/switchcase",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/8acd7d5a64c5611a24995e5a378ecbe5f45c5a69",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/switchcase?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/8acd7d5a64c5611a24995e5a378ecbe5f45c5a69",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/switchcase"
+    }
+  },
+  {
+    "name": "symmetriccrypto",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/symmetriccrypto",
+    "sha": "f45c600beaf82d07acd09ae48fbb0019b71ff641",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/symmetriccrypto?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/symmetriccrypto",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/f45c600beaf82d07acd09ae48fbb0019b71ff641",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/symmetriccrypto?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/f45c600beaf82d07acd09ae48fbb0019b71ff641",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/symmetriccrypto"
+    }
+  },
+  {
+    "name": "synchronizeaftermerge",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/synchronizeaftermerge",
+    "sha": "8fe8c87bbecd424d4e2bdb162500d2a36a82ad72",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/synchronizeaftermerge?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/synchronizeaftermerge",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/8fe8c87bbecd424d4e2bdb162500d2a36a82ad72",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/synchronizeaftermerge?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/8fe8c87bbecd424d4e2bdb162500d2a36a82ad72",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/synchronizeaftermerge"
+    }
+  },
+  {
+    "name": "syslog",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/syslog",
+    "sha": "82d4b2722b53f1c512a66e92267cc347946e1523",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/syslog?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/syslog",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/82d4b2722b53f1c512a66e92267cc347946e1523",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/syslog?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/82d4b2722b53f1c512a66e92267cc347946e1523",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/syslog"
+    }
+  },
+  {
+    "name": "systemdata",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/systemdata",
+    "sha": "9831359c096cba6b5a104effcfb3d8fd8397a29b",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/systemdata?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/systemdata",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/9831359c096cba6b5a104effcfb3d8fd8397a29b",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/systemdata?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/9831359c096cba6b5a104effcfb3d8fd8397a29b",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/systemdata"
+    }
+  },
+  {
+    "name": "tableagilemart",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/tableagilemart",
+    "sha": "b25bda01cd5a0c71e26db7124404134870ce75df",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/tableagilemart?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/tableagilemart",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b25bda01cd5a0c71e26db7124404134870ce75df",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/tableagilemart?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b25bda01cd5a0c71e26db7124404134870ce75df",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/tableagilemart"
+    }
+  },
+  {
+    "name": "tablecompare",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/tablecompare",
+    "sha": "5981b7ad3f485a47cb3bd15b44e1aa992d909584",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/tablecompare?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/tablecompare",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/5981b7ad3f485a47cb3bd15b44e1aa992d909584",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/tablecompare?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/5981b7ad3f485a47cb3bd15b44e1aa992d909584",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/tablecompare"
+    }
+  },
+  {
+    "name": "tableexists",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/tableexists",
+    "sha": "c8ab0ce6d271620136708928b270397240da15ff",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/tableexists?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/tableexists",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c8ab0ce6d271620136708928b270397240da15ff",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/tableexists?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c8ab0ce6d271620136708928b270397240da15ff",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/tableexists"
+    }
+  },
+  {
+    "name": "tableinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/tableinput",
+    "sha": "b60d934114309352830bcc0e432ce490361554f3",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/tableinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/tableinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b60d934114309352830bcc0e432ce490361554f3",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/tableinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b60d934114309352830bcc0e432ce490361554f3",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/tableinput"
+    }
+  },
+  {
+    "name": "tableoutput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/tableoutput",
+    "sha": "ceea62ff70bec2054928b0f4af9856ae1aa65ea8",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/tableoutput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/tableoutput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/ceea62ff70bec2054928b0f4af9856ae1aa65ea8",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/tableoutput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/ceea62ff70bec2054928b0f4af9856ae1aa65ea8",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/tableoutput"
+    }
+  },
+  {
+    "name": "textfileinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/textfileinput",
+    "sha": "749f5562239d3d56ee755203bdb1f906ee96f507",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/textfileinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/textfileinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/749f5562239d3d56ee755203bdb1f906ee96f507",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/textfileinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/749f5562239d3d56ee755203bdb1f906ee96f507",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/textfileinput"
+    }
+  },
+  {
+    "name": "textfileoutput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/textfileoutput",
+    "sha": "55d9e3464f15f839c675495da922a4c7f08d557b",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/textfileoutput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/textfileoutput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/55d9e3464f15f839c675495da922a4c7f08d557b",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/textfileoutput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/55d9e3464f15f839c675495da922a4c7f08d557b",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/textfileoutput"
+    }
+  },
+  {
+    "name": "textfileoutputlegacy",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/textfileoutputlegacy",
+    "sha": "ba3455aaf98549359f06de060012f97269e58479",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/textfileoutputlegacy?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/textfileoutputlegacy",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/ba3455aaf98549359f06de060012f97269e58479",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/textfileoutputlegacy?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/ba3455aaf98549359f06de060012f97269e58479",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/textfileoutputlegacy"
+    }
+  },
+  {
+    "name": "transexecutor",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/transexecutor",
+    "sha": "c8628870bce88033a4fb464988d9c9efcef7e4e2",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/transexecutor?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/transexecutor",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c8628870bce88033a4fb464988d9c9efcef7e4e2",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/transexecutor?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c8628870bce88033a4fb464988d9c9efcef7e4e2",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/transexecutor"
+    }
+  },
+  {
+    "name": "uniquerows",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/uniquerows",
+    "sha": "b347951ac370a13c370a4b1e1b68b55e4127ec62",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/uniquerows?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/uniquerows",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b347951ac370a13c370a4b1e1b68b55e4127ec62",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/uniquerows?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b347951ac370a13c370a4b1e1b68b55e4127ec62",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/uniquerows"
+    }
+  },
+  {
+    "name": "uniquerowsbyhashset",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/uniquerowsbyhashset",
+    "sha": "644f1ac9d9aff71114aa03841503311f9938f3cc",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/uniquerowsbyhashset?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/uniquerowsbyhashset",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/644f1ac9d9aff71114aa03841503311f9938f3cc",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/uniquerowsbyhashset?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/644f1ac9d9aff71114aa03841503311f9938f3cc",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/uniquerowsbyhashset"
+    }
+  },
+  {
+    "name": "univariatestats",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/univariatestats",
+    "sha": "ca7f92967b0b36062f44c3a2cce4c30b5f7d1897",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/univariatestats?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/univariatestats",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/ca7f92967b0b36062f44c3a2cce4c30b5f7d1897",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/univariatestats?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/ca7f92967b0b36062f44c3a2cce4c30b5f7d1897",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/univariatestats"
+    }
+  },
+  {
+    "name": "update",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/update",
+    "sha": "94ecf6f3c5205a022f18250cfb02f39ac6e692c1",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/update?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/update",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/94ecf6f3c5205a022f18250cfb02f39ac6e692c1",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/update?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/94ecf6f3c5205a022f18250cfb02f39ac6e692c1",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/update"
+    }
+  },
+  {
+    "name": "userdefinedjavaclass",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/userdefinedjavaclass",
+    "sha": "493cfecee69cb92d8d2122f4d2480764ae0ec0d4",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/userdefinedjavaclass?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/userdefinedjavaclass",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/493cfecee69cb92d8d2122f4d2480764ae0ec0d4",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/userdefinedjavaclass?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/493cfecee69cb92d8d2122f4d2480764ae0ec0d4",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/userdefinedjavaclass"
+    }
+  },
+  {
+    "name": "util",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/util",
+    "sha": "867aa0c9aca97c722ed32fb08a906468f5760550",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/util?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/util",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/867aa0c9aca97c722ed32fb08a906468f5760550",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/util?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/867aa0c9aca97c722ed32fb08a906468f5760550",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/util"
+    }
+  },
+  {
+    "name": "validator",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/validator",
+    "sha": "5aac73798e98e641ddec7a177a1ca79cd5372735",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/validator?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/validator",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/5aac73798e98e641ddec7a177a1ca79cd5372735",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/validator?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/5aac73798e98e641ddec7a177a1ca79cd5372735",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/validator"
+    }
+  },
+  {
+    "name": "valuemapper",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/valuemapper",
+    "sha": "f996b9c0230493aff83281b9c9f8cbf3a4f3b2bd",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/valuemapper?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/valuemapper",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/f996b9c0230493aff83281b9c9f8cbf3a4f3b2bd",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/valuemapper?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/f996b9c0230493aff83281b9c9f8cbf3a4f3b2bd",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/valuemapper"
+    }
+  },
+  {
+    "name": "webserviceavailable",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/webserviceavailable",
+    "sha": "f20436fbcbabc917c801740a2fbc3861ae0ebc02",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/webserviceavailable?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/webserviceavailable",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/f20436fbcbabc917c801740a2fbc3861ae0ebc02",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/webserviceavailable?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/f20436fbcbabc917c801740a2fbc3861ae0ebc02",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/webserviceavailable"
+    }
+  },
+  {
+    "name": "webservices",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/webservices",
+    "sha": "88ddf4df9f197a7d5dd2a5866806393f06fd9943",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/webservices?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/webservices",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/88ddf4df9f197a7d5dd2a5866806393f06fd9943",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/webservices?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/88ddf4df9f197a7d5dd2a5866806393f06fd9943",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/webservices"
+    }
+  },
+  {
+    "name": "writetolog",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/writetolog",
+    "sha": "c4dc7bf2f22007b362b6d42b43c2b3f5945696c0",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/writetolog?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/writetolog",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c4dc7bf2f22007b362b6d42b43c2b3f5945696c0",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/writetolog?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/c4dc7bf2f22007b362b6d42b43c2b3f5945696c0",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/writetolog"
+    }
+  },
+  {
+    "name": "xbaseinput",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/xbaseinput",
+    "sha": "0f0f7352cca62691aa49c78b42838b2e32700c2a",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/xbaseinput?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/xbaseinput",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0f0f7352cca62691aa49c78b42838b2e32700c2a",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/xbaseinput?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/0f0f7352cca62691aa49c78b42838b2e32700c2a",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/xbaseinput"
+    }
+  },
+  {
+    "name": "zipfile",
+    "path": "engine/src/main/java/org/pentaho/di/trans/steps/zipfile",
+    "sha": "b894e773e328b77f1b7fb3fe3d2d81894e00c799",
+    "size": 0,
+    "url": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/zipfile?ref=master",
+    "html_url": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/zipfile",
+    "git_url": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b894e773e328b77f1b7fb3fe3d2d81894e00c799",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/pentaho/pentaho-kettle/contents/engine/src/main/java/org/pentaho/di/trans/steps/zipfile?ref=master",
+      "git": "https://api.github.com/repos/pentaho/pentaho-kettle/git/trees/b894e773e328b77f1b7fb3fe3d2d81894e00c799",
+      "html": "https://github.com/pentaho/pentaho-kettle/tree/master/engine/src/main/java/org/pentaho/di/trans/steps/zipfile"
+    }
+  }
+]
