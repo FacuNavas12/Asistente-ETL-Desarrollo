@@ -66,10 +66,23 @@ def _split_integrity_warnings(warnings: list[str]) -> tuple[list[str], list[Vali
     warnings cosméticos. Las cuatro se promueven a Validacion tipo="error" —
     la severidad más alta que EtlDetail sabe renderizar — en vez de perderse
     entre las buenas prácticas. D15/D23 punto 4: mismo canal de severidad,
-    sin caso especial."""
+    sin caso especial.
+
+    Dedupe por string exacto (E-20, errores.md): PRE_EMIT_PASSES corre dos
+    veces sobre el mismo step — una vez en _recover_table_keys() sobre
+    ktr_data completo antes de compute_cut(), otra vez dentro de build_ktr()
+    (build.py:187) sobre el sub-dict ya partido. Un finding insensible al
+    corte (ej. check_dimension_lookup_fields) llega acá dos veces, byte a
+    byte. Un duplicado exacto nunca es señal — se descarta antes de
+    clasificar, no se corrige en el origen (requeriría que build_ktr() supiera
+    qué ya corrió antes del corte, más caro que este dedupe)."""
     plain: list[str] = []
     integridad: list[Validacion] = []
+    seen: set[str] = set()
     for w in warnings:
+        if w in seen:
+            continue
+        seen.add(w)
         if w.startswith(FIELD_INTEGRITY_PREFIX):
             integridad.append(Validacion(
                 tipo="error",
@@ -1023,6 +1036,8 @@ def _build_response_from_data(
     extra_warnings: list[str] | None = None,
     strict_connections: bool = False,
     known_tables: frozenset[str] | None = None,
+    dwh_ddl: str | None = None,
+    stg_ddl: str | None = None,
 ) -> ETLGenerateResponse:
     process_name = data.get("proceso_etl", {}).get("nombre", "")
     ktr_data = data.get("ktr", {})
@@ -1120,6 +1135,8 @@ def _build_response_from_data(
         etapas=[etapa],
         lineage=stitch_lineage_many([sub for sub, _, _ in built]),
         metadata=metadata,
+        dwh_ddl=dwh_ddl,
+        stg_ddl=stg_ddl,
     )
 
 
@@ -1291,6 +1308,8 @@ async def build_etl_from_raw(
     dim_contracts: list | None = None,
     real_connections: dict[str, dict] | None = None,
     connection_warnings: list[str] | None = None,
+    stg_ddl: str | None = None,
+    dwh_ddl: str | None = None,
 ) -> ETLGenerateResponse:
     """Reconstruye el ETL a partir de una respuesta cruda del modelo guardada previamente
     (p. ej. tras un fallo de build_ktr).
@@ -1299,6 +1318,14 @@ async def build_etl_from_raw(
     - flujo legacy monolítico: dict plano con "proceso_etl"/"ktr" en el nivel top.
     - flujo de 2 KTR: {"ktr_1": {...plano...}, "ktr_2": {...plano...}} (ver
       KtrBuildError en _build_response_from_two_ktr_data).
+
+    stg_ddl/dwh_ddl (opcional): a diferencia del resto de este docstring, esto
+    NO alimenta ninguna reparación — es puro passthrough hacia
+    ETLGenerateResponse.dwh_ddl/stg_ddl para que ResultView (EtlDetail) pinte
+    la sección de DDL igual que en el flujo de generación normal. El frontend
+    ya los tiene en memoria (inferResult.stg_ddl/dwh_ddl) cuando llama a este
+    endpoint ("Reutilizar respuesta") — sin este parámetro, no había forma de
+    que llegaran acá, y ResultView oculta la sección entera sin ellos.
 
     llm=None (default): no llama al LLM para repair_ktr_steps() (comportamiento
     histórico). llm=<instancia>: antes de construir, corre repair_ktr_steps()
@@ -1403,6 +1430,8 @@ async def build_etl_from_raw(
             extra_warnings=extra_warnings,
             strict_connections=bool(real_connections),
             known_tables=known_tables,
+            stg_ddl=stg_ddl,
+            dwh_ddl=dwh_ddl,
         )
     if raw_llm_data.get("ktr"):
         raw_llm_data["ktr"], extra_warnings = normalize_step_configs(raw_llm_data["ktr"])
@@ -1443,6 +1472,8 @@ async def build_etl_from_raw(
         extra_warnings=extra_warnings,
         strict_connections=bool(real_connections),
         known_tables=known_tables,
+        stg_ddl=stg_ddl,
+        dwh_ddl=dwh_ddl,
     )
 
 

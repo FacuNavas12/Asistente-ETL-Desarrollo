@@ -524,7 +524,7 @@ export default function CreateETL() {
       setEtlPhase("building");
       setKtrLogs([]);
       try {
-        const apiResult = await buildFromRaw(rawLlmData, inferResult?.dim_contracts ?? [], fullMap);
+        const apiResult = await buildFromRaw(rawLlmData, inferResult?.dim_contracts ?? [], fullMap, inferResult?.stg_ddl ?? null, inferResult?.dwh_ddl ?? null);
         await _finishEtl(apiResult, rawLlmData);
       } catch (err) {
         if (err.rawLlmData) {
@@ -611,7 +611,7 @@ export default function CreateETL() {
       setKtrLogs([]);
       setStep(STEP.PROCESSING);
       try {
-        const apiResult = await buildFromRaw(rawLlmData, inferResult?.dim_contracts ?? [], connectionsMapRef.current);
+        const apiResult = await buildFromRaw(rawLlmData, inferResult?.dim_contracts ?? [], connectionsMapRef.current, inferResult?.stg_ddl ?? null, inferResult?.dwh_ddl ?? null);
         await _finishEtl(apiResult, rawLlmData);
       } catch (err) {
         if (err.rawLlmData) {

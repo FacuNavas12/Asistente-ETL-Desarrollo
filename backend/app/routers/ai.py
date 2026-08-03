@@ -180,6 +180,7 @@ async def build_from_raw(
     return await _handle(
         build_etl_from_raw, req.raw_llm_data, llm, req.dim_contracts,
         real_connections or None, conn_warnings or None,
+        req.stg_ddl, req.dwh_ddl,
     )
 
 

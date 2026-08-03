@@ -119,8 +119,8 @@ El patrón del sentinel colisionado sigue siendo relevante para el sitio 4 de la
 ### Entra
 
 1. ~~Verificar `VALUE_META_TYPE_NAMES` contra `ValueMetaFactory.java`.~~ **Hecho — D60.** Faltaba `Internet Address`; corregido. No resolvió el crash de E-01 (causa distinta, ver D60).
-2. **Convertir los cuatro abortos en entrega documentada.** Cada sitio necesita decidir qué escribe en el XML cuando el dato es inválido, y esa decisión se justifica contra el `Meta` de Kettle — no se inventa un default plausible. Si no hay valor defendible, se emite el valor tal como vino y el finding explica que el step no va a funcionar. **Política decidida en D60** (tabla de los 4 sitios, criterio de degradación legítima) — conversión en código todavía pendiente, sesión aparte.
-3. **Que el problema llegue al usuario.** Es la decisión #3 del diagnóstico, hasta hoy sin resolver: los findings de `enforce_dimension_step_policy` van a `job.model_json["step_policy_conflictos"]` / `validaciones`, no al log que se estaba mirando. Sin esto, "entregar con el problema documentado" es entregar un archivo roto sin aviso — peor que abortar. **Este punto no es opcional dentro de O1.**
+2. ~~Convertir los cuatro abortos en entrega documentada.~~ **Hecho — D60, commits `9192397` (Sitios 1-3, `build.py`) y `392a0f9` (Sitio 4, `lookups.py`).** Ninguno de los 4 sitios de la tabla aborta hoy por contenido inválido — confirmado, además, por la corrida real de D64 (build completo sin excepción sobre el corpus de E-01).
+3. ~~Que el problema llegue al usuario.~~ **Hecho — D64, verificado en corrida real, sin cambio de código.** El canal ya existía desde `149b836` (anterior a toda la serie): `enforce_dimension_step_policy` → `results` → `job.model_json["step_policy_conflictos"]` → `Validacion(**c)` → mismo campo `validaciones` que usa el canal (b) (D63). Lo que faltaba era la verificación contra una corrida real, no la wiring. Efecto colateral encontrado, no buscado: **E-20** (`errores.md`) — los findings de `check_dimension_lookup_fields` (y probablemente otros `PRE_EMIT_PASSES`) llegan duplicados, por `_recover_table_keys()` y `build_ktr()` corriendo el mismo `run_passes()` completo dos veces. No bloqueaba este punto (el finding llegaba, con toda la info) pero era ruido real. **Cerrado** — dedupe en `_split_integrity_warnings()`, ver `errores.md`.
 4. **Un test por sitio**, sobre la salida real de `build_ktr()`, no sobre fixtures usadas como input. El patrón ya existe: `test_build_ktr_emission.py`.
 5. **Escribir la decisión como D-N** en `02-decisiones.md`, superseding explícito de la parte de D-1 que exige abortar. Sin esto, la próxima sesión reabre la discusión.
 
@@ -134,15 +134,25 @@ El patrón del sentinel colisionado sigue siendo relevante para el sitio 4 de la
 
 ## Criterio de terminado
 
-1. `VALUE_META_TYPE_NAMES` verificada contra `ValueMetaFactory.java`, con clase y línea citadas en el código.
-2. Ninguno de los 4 sitios de la tabla levanta `KtrBuilderError` por contenido inválido. Un `.ktr` sale siempre.
-3. Cada degradación produce un `Finding(severity="error")` que llega al frontend como `Validacion tipo="error"`, **verificado en una corrida real**, no por lectura de código.
-4. La corrida que produjo el crash de `'Cargar dim_producto'` genera archivo. Se abre en Spoon. Falla en runtime si tiene que fallar — pero el usuario tenía el aviso antes de ejecutarlo.
-5. Un test por sitio, contra salida real de `build_ktr()`.
-6. D-N escrita en `02-decisiones.md`.
-7. Suite completa corrida, comparada contra la cifra que O0 dejó registrada. Cero regresión.
+1. **Hecho — D60.** `VALUE_META_TYPE_NAMES` verificada contra `ValueMetaFactory.java`, clase y línea citadas en `domain/scd.py`.
+2. **Hecho — D60 (commits `9192397`, `392a0f9`).** Ninguno de los 4 sitios de la tabla levanta `KtrBuilderError` por contenido inválido. Confirmado también empíricamente en D64 (corrida real, cero excepciones).
+3. **Parcial, revisado 2026-08-03 (sesión de auditoría del cierre de D64).** El finding SÍ llega a `result.validaciones` — eso lo verificó D64. Pero D64 llamó a `build_etl_from_raw()` **directo** (`llm=None`, `dim_contracts` armados a mano en script ad-hoc) — no ejercitó el camino donde vivía el síntoma original (`generate_etl_async` → `_try_build`, `build_status` pasando de `pending`/`awaiting_connections` a `built`, vía `/generate-async` + `/status` real). Trazado de código dice que las mismas funciones internas corren en ambos caminos, pero eso es lectura, no corrida. **Pendiente:** test de integración contra el harness que ya existe (`test_ktr_build_job_api.py` — TestClient + LLM fake + sqlite in-memory), reproduciendo el corpus de E-01 a través de `/generate-async` → `/status`, asserteando `build_status=="built"` (no `failed`) y el contenido de `validaciones`.
+4. **Parcial, misma revisión.** La corrida de D64 confirma XML bien formado (`ElementTree.parse()`), no que Spoon lo abra — son verificaciones distintas: Spoon valida plugin id registrado, tags obligatorios y metadata de step, ninguno de los cuales `ElementTree` puede ver. **E-11 (`errores.md`, cerrado en O1-c) es el precedente exacto de este mismo objetivo:** `SplitFieldToRows` sin el `"3"` pasaba `ElementTree.parse()` y Spoon lo marcaba "missing". El proxy usado hasta acá para "abre en Spoon" no cubre esa clase de error. **Pendiente:** abrir el `.ktr` real (corpus de E-01) en Spoon, o al menos verificar los plugin ids de los steps usados contra el registro real de Kettle.
+5. **Hecho.** Un test por sitio, contra salida real de `build_ktr()` — `test_build_ktr_emission.py` (lotes O1-a/O1-c).
+6. **Hecho.** D59, D60, D62, D63, D64 escritas en `02-decisiones.md`.
+7. **Hecho (D60/D62), sin cambio desde entonces.** D64 no modificó código — no aplica correr la suite de nuevo. Última cifra registrada: 77 passed / 1 failed (D62, preexistente e independiente).
 
-**El punto 4 es el único criterio que importa de verdad.** Los demás lo sostienen.
+**El punto 4 es el único criterio que importa de verdad — y es el que queda más flojo.** Con 3 y 4 rebajados a parcial, **O1 no cierra todavía en el papel**, aunque el código de los 4 sitios de aborto (puntos 1-2) sí está sólido. E-20 (duplicación de findings) se cerró en sesión aparte (dedupe en `_split_integrity_warnings`, `errores.md`) — no era cosmético: mismo criterio de D63 (el usuario no debe ver el mismo finding dos veces) reentrando por `_recover_table_keys()`+`build_ktr()` corriendo `run_passes()` dos veces.
+
+### Próximos pasos, en orden (sesión de auditoría, 2026-08-03)
+
+Ninguno es caro. En este orden:
+
+1. **Spoon + job async real (~1 hora).** Cierra los puntos 3 y 4 de arriba de verdad, no en el papel. Dos verificaciones independientes, no una: (a) test de integración `/generate-async`→`/status` con el corpus de E-01 hasta `build_status=="built"`; (b) el `.ktr` resultante abierto en Spoon (o verificación de plugin ids si Spoon no está disponible en el entorno).
+2. ~~E-20~~ — **cerrado** (dedupe en `_split_integrity_warnings`, ver `errores.md`).
+3. **Bloque 3, capa job** (`_build_response_from_two_ktr_data` pierde los archivos de etapa 1 si etapa 2 falla estructuralmente — ver memoria de sesión `project_o1_cierre_2026-08-03`). Es el único camino que queda a "cero archivos", el síntoma que motivó O1 desde el principio. Estimado 15-25 líneas.
+4. **E-21** (fuera de alcance de O1 a propósito, pero registrar el impacto): `_repair_dimension_loader_fields()` corta en `if llm is None: return` ANTES de probar `_deterministic_field_mapping()` — determinístico, sin LLM, hubiera resuelto `nombre_categoria`→`categoria` por prefijo. Arreglado esto, el caso testigo de E-01 podría no generar findings ni de vocabulario ni de columnas sobrantes.
+5. Con 1-3 cerrados, recién ahí O1 cierra de verdad — continuar a O2.
 
 ---
 

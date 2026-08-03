@@ -293,10 +293,20 @@ class BuildFromRawRequest(BaseModel):
     — antes este endpoint no tenía forma de recibir conexiones y siempre entregaba
     el .ktr con placeholder, aunque el usuario ya las hubiera completado en el
     formulario (ver docs/refactor/02-decisiones.md). None (default) preserva el
-    comportamiento histórico: todo placeholder."""
+    comportamiento histórico: todo placeholder.
+
+    stg_ddl/dwh_ddl: mismo motivo que dim_contracts — tampoco viajan dentro de
+    raw_llm_data (son texto de contexto, no salida del modelo). El frontend ya
+    los tiene en memoria (inferResult.stg_ddl/dwh_ddl) desde la etapa de
+    Inferencia cuando llama a este endpoint ("Reutilizar respuesta"); sin
+    pasarlos acá, ETLGenerateResponse.dwh_ddl/stg_ddl quedan None y ResultView
+    oculta la sección de DDL en EtlDetail. Opcional (default None) por la
+    misma razón de compatibilidad que dim_contracts."""
     raw_llm_data: Dict[str, Any]
     dim_contracts: List[DimContract] = []
     connections_map: Optional[ConnectionsMapRequest] = None
+    stg_ddl: Optional[str] = None
+    dwh_ddl: Optional[str] = None
 
 
 class GenerateAsyncResponse(BaseModel):

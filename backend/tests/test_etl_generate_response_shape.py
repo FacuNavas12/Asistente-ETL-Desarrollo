@@ -172,6 +172,42 @@ def test_etl_generate_response_round_trips_through_json_like_the_async_job_does(
     assert restored.kjb_master.filename == original.kjb_master.filename
 
 
+# ─── dwh_ddl/stg_ddl passthrough (bug reportado: "Reutilizar respuesta" no
+# mostraba el DDL en EtlDetail — build_etl_from_raw() nunca los pasaba a
+# estas dos funciones, a diferencia del flujo de generación normal) ────────
+
+def test_two_ktr_flow_carries_dwh_and_stg_ddl_through():
+    metadata = MetadataResponse(modelo_usado="t", tokens_input=0, tokens_output=0, region_inferencia="t")
+    result = etl_generator._build_response_from_two_ktr_data(
+        _wrap(_origen_stg_ktr(), "d1"), _wrap(_stg_dwh_ktr_with_real_cut(), "d2"), metadata,
+        dwh_ddl="CREATE TABLE dim_producto (sk_producto INT);",
+        stg_ddl="CREATE TABLE stg_ventas (id_venta INT);",
+    )
+    assert result.dwh_ddl == "CREATE TABLE dim_producto (sk_producto INT);"
+    assert result.stg_ddl == "CREATE TABLE stg_ventas (id_venta INT);"
+
+
+def test_two_ktr_flow_defaults_ddl_to_none_when_not_passed():
+    metadata = MetadataResponse(modelo_usado="t", tokens_input=0, tokens_output=0, region_inferencia="t")
+    result = etl_generator._build_response_from_two_ktr_data(
+        _wrap(_origen_stg_ktr(), "d1"), _wrap(_stg_dwh_ktr_with_real_cut(), "d2"), metadata,
+    )
+    assert result.dwh_ddl is None
+    assert result.stg_ddl is None
+
+
+def test_monolithic_flow_carries_dwh_and_stg_ddl_through():
+    metadata = MetadataResponse(modelo_usado="t", tokens_input=0, tokens_output=0, region_inferencia="t")
+    data = _wrap(_stg_dwh_ktr_with_real_cut(), "d")
+    result = etl_generator._build_response_from_data(
+        data, metadata,
+        dwh_ddl="CREATE TABLE dim_producto (sk_producto INT);",
+        stg_ddl="CREATE TABLE stg_ventas (id_venta INT);",
+    )
+    assert result.dwh_ddl == "CREATE TABLE dim_producto (sk_producto INT);"
+    assert result.stg_ddl == "CREATE TABLE stg_ventas (id_venta INT);"
+
+
 def test_etapa_output_tipo_rejects_unknown_value():
     """El contrato es un Literal["ktr","kjb"] — un valor fuera de eso (ej. un
     consumidor futuro que agregue un tercer tipo sin coordinar) debe fallar

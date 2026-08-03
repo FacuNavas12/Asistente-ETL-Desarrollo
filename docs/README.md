@@ -33,12 +33,12 @@ El trabajo abierto está separado en tres objetivos y un congelador. **Una sesi�
 |---|---|---|
 | **O0** | Higiene de repo | cerrada 2026-08-03 |
 | **O1-a** | Fixes baratos de T (E-04…E-08) | cerrada, D59 |
-| **O1-b** | El crash + criterio de degradación (E-01, E-02, E-03) | — |
+| **O1-b** | El crash + criterio de degradación (E-01, E-02, E-03) | abierta — D60/D64 resolvieron 1-2, pero una auditoría 2026-08-03 bajó los criterios 3 y 4 de `10-estabilizar-emision.md` a "parcial" (D64 corrió `build_etl_from_raw()` directo, no el job async real; XML bien formado ≠ abre en Spoon). Ver "Próximos pasos" ahí. E-20 (duplicación) sí cerrado |
 | **O1-c** | T estructural (E-09, E-10, E-11) | cerrada, 2026-08-03 |
 | **O2-a** | Partir `common.py` | cerrada 2026-08-03, D61 |
 | **O2-b** | `resolve_step_table()` en `domain/` | cerrada 2026-08-03, D62 |
-| **O2-c** | Partir `lineage_builder.py` | — |
-| **REF** | Escribir `referencia/` | — |
+| **O2-c** | Partir `lineage_builder.py` | cerrada 2026-08-03, D63 pendiente de redactar |
+| **REF** | Escribir `referencia/` | cerrada 2026-08-03 — `contrato-ddl.md`, `scd.md`, `kettle-comportamiento.md` escritos y verificados contra código. `docs/SCD/` (3 archivos) queda intacto en disco, consolidado en `scd.md`, no borrado — decisión pendiente del usuario |
 | **O3** | La línea Python/modelo | — |
 
 **Dependencias, y son todas las que hay:**

@@ -104,11 +104,15 @@ export async function rebuildEtlConnections(etlId, connections) {
 // respuesta" siempre entregaba el .ktr con placeholder aunque el usuario ya
 // las hubiera completado en el formulario. null (default) preserva el
 // comportamiento histórico — mismo shape que submitJobConnections.
-export async function buildFromRaw(raw_llm_data, dim_contracts = [], connections_map = null) {
+// stg_ddl/dwh_ddl: sin esto, "Reutilizar respuesta" entregaba el ETL sin
+// DDL — ResultView (EtlDetail) oculta esa sección sin el texto. El caller
+// ya lo tiene en memoria (inferResult.stg_ddl/dwh_ddl) desde la etapa de
+// Inferencia; acá solo se reenvía.
+export async function buildFromRaw(raw_llm_data, dim_contracts = [], connections_map = null, stg_ddl = null, dwh_ddl = null) {
   return apiFetch("/api/v1/etl/build-from-raw", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ raw_llm_data, dim_contracts, connections_map }),
+    body: JSON.stringify({ raw_llm_data, dim_contracts, connections_map, stg_ddl, dwh_ddl }),
   });
 }
 
