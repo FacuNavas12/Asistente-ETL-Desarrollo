@@ -741,6 +741,43 @@ export default function CreateETL() {
             />
           )}
 
+          {step === STEP.REVIEW && (
+            <div className="etl-header-actions">
+              <button
+                className="infer-btn infer-btn--back"
+                onClick={() => setStep(STEP.FORM)}
+                disabled={isRefining}
+              >
+                ← Volver
+              </button>
+              <button
+                className="infer-btn infer-btn--secondary"
+                onClick={() => setModelResponsesOpen(true)}
+                disabled={isRefining}
+                title="Respuestas crudas del modelo guardadas por etapa, o importar una respuesta ya descargada"
+              >
+                Respuestas del modelo{" "}
+                <span className="infer-btn__badge">
+                  {["origen_stg", "stg_dwh"].filter(k => modelStages?.[k]?.data).length}/2
+                </span>
+              </button>
+              <button
+                className="infer-btn infer-btn--secondary"
+                onClick={handleGuardarFromReview}
+                disabled={isRefining}
+              >
+                Guardar
+              </button>
+              <button
+                className="infer-btn infer-btn--primary"
+                onClick={() => handleConfirm()}
+                disabled={isRefining}
+              >
+                Confirmar y Generar
+              </button>
+            </div>
+          )}
+
           {step === STEP.FORM && (
             <div className="etl-header-actions">
               <input
