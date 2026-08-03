@@ -351,3 +351,25 @@ def test_string_operations_emits_literal_kettle_codes_not_numeric_indices():
     # 'title' no es un código real de lower_upper -- se resuelve vía init_cap
     assert fields[1].findtext("lower_upper") == "none"
     assert fields[1].findtext("init_cap") == "Y"
+
+
+def test_unique_emits_case_insensitive_tag_with_correct_polarity():
+    """E-05 (investigacion-tags-validos-por-step.md § A.5) --
+    UniqueRowsMeta.readData() lee 'case_insensitive' (ausente = siempre true).
+    El emisor escribía 'case_sensitive', tag inexistente, con la polaridad
+    invertida: deduplicaba filas que solo difieren en mayúsculas siempre."""
+    ktr_data = _minimal_ktr(
+        steps=[
+            {
+                "name": "Filas Unicas", "type": "Unique",
+                "config": {"fields": [{"name": "codigo", "case_sensitive": True}, "nombre"]},
+            },
+        ],
+        hops=[],
+    )
+    xml, _, _ = build_ktr(ktr_data)
+    step = _find_step(xml, "Filas Unicas")
+    assert step.find("fields/field/case_sensitive") is None
+    fields = step.findall("fields/field")
+    assert fields[0].findtext("case_insensitive") == "N"
+    assert fields[1].findtext("case_insensitive") == "N"
