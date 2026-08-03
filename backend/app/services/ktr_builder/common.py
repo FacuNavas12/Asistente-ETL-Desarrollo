@@ -1,14 +1,13 @@
-"""Helper compartido por todos los builders de steps."""
+"""
+Vocabulario de dominio compartido por todos los builders de steps — dominio
+puro, cero conocimiento de cómo se arma el XML (eso es xml_helpers.py).
+
+Split (sesión de arquitectura O2-a): `_sub` armaba un
+`xml.etree.ElementTree.Element` y se movió a xml_helpers.py (infra); acá
+queda lo que no depende de XML para tener sentido — normalización de un
+valor de config y el error del builder.
+"""
 from __future__ import annotations
-
-from xml.etree.ElementTree import Element, SubElement
-
-
-def _sub(parent: Element, tag: str, text: str = "") -> Element:
-    el = SubElement(parent, tag)
-    if text:
-        el.text = str(text)
-    return el
 
 
 def _yn(value, default: bool = False) -> str:

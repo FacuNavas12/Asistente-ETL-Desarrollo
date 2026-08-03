@@ -47,11 +47,8 @@ DOMAIN_MODULES = {
     # de arquitectura). La mitad infra (STEP_BUILDERS, STEP_CONFIG_KEYS) quedó
     # en step_emitters.py, deliberadamente afuera de este set.
     "services.ktr_builder.step_types",
-    # common.py está partido (E1): _yn/KtrBuilderError son puros, _sub es XML
-    # (infra). Se incluye acá solo para permitir que contracts.py importe la
-    # mitad pura sin que el test lo marque como cruce de capa — no implica
-    # que TODO común.py sea dominio (build.py/connection.py/steps/* siguen
-    # usando su mitad infra libremente, eso no lo chequea este test).
+    # common.py: split ejecutado (O2-a) — _sub (XML, infra) se movió a
+    # xml_helpers.py. Lo que queda acá es puro: _yn/KtrBuilderError.
     "services.ktr_builder.common",
     "services.sql_defaults",
     "services.ktr_default_validator",

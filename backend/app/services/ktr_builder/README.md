@@ -18,7 +18,8 @@ XML `.ktr` (uno o más, según `fragmentation.py`) + `.kjb` si hubo corte (`job_
 | `dimension_step_policy.py` | `domain/` | Deriva/fuerza el tipo de step de dimensión (`DimensionLookup`/`CombinationLookup`) según `scd_type`. |
 | `fields_validate.py` | `domain/` | Validación de resolución de campos en orden topológico + detección de races de lookup de dimensión. |
 | `validate.py` | `domain/` | Validación estructural pre-XML (columnas SELECT duplicadas, `Calculator`/`Formula` encadenado). Importa `step_types.STEP_TYPE_ALIASES` — domain→domain, cero excepción de capa (antes cruzaba a `registry.py`, ver split abajo). |
-| `common.py` | **partido** | `_yn`/`KtrBuilderError` (`:14-36`) puros → `domain/`. `_sub` (`:7-11`) arma XML → `infrastructure/pentaho/`. |
+| `common.py` | `domain/` | **Ejecutado (O2-a).** `_yn`/`KtrBuilderError` — puros, cero import de XML. `_sub` se movió a `xml_helpers.py` (split, mismo criterio que `step_types.py`/`step_emitters.py`). |
+| `xml_helpers.py` | `infrastructure/pentaho/` | Mitad infra del split de `common.py`: `_sub`, wrapper de `xml.etree.ElementTree.SubElement`. |
 | `step_types.py` | `domain/` | Split de `registry.py` (sesión de arquitectura): `STEP_TYPE_ALIASES` (identidad de tipo) + `_CRITICAL_FIELDS` (completitud mínima). Cero imports de proyecto. |
 | `step_emitters.py` | `infrastructure/pentaho/` | Mitad infra del mismo split: `STEP_BUILDERS` (tipo canónico → función XML, con los imports de `steps/*`) + `STEP_CONFIG_KEYS`/`unmapped_config_keys` (auditoría de fidelidad de esa serialización — es capacidad presente del builder, no invariante de dominio). |
 | `repair.py` | `services/` | Reparación de steps con config incompleto, LLM acotado a un step por vez. Recibe `llm: BaseLLM` por parámetro — decisión justificada en `docs/arquitectura-objetivo.md` mapa E1. |

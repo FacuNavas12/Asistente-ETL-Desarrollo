@@ -15,7 +15,8 @@ from xml.dom import minidom
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from app.core.config import settings
-from app.services.ktr_builder.common import _sub, KtrBuilderError
+from app.services.ktr_builder.common import KtrBuilderError
+from app.services.ktr_builder.xml_helpers import _sub
 from app.services.ktr_builder.connection import (
     _build_connection,
     _resolve_connection,

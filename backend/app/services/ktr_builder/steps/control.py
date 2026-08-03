@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from xml.etree.ElementTree import Element, SubElement
 
-from app.services.ktr_builder.common import _sub
+from app.services.ktr_builder.xml_helpers import _sub
 
 logger = logging.getLogger(__name__)
 

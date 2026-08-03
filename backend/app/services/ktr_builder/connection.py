@@ -11,7 +11,7 @@ import uuid
 from xml.etree.ElementTree import Element, SubElement
 
 from app.domain.table_layer import infer_table_layer
-from app.services.ktr_builder.common import _sub
+from app.services.ktr_builder.xml_helpers import _sub
 
 # Step types que requieren un tag <connection> en el XML
 _STEPS_NEEDING_CONNECTION = {
