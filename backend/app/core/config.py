@@ -99,5 +99,16 @@ class Settings(BaseSettings):
     # Auth0: https://<tenant>.auth0.com/
     auth_issuer: str = ""
 
+    # ── CORS ──────────────────────────────────────────────────────────────────
+    # Orígenes permitidos por el navegador (lista separada por comas). Dev usa
+    # el server de Vite; en producción hay que agregar el dominio del frontend
+    # deployado (ej. https://mi-app.vercel.app). Sin esto, el navegador bloquea
+    # todas las llamadas desde el dominio de Vercel.
+    allowed_origins: str = "http://localhost:5173"
+
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
 
 settings = Settings()
