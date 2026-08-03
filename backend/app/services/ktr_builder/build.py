@@ -15,7 +15,6 @@ from xml.dom import minidom
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from app.core.config import settings
-from app.services.ktr_builder.common import KtrBuilderError
 from app.services.ktr_builder.xml_helpers import _sub
 from app.services.ktr_builder.connection import (
     _build_connection,
@@ -46,7 +45,12 @@ from app.services.ktr_builder.layout import _auto_layout
 from app.services.ktr_builder.step_emitters import STEP_BUILDERS, unmapped_config_keys
 from app.services.ktr_builder.step_types import _CRITICAL_FIELDS, STEP_TYPE_ALIASES
 from app.services.ktr_builder.validate import _validate_ktr
-from app.services.ktr_builder.validators import ValidationContext, run_passes, split_findings_by_severity
+from app.services.ktr_builder.validators import (
+    PRE_EMIT_ERROR_PREFIX,
+    ValidationContext,
+    run_passes,
+    split_findings_by_severity,
+)
 from app.services.ktr_default_validator import (
     check_missing_required_fields,
     scrub_function_default_constants,
@@ -139,14 +143,20 @@ def build_ktr(
     # emisor XML y el validador de grafo de campos ven siempre las mismas
     # claves (mata el drift tipo inputField/input_field en origen) y el
     # config queda como dict (no string JSON) para el resto de esta función.
-    # required_keys ausentes abortan acá mismo, apuntando al step culpable,
-    # en vez de dejar que Spoon falle en runtime con un step "vacío".
     # H6/D15: si el caller no pasó por normalize_step_configs() (ver
     # etl_generator.py, punto de entrada del pipeline), un config todavía
     # string y no-JSON llega hasta acá — capturarlo acá también en vez de
     # dejar que build_ktr() aborte sin generar nada por una sola config rota.
+    #
+    # D60 (docs/refactor/02-decisiones.md, Sitio 1): una clave requerida
+    # ausente no tiene "valor real" contra qué contrastar (no hay inventario
+    # que verificar para una clave, a diferencia de un stream_field o una
+    # columna de DWH) — nunca se aborta TODO el build por esto. El step sale
+    # con esa clave vacía/ausente tal cual (el builder de cada step ya tolera
+    # claves faltantes con su propio default) + Finding(error) nombrando el
+    # step y la clave, para que Spoon no falle en runtime sin que nadie lo
+    # haya dicho antes.
     cfg_parse_warnings: list[str] = []
-    incomplete: list[str] = []
     for step in ktr_data.get("steps", []):
         canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
         try:
@@ -159,9 +169,10 @@ def build_ktr(
             )
         step["config"] = cfg
         for key, reason in missing_required_keys(canonical, cfg):
-            incomplete.append(f"Config incompleto en '{step.get('name')}' ({canonical}): {reason}")
-    if incomplete:
-        raise KtrBuilderError(" | ".join(incomplete))
+            cfg_parse_warnings.append(
+                f"{PRE_EMIT_ERROR_PREFIX}Config incompleto en '{step.get('name')}' ({canonical}): "
+                f"{reason} — clave '{key}' ausente/vacía, emitida tal cual llegó."
+            )
 
     # Red de seguridad (H29): ya corrió antes en etl_generator.py para los
     # steps que enforce_dimension_step_policy/build_rw_matrix necesitan ver
@@ -232,9 +243,11 @@ def build_ktr(
     steps       = _auto_layout(ktr_data.get("steps", []), ktr_data.get("hops", []))
     hops        = ktr_data.get("hops", [])
 
-    # Campos críticos vacíos abortan el build — un step con config genérico
-    # (ver fix_gemini_config_generico.md) es peor que uno que no se genera.
-    critical_incomplete: list[str] = []
+    # D60 (docs/refactor/02-decisiones.md, Sitio 2): un campo crítico vacío o
+    # en placeholder (ver fix_gemini_config_generico.md) ya no aborta TODO el
+    # build — mismo tratamiento que Sitio 1: se emite el valor literal (el
+    # placeholder incluido — es lo que llegó, no se inventa nada mejor) +
+    # Finding(error) explícito de que ese step no va a producir filas reales.
     for step in ktr_data.get("steps", []):
         canonical = STEP_TYPE_ALIASES.get(step.get("type", ""), step.get("type", ""))
         required = _CRITICAL_FIELDS.get(canonical, [])
@@ -253,11 +266,11 @@ def build_ktr(
                 "BUILD_KTR step='%s' type='%s' campos_faltantes=%s config_completo=%s",
                 step.get("name"), canonical, missing, cfg,
             )
-            critical_incomplete.append(
-                f"Config crítico incompleto en '{step.get('name')}' ({canonical}): faltan {missing}"
+            warnings.append(
+                f"{PRE_EMIT_ERROR_PREFIX}Config crítico incompleto en '{step.get('name')}' "
+                f"({canonical}): faltan {missing} — este step no va a producir filas reales, "
+                "emitido tal cual llegó."
             )
-    if critical_incomplete:
-        raise KtrBuilderError(" | ".join(critical_incomplete))
 
     # Pre-pass: garantizar que cada step con conexión la tenga resuelta en su config
     connection_names = [c.get("name", "") for c in connections if c.get("name")]
@@ -380,16 +393,27 @@ def build_ktr(
         else:
             cfg = raw_cfg if isinstance(raw_cfg, dict) else {}
 
-        # Un type sin emisor registrado (ni siquiera detrás de un alias) no es
-        # un plugin PDI real o no está soportado por este builder — Spoon
-        # rompería con "plugin missing"/step vacío. Se aborta el build con un
-        # mensaje claro en vez de degradar en silencio a Dummy: un .ktr que
-        # "abre" pero le falta un step entero es peor que uno que no se genera.
+        # D60 (docs/refactor/02-decisiones.md, Sitio 3): un type sin emisor
+        # registrado (ni siquiera detrás de un alias) no es un plugin PDI real
+        # o no está soportado por este builder. Único de los 4 sitios de
+        # naturaleza distinta — no hay "valor tal cual llegó" que preservar,
+        # porque no existe código que lo codifique. Nunca se aborta todo el
+        # build: se sustituye por un step `Dummy` real de Kettle (no-op
+        # documentado — DummyTransMeta no sobreescribe getXML(), hereda el
+        # default de BaseStepMeta que emite XML vacío, igual que
+        # steps/control.py::_step_Dummy), conservando nombre y hops, +
+        # Finding(error) con el tipo original no soportado.
         builder = STEP_BUILDERS.get(canonical_type)
         if builder is None:
-            raise KtrBuilderError(
-                f"Tipo de step no soportado: '{step_type}' en paso '{step.get('name')}'"
+            warnings.append(
+                f"{PRE_EMIT_ERROR_PREFIX}Tipo de step no soportado: '{step_type}' en paso "
+                f"'{step.get('name')}' — no hay builder registrado (ni directo ni vía alias). "
+                "Emitido como 'Dummy' (no-op) en su lugar, conservando nombre y hops, para no "
+                "abortar el resto del build. Reemplazar a mano en Spoon por el step real."
             )
+            canonical_type = "Dummy"
+            xml_type = "Dummy"
+            builder = STEP_BUILDERS["Dummy"]
 
         if canonical_type != step_type or xml_type != step_type:
             logger.info("KTR: step type '%s' normalizado a '%s' (XML: '%s')", step_type, canonical_type, xml_type)

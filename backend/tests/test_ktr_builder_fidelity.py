@@ -8,8 +8,9 @@ ktr.steps[].config del LLM contra el .ktr emitido:
   2. SortRows respeta 'ascending': 'N' declarado (antes: string 'N' truthy -> 'Y').
   3. TableOutput respeta ignore_errors/truncate/specify_fields del config (antes:
      ignore_errors hardcodeado a 'N', truncate con default propio).
-  4. Un type sin emisor registrado aborta el build con KtrBuilderError en vez de
-     emitir Dummy en silencio.
+  4. Un type sin emisor registrado se emite como Dummy real (no-op de Kettle,
+     conservando nombre/hops) + Finding(error), en vez de abortar el build
+     (D60, docs/refactor/02-decisiones.md, Sitio 3).
   5. La validación de resolución de campos detecta un campo consumido que
      ningún step aguas arriba produce (el caso stg_fecha_carga de KTR_2).
 """
@@ -18,7 +19,7 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from app.services.ktr_builder import build_ktr
-from app.services.ktr_builder.common import KtrBuilderError
+from app.services.ktr_builder.validators import PRE_EMIT_ERROR_PREFIX
 
 
 def _minimal_ktr(steps: list, hops: list) -> dict:
@@ -113,13 +114,22 @@ def test_tableoutput_respects_ignore_errors_and_truncate():
     assert step.findtext("use_batch") == "N"
 
 
-def test_unsupported_step_type_aborts_instead_of_dummy():
+def test_unsupported_step_type_emits_real_dummy_with_error_finding():
+    """D60 (Sitio 3, docs/refactor/02-decisiones.md): nunca abortar todo el
+    build por un type sin builder registrado — se sustituye por un step
+    `Dummy` real de Kettle (no-op, conservando nombre y hops) + Finding(error)
+    citando el tipo original no soportado."""
     ktr = _minimal_ktr(
         steps=[{"name": "Raro", "type": "TotallyMadeUpStepType", "config": {}}],
         hops=[],
     )
-    with pytest.raises(KtrBuilderError, match="Tipo de step no soportado"):
-        build_ktr(ktr)
+    xml, _, warnings = build_ktr(ktr)
+    step = _find_step(xml, "Raro")
+    assert step.findtext("type") == "Dummy"
+    assert any(
+        "TotallyMadeUpStepType" in w and "no soportado" in w and w.startswith(PRE_EMIT_ERROR_PREFIX)
+        for w in warnings
+    )
 
 
 def test_explicit_dummy_still_allowed():
@@ -416,14 +426,20 @@ def test_dblookup_empty_config_reports_incomplete_producer():
             {"from": "Lookup SK Cliente", "to": "Cargar Fact"},
         ],
     )
-    with pytest.raises(KtrBuilderError, match=r"'Lookup SK Cliente'.*no declara campos de retorno"):
-        build_ktr(ktr)
+    xml, _, warnings = build_ktr(ktr)
+    assert _find_step(xml, "Lookup SK Cliente") is not None  # D60 Sitio 1: no aborta, se emite tal cual
+    assert any(
+        w.startswith(PRE_EMIT_ERROR_PREFIX)
+        and "'Lookup SK Cliente'" in w and "no declara campos de retorno" in w
+        for w in warnings
+    )
 
 
-def test_calculator_empty_calculations_aborts():
-    # Caso real documentado: "Convertir a USD"/"Generar Atributos de Tiempo"
-    # llegaban con config = {"calculations": []} — sin campos.formulas/fields, un
-    # Calculator vacío no aporta nada al stream y todo lo que dependa de él rompe.
+def test_calculator_empty_calculations_reports_error_not_abort():
+    # D60 (Sitio 1): "Convertir a USD"/"Generar Atributos de Tiempo" llegaban
+    # con config = {"calculations": []} — sin campos.formulas/fields, un
+    # Calculator vacío no aporta nada al stream. Ya no aborta: se emite tal
+    # cual + Finding(error).
     ktr = _minimal_ktr(
         steps=[
             {"name": "In", "type": "TableInput", "config": {"sql": "SELECT monto FROM stg_ventas"}},
@@ -431,11 +447,15 @@ def test_calculator_empty_calculations_aborts():
         ],
         hops=[{"from": "In", "to": "Convertir a USD"}],
     )
-    with pytest.raises(KtrBuilderError, match=r"'Convertir a USD'.*no declara calculations"):
-        build_ktr(ktr)
+    xml, _, warnings = build_ktr(ktr)
+    assert _find_step(xml, "Convertir a USD") is not None
+    assert any(
+        w.startswith(PRE_EMIT_ERROR_PREFIX) and "'Convertir a USD'" in w and "no declara calculations" in w
+        for w in warnings
+    )
 
 
-def test_formula_empty_formulas_aborts():
+def test_formula_empty_formulas_reports_error_not_abort():
     ktr = _minimal_ktr(
         steps=[
             {"name": "In", "type": "TableInput", "config": {"sql": "SELECT monto FROM stg_ventas"}},
@@ -443,11 +463,15 @@ def test_formula_empty_formulas_aborts():
         ],
         hops=[{"from": "In", "to": "Calcular Importe Neto"}],
     )
-    with pytest.raises(KtrBuilderError, match=r"'Calcular Importe Neto'.*no declara formulas"):
-        build_ktr(ktr)
+    xml, _, warnings = build_ktr(ktr)
+    assert _find_step(xml, "Calcular Importe Neto") is not None
+    assert any(
+        w.startswith(PRE_EMIT_ERROR_PREFIX) and "'Calcular Importe Neto'" in w and "no declara formulas" in w
+        for w in warnings
+    )
 
 
-def test_streamlookup_empty_values_aborts():
+def test_streamlookup_empty_values_reports_error_not_abort():
     # keys presente (condición de cruce) pero values vacío: el lookup no trae
     # ningún campo nuevo al stream — mismo hueco visto en "Unir Clasificacion
     # Cliente" (categoria_cliente nunca llega a los consumidores aguas abajo).
@@ -462,8 +486,12 @@ def test_streamlookup_empty_values_aborts():
         ],
         hops=[{"from": "In", "to": "Unir Clasificacion Cliente"}],
     )
-    with pytest.raises(KtrBuilderError, match=r"'Unir Clasificacion Cliente'.*no declara values"):
-        build_ktr(ktr)
+    xml, _, warnings = build_ktr(ktr)
+    assert _find_step(xml, "Unir Clasificacion Cliente") is not None
+    assert any(
+        w.startswith(PRE_EMIT_ERROR_PREFIX) and "'Unir Clasificacion Cliente'" in w and "no declara values" in w
+        for w in warnings
+    )
 
 
 def test_tableinput_duplicate_select_column_warns():
@@ -567,10 +595,11 @@ def test_numberrange_camelcase_alias_normalized():
         ("StreamLookup", {"step": "In", "keys": [{"stream": "id", "lookup": "id"}]}, "values"),
     ],
 )
-def test_required_keys_blocks_with_step_name_in_message(step_type, config, expected_key):
-    # required_keys del contrato bloquea ACÁ, en el step que quedó a medio
-    # llenar — no dos capas después, como un campo faltante en un consumidor
-    # lejano cuyo mensaje culpa al step equivocado.
+def test_required_keys_reports_error_with_step_name_in_message(step_type, config, expected_key):
+    # D60 (Sitio 1): required_keys del contrato ya no aborta — reporta ACÁ,
+    # en el step que quedó a medio llenar (no dos capas después, como un
+    # campo faltante en un consumidor lejano cuyo mensaje culpa al step
+    # equivocado), y el build sigue.
     ktr = _minimal_ktr(
         steps=[
             {"name": "In", "type": "TableInput", "config": {"sql": "SELECT id FROM stg_x"}},
@@ -578,8 +607,12 @@ def test_required_keys_blocks_with_step_name_in_message(step_type, config, expec
         ],
         hops=[{"from": "In", "to": "Step Incompleto"}],
     )
-    with pytest.raises(KtrBuilderError, match=r"Config incompleto en 'Step Incompleto'"):
-        build_ktr(ktr)
+    xml, _, warnings = build_ktr(ktr)
+    assert _find_step(xml, "Step Incompleto") is not None
+    assert any(
+        w.startswith(PRE_EMIT_ERROR_PREFIX) and "Config incompleto en 'Step Incompleto'" in w
+        for w in warnings
+    )
 
 
 def test_no_duplicate_key_alias_tables_outside_contracts():

@@ -2,20 +2,20 @@
 antes de llegar a build_ktr(). Cubre:
   1. Step incompleto que el LLM stub corrige en el primer intento.
   2. Step que sigue incompleto tras agotar max_retries -> warning + build_ktr()
-     sigue abortando igual (el repair loop no reemplaza el hard-abort de build.py).
+     emite el step tal cual y reporta Finding(error) (D60, Sitio 1) — el repair
+     loop no repara nada nuevo, solo deja de reintentar.
   3. Step ya completo -> no dispara ninguna llamada al LLM.
 """
 from __future__ import annotations
 
 import asyncio
 
-import pytest
 from unittest.mock import MagicMock
 
 from app.models.llm_base import BaseLLM, LLMResponse
 from app.services.ktr_builder import build_ktr
-from app.services.ktr_builder.common import KtrBuilderError
 from app.services.ktr_builder.repair import repair_ktr_steps
+from app.services.ktr_builder.validators import PRE_EMIT_ERROR_PREFIX
 
 
 def _run(coro):
@@ -67,7 +67,7 @@ def test_repair_fixes_step_on_first_attempt():
     build_ktr(fixed)
 
 
-def test_repair_gives_up_after_max_retries_and_build_still_aborts():
+def test_repair_gives_up_after_max_retries_and_build_reports_error_not_abort():
     # El stub siempre devuelve un config igual de incompleto -> nunca converge.
     llm = _stub_llm([{"calculations": []}])
     ktr = _ktr_with_calculator({"calculations": []})
@@ -78,8 +78,14 @@ def test_repair_gives_up_after_max_retries_and_build_still_aborts():
     assert "Convertir a USD" in warnings[0]
     assert llm._calls["n"] == 2  # respetó max_retries, no reintentó infinito
 
-    with pytest.raises(KtrBuilderError, match=r"'Convertir a USD'.*no declara calculations"):
-        build_ktr(fixed)
+    # D60 (Sitio 1, docs/refactor/02-decisiones.md): el repair loop sigue sin
+    # reemplazar nada — build_ktr() ya no aborta, emite el step tal cual +
+    # Finding(error).
+    _, _, build_warnings = build_ktr(fixed)
+    assert any(
+        w.startswith(PRE_EMIT_ERROR_PREFIX) and "'Convertir a USD'" in w and "no declara calculations" in w
+        for w in build_warnings
+    )
 
 
 def test_repair_skips_already_complete_step():
