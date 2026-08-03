@@ -18,7 +18,11 @@ from app.models.llm_base import BaseLLM
 from app.services.ktr_builder.dimension_step_policy import enforce_dimension_step_policy
 from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 
-from tests.test_dimension_step_policy import _dim_producto_contract, _dim_producto_ktr_with_stream
+from tests.test_dimension_step_policy import (
+    _dim_producto_contract,
+    _dim_producto_ktr_with_stream,
+    _FakeDimContract,
+)
 
 
 def _run(coro):
@@ -64,26 +68,44 @@ def test_repair_dimension_loader_fields_floor_when_gate_fails(monkeypatch):
     """El repair propone un stream_field que no existe de verdad en el
     stream (alucinación) — el gate lo rechaza en TODOS los intentos, el
     step queda intacto y el finding 'repairable' original sobrevive: mismo
-    piso que antes de este cambio (build_ktr aborta más abajo)."""
+    piso que antes de este cambio (build_ktr aborta más abajo).
+
+    E-03 (docs/refactor/errores.md): la versión anterior de este test usaba
+    el mismo contrato/stream que test_repair_dimension_loader_fields_success
+    (atributo faltante 'nombre_categoria', stream con 'categoria') — el
+    atajo determinístico (_deterministic_field_mapping, sinónimo sin prefijo
+    'nombre_') resuelve ese caso ANTES de llegar al LLM fake, con un mapeo
+    real y verificado ('categoria' sí existe en upstream). El fake nunca se
+    invocaba: el test no ejercía el gate que dice probar. Acá el atributo
+    faltante ('descripcion_categoria') no tiene match determinístico (no es
+    idéntico ni 'nombre_'+homónimo), así que sí llega al LLM fake — y ESE es
+    el que alucina 'campo_inexistente', inexistente en upstream."""
     calls = {"n": 0}
 
     async def _fake_repair_step_config(step_name, canonical, cfg, missing, context_text, llm):
         calls["n"] += 1
-        return {"fields": [{"table_field": "nombre_categoria", "stream_field": "campo_inexistente"}]}
+        return {"fields": [{"table_field": "descripcion_categoria", "stream_field": "campo_inexistente"}]}
 
     monkeypatch.setattr(eg, "repair_step_config", _fake_repair_step_config)
 
     ktr_data = _dim_producto_ktr_with_stream()
-    contracts = [_dim_producto_contract()]
+    contract = _FakeDimContract(
+        "dim_producto", 2, technical_key="sk_producto",
+        date_from="fecha_inicio", date_to="fecha_fin",
+        attributes_scd1=["nombre_producto", "descripcion_categoria"],
+        attributes_scd2=["precio_unitario"],
+    )
+    contracts = [contract]
     llm = MagicMock(spec=BaseLLM)
 
     results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+    assert any(r.get("repairable") for r in results)  # precondición: sin esto el resto no prueba nada
     final = _run(eg._repair_dimension_loader_fields(ktr_data, contracts, results, [], llm))
 
     assert final == results  # sin cambios
     step = next(s for s in ktr_data["steps"] if s["name"] == "Cargar dim_producto")
     assert step["config"]["update"] == "N"  # intacto
-    assert calls["n"] == 2  # max_retries default (2), agotados
+    assert calls["n"] == 2  # max_retries default (2), agotados — el fake sí se llamó esta vez
 
 
 def test_repair_dimension_loader_fields_noop_without_candidates(monkeypatch):

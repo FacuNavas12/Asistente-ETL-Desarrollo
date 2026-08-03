@@ -261,6 +261,13 @@ def _consumes_delete(cfg):
 
 def _consumes_dimension_lookup(cfg):
     req = _names(cfg.get("keys", []), "stream", "stream_field", "name")
+    # Hallazgo (01-hallazgos.md): antes de esto, 'fields' (los atributos
+    # scd1/scd2 a insertar/actualizar) no formaba parte de lo consumido —
+    # el grafo de campos (fields_validate.py, corre en build.py:214) era
+    # ciego a un stream_field inventado/inexistente ahí. Misma prioridad de
+    # clave que el emisor real (lookups.py: f.get("stream") or
+    # f.get("stream_field") or f.get("name", "")).
+    req |= _names(cfg.get("fields", []), "stream", "stream_field", "name")
     if cfg.get("date_field"):
         req.add(cfg["date_field"])
     return req

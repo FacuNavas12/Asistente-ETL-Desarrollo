@@ -37,8 +37,20 @@ _FIELD_KEYS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "TableOutput":      (("column_name", "dest"), ("stream_name", "source")),
     "InsertUpdate":     (("table_field", "rename"), ("stream_field", "name")),
     "Update":           (("table_field", "rename"), ("stream_field", "name")),
-    "DimensionLookup":  (("table_field",), ("stream_field", "stream", "name")),
+    # Mismo orden de prioridad que el emisor real, lookups.py:70,72 — prioriza
+    # "lookup"/"stream" antes que "table_field"/"stream_field" (REV2, item 6).
+    "DimensionLookup":  (("lookup", "table_field"), ("stream", "stream_field", "name")),
 }
+
+_MIN_OPERATORS = {">", ">="}
+_MAX_OPERATORS = {"<", "<="}
+
+
+def _to_float(value) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _first(d: dict, keys: tuple[str, ...]) -> str:
@@ -60,7 +72,8 @@ def check_constraint_filter_rows(ctx: ValidationContext) -> list[Finding]:
     findings: list[Finding] = []
     steps = ctx.ktr_data.get("steps", [])
 
-    filter_conditions: list[tuple[str, str, str]] = []  # (step_name, field, value_type)
+    # (step_name, field, value_type, operator, value)
+    filter_conditions: list[tuple[str, str, str, str, object]] = []
     for step in steps:
         raw_type = step.get("type", "")
         canonical = ctx.step_type_aliases.get(raw_type, raw_type)
@@ -68,9 +81,12 @@ def check_constraint_filter_rows(ctx: ValidationContext) -> list[Finding]:
             continue
         cfg = parse_cfg(step.get("config", {}))
         field = str(cfg.get("field") or "").strip()
-        if not field or str(cfg.get("operator", "")).upper() not in _BOUND_OPERATORS:
+        operator = str(cfg.get("operator", "")).upper()
+        if not field or operator not in _BOUND_OPERATORS:
             continue
-        filter_conditions.append((step.get("name", ""), field, str(cfg.get("value_type", "String"))))
+        filter_conditions.append(
+            (step.get("name", ""), field, str(cfg.get("value_type", "String")), operator, cfg.get("value"))
+        )
 
     for step in steps:
         raw_type = step.get("type", "")
@@ -111,7 +127,7 @@ def check_constraint_filter_rows(ctx: ValidationContext) -> list[Finding]:
                 continue
             col_type = bound.get("type")
             if col_type in _NUMERIC_TYPES:
-                for filter_step_name, _, value_type in matches:
+                for filter_step_name, _, value_type, _, _ in matches:
                     if value_type == "String":
                         findings.append(Finding(
                             severity="error", step_name=filter_step_name,
@@ -122,4 +138,40 @@ def check_constraint_filter_rows(ctx: ValidationContext) -> list[Finding]:
                                 "lexicográfico), no como número. Cambiar value_type a 'Integer'/'Number'."
                             ),
                         ))
+
+            for bound_key, ops, label in (
+                ("minimum", _MIN_OPERATORS, "mínimo"),
+                ("maximum", _MAX_OPERATORS, "máximo"),
+            ):
+                bound_raw = bound.get(bound_key)
+                bound_val = _to_float(bound_raw)
+                if bound_raw is None or bound_val is None:
+                    continue
+                dir_matches = [c for c in matches if c[3] in ops]
+                covered = any(
+                    (v := _to_float(c[4])) is not None
+                    and (v >= bound_val if bound_key == "minimum" else v <= bound_val)
+                    for c in dir_matches
+                )
+                if covered:
+                    continue
+                if dir_matches:
+                    used_value = dir_matches[0][4]
+                    findings.append(Finding(
+                        severity="error", step_name=step_name,
+                        message=(
+                            f"{CHECK_FILTER_PREFIX}Step '{step_name}': columna '{dest_col}' de '{table}' "
+                            f"tiene CHECK de {label} {bound_raw}, pero el FilterRows sobre "
+                            f"'{stream_field}' usa value={used_value!r} — no cubre el {label} exigido."
+                        ),
+                    ))
+                else:
+                    findings.append(Finding(
+                        severity="error", step_name=step_name,
+                        message=(
+                            f"{CHECK_FILTER_PREFIX}Step '{step_name}': columna '{dest_col}' de '{table}' "
+                            f"tiene CHECK de {label} {bound_raw}, pero no hay filtro de {label} "
+                            f"(operador {'/'.join(sorted(ops))}) sobre '{stream_field}'."
+                        ),
+                    ))
     return findings

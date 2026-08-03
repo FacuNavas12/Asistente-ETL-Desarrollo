@@ -80,7 +80,11 @@ export default function CreateETL() {
   const [inferResult,    setInferResult]    = useState(() => {
     if (initSource?.inferResult) return initSource.inferResult;
     if (initSource?.stg_definition || initSource?.dwh_model) {
-      return { stg_ddl: initSource.stg_definition ?? "", dwh_ddl: initSource.dwh_model ?? "" };
+      return {
+        stg_ddl: initSource.stg_definition ?? "",
+        dwh_ddl: initSource.dwh_model ?? "",
+        dim_contracts: initSource.dim_contracts ?? [],
+      };
     }
     return null;
   });
@@ -374,6 +378,7 @@ export default function CreateETL() {
       reglasNegocio,
       stg_definition: inferResult?.stg_ddl ?? "",
       dwh_model:      inferResult?.dwh_ddl ?? "",
+      dim_contracts:  inferResult?.dim_contracts ?? [],
       // connections_map se pierde junto con el KtrBuildJob (TTL) — lo persistimos
       // acá para que el ETL guardado pueda resolver conn_dwh más adelante
       // (ej. validación de estado del DWH antes de exportar a Superset).

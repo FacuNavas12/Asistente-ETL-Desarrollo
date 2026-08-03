@@ -27,6 +27,16 @@ class ValidationContext:
     # dict, no CanonicalField/FieldConstraints (pydantic, no domain) -- ver
     # check_constraint_filter.py para el builder real (etl_generator.py).
     dwh_constraints: dict[str, dict[str, dict]] = field(default_factory=dict)
+    # Narración cruda del modelo para esta etapa -- pares (campo, mensaje) de
+    # `data["validaciones"]` tal como llegó del LLM, ANTES de mezclarse con
+    # hallazgos deterministas (V-1/V-2, docs/refactor/plan-reparacion-etl.md,
+    # item 5). Vacío por default -- solo narration_crosscheck.py lo usa.
+    narracion_modelo: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    # {columna_lower: (precision, scale)} -- TODA columna numérica del DWH con
+    # precisión/escala declarada (P3-4, docs/refactor/plan-reparacion-etl.md,
+    # item 8), sin filtrar por CHECK -- insumo de monetary_scale.py. Indexado
+    # por columna, no por tabla, mismo criterio que MONEY_FIELD_HINTS.
+    dwh_numeric_scale: dict[str, tuple[int, int]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

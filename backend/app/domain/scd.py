@@ -389,6 +389,40 @@ ATTRIBUTE_UPDATE_TYPE_CODES: tuple[str, ...] = (
     "DateInsertedOrUpdated", "DateInserted", "DateUpdated", "LastVersion",
 )
 
+# Vocabulario de ValueMetaFactory (Kettle) para <field><update> cuando el step
+# está en modo N (lookup, D16/D44) — DimensionLookupMeta.getUpdateType() (líneas
+# ~845-858 de DimensionLookupMeta.java, pentaho/pentaho-kettle) delega a
+# ValueMetaFactory.getIdForValueMeta(ty) cuando el update de nivel-step es
+# false: interpreta el tag como nombre de value-meta, no como modo de
+# actualización.
+#
+# Verificado 2026-08-03 (D-N, docs/refactor/02-decisiones.md) contra
+# ValueMetaInterface.java líneas 95-128 (pentaho/pentaho-kettle, rama master):
+# TYPE_NONE=0, TYPE_NUMBER=1, TYPE_STRING=2, TYPE_DATE=3, TYPE_BOOLEAN=4,
+# TYPE_INTEGER=5, TYPE_BIGNUMBER=6, TYPE_SERIALIZABLE=7, TYPE_BINARY=8,
+# TYPE_TIMESTAMP=9, TYPE_INET=10; typeCodes=["-","Number","String","Date",
+# "Boolean","Integer","BigNumber","Serializable","Binary","Timestamp",
+# "Internet Address"]. La lista de abajo replica exactamente
+# ValueMetaFactory.getValueMetaNames() (líneas 87-96 de ValueMetaFactory.java):
+# filtra id>0 (excluye "-", el sentinel de TYPE_NONE — getIdForValueMeta()
+# devuelve el mismo TYPE_NONE para cualquier string no reconocido, así que
+# aceptar "-" como valor legítimo sería aceptar el propio sentinel de fallo) y
+# excluye TYPE_SERIALIZABLE (Kettle mismo no lo ofrece como value-meta
+# seleccionable pese a que getIdForValueMeta() lo resolvería si apareciera).
+#
+# Faltaba "Internet Address" (TYPE_INET=10) — el subconjunto previo
+# (String, Number, Integer, BigNumber, Date, Boolean, Binary, Timestamp) no
+# cubría los 9 nombres reales de getValueMetaNames(), solo 8. No explica el
+# crash de 'Cargar dim_producto' (E-01): ese step tenía type='Update' — un
+# código de modo Y, no un nombre de value-meta — mientras estaba clasificado
+# en modo N; agregar "Internet Address" no lo hubiera aceptado. Es un
+# hallazgo independiente (E-02): sin este nombre, cualquier atributo de
+# dimensión legítimamente tipado "Internet Address" habría abortado el build.
+VALUE_META_TYPE_NAMES: tuple[str, ...] = (
+    "String", "Number", "Integer", "BigNumber", "Date", "Boolean", "Binary", "Timestamp",
+    "Internet Address",
+)
+
 
 def derive_attribute_update_mode(attribute: str, attributes_scd1: Sequence[str], attributes_scd2: Sequence[str]) -> str:
     """El modo de actualización es propiedad del ATRIBUTO, no de la dimensión

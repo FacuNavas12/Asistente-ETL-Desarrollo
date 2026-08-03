@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from app.services.ktr_builder.dimension_step_policy import (
     OVERRIDE_STEP_PREFIX,
+    _synthesize_dimension_lookup_config,
     derive_dimension_loader_step,
     enforce_dimension_step_policy,
     role_of_dimension_step,
@@ -223,8 +224,17 @@ def test_loader_with_checkpoint_writelog_stays_loader():
 
 def test_enforce_dimension_step_policy_forces_readonly_on_fact_lookup_scd2():
     """Paso 4 (D16): el step 'Lookup Dim Producto' (rol fact_lookup) se
-    fuerza a DimensionLookup+update=N; el loader queda intacto."""
+    fuerza a DimensionLookup+update=N; el loader queda intacto.
+
+    D57: 'Lookup Dim Producto' llega con `fields` en vocabulario modo Y
+    (heredado de la premisa, ahora falsa, de que era el loader) — la policy
+    debe limpiarlo, no dejarlo cruzado contra el modo N nuevo (D-1), y
+    reportar la limpieza con repaired=True (no silenciosa)."""
     ktr_data = _err1_like_ktr()
+    lookup_step = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
+    lookup_step["config"]["fields"] = [
+        {"stream_field": "nombre", "table_field": "nombre", "type": "Update"},
+    ]
     contracts = [_FakeDimContract("dim_producto", 2)]
 
     results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
@@ -235,7 +245,12 @@ def test_enforce_dimension_step_policy_forces_readonly_on_fact_lookup_scd2():
     assert loader["config"].get("update", "Y") != "N"  # loader no tocado
     assert lookup["type"] == "DimensionLookup"
     assert lookup["config"]["update"] == "N"
+    assert lookup["config"]["fields"] == []  # D57: vocabulario Y viejo descartado, no cruzado
     assert any(r["tipo"] == "warning" and "solo lectura" in r["mensaje"] for r in results)
+    assert any(
+        r.get("repaired") is True and "descartado" in r["mensaje"] and "dim_producto" in r["campo"]
+        for r in results
+    )
 
 
 def test_enforce_dimension_step_policy_already_readonly_is_left_untouched():
@@ -308,3 +323,389 @@ def test_enforce_dimension_step_policy_respects_override_for_fact_lookup_role():
     lookup = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
     assert lookup["config"].get("update", "Y") != "N"  # override respetado, no forzado a solo-lectura
     assert results == []
+
+
+# ─── H51 — loader (rol) con update=N, corregido a update=Y (ítem 1 del plan) ─
+
+def test_loader_with_update_n_is_repaired_to_update_y():
+    """Caso H51: el step resuelve a rol 'loader' (única escritura sobre la
+    tabla, ver role_of_dimension_step) pero su config trae update=N — se
+    corrige a update=Y y se resintetiza 'fields' desde dim_contracts."""
+    ktr_data = {
+        "steps": [
+            {"name": "Cargar Dim Producto", "type": "DimensionLookup",
+             "config": {
+                 "table": "dim_producto", "connection": "conn_dwh", "return_field": "sk_producto",
+                 "keys": [{"stream": "id_producto", "lookup": "id_producto"}],
+                 "update": "N",
+             }},
+        ],
+        "hops": [],
+    }
+    contracts = [_FakeDimContract(
+        "dim_producto", 2,
+        technical_key="sk_producto", version_field="version",
+        date_from="fecha_inicio", date_to="fecha_fin",
+        attributes_scd1=["nombre"], attributes_scd2=["precio"],
+    )]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    step = ktr_data["steps"][0]
+    assert step["config"]["update"] == "Y"
+    assert step["config"]["date_from"] == "fecha_inicio"
+    assert step["config"]["date_to"] == "fecha_fin"
+    assert step["config"]["fields"] == [
+        {"stream_field": "nombre", "table_field": "nombre", "type": "Update"},
+        {"stream_field": "precio", "table_field": "precio", "type": "Insert"},
+    ]
+    assert len(results) == 1
+    assert results[0]["tipo"] == "warning"
+    assert results[0]["campo"] == "dim_producto"
+
+
+def test_loader_with_update_n_and_registered_override_is_left_untouched():
+    """Con override registrado (campo == tabla), el loader con update=N
+    queda tal como el modelo lo declaró — no se corrige, se anota info."""
+    ktr_data = {
+        "steps": [
+            {"name": "Cargar Dim Producto", "type": "DimensionLookup",
+             "config": {
+                 "table": "dim_producto", "connection": "conn_dwh", "return_field": "sk_producto",
+                 "keys": [{"stream": "id_producto", "lookup": "id_producto"}],
+                 "update": "N",
+             }},
+        ],
+        "hops": [],
+    }
+    contracts = [_FakeDimContract("dim_producto", 2)]
+    validaciones = [{
+        "tipo": "info", "campo": "dim_producto",
+        "mensaje": f"{OVERRIDE_STEP_PREFIX}loader con update=N — motivo: recarga full refresh, no versiona.",
+    }]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, validaciones)
+
+    step = ktr_data["steps"][0]
+    assert step["config"]["update"] == "N"  # respetado, no reparado
+    assert len(results) == 1
+    assert results[0]["tipo"] == "info"
+
+
+# ─── D58 — 1 solo step candidato por tabla ⇒ role=loader sin BFS ────────────
+
+def _cargar_dim_producto_single_step_ktr():
+    """Reproduce el step 'Cargar dim_producto' de la corrida real
+    (etl-llm-raw-test-01_sonnet_fase4.json, ktr_2): ÚNICO DimensionLookup
+    sobre dim_producto, llegado del LLM con update='N' y 'fields' en
+    vocabulario modo Y (type='Update') — contradice su propia narración
+    ("update=Y y todos los atributos en modo Update"). Alimenta, vía hops,
+    'Cargar fact_inventario' (InsertUpdate, tabla distinta) — el mismo
+    patrón que el BFS de role_of_dimension_step interpretaba (mal, D58)
+    como "lookup de FK del lado del hecho"."""
+    return {
+        "steps": [
+            {"name": "Cargar dim_producto", "type": "DimensionLookup",
+             "config": {
+                 "table": "dim_producto", "connection": "conn_dwh", "return_field": "sk_producto",
+                 "update": "N",
+                 "keys": [{"stream_field": "cod_producto", "table_field": "id_producto_origen"}],
+                 "fields": [
+                     {"stream_field": "nombre_producto", "table_field": "nombre_producto", "type": "Update"},
+                     {"stream_field": "precio_unitario", "table_field": "precio_unitario", "type": "Update"},
+                 ],
+                 "date_from": "fecha_inicio", "date_to": "fecha_fin", "version_field": "version",
+             }},
+            {"name": "Cargar fact_inventario", "type": "InsertUpdate",
+             "config": {"table": "fact_inventario", "connection": "conn_dwh"}},
+        ],
+        "hops": [
+            {"from": "Cargar dim_producto", "to": "Cargar fact_inventario", "enabled": True},
+        ],
+    }
+
+
+def test_single_dimension_lookup_step_per_table_resolves_loader_not_fact_lookup():
+    """D58: antes de este fix, role_of_dimension_step declaraba 'fact_lookup'
+    porque el BFS alcanza 'Cargar fact_inventario' (InsertUpdate, tabla
+    distinta) — pese a ser el ÚNICO step de dim_producto, sin ambigüedad
+    posible. Eso mandaba el step al branch fact_lookup (D57), que limpia
+    'fields' pero NUNCA lo corrige a update=Y — el step seguía siendo un
+    loader roto. Con D58, 1 solo candidato ⇒ role='loader' sin BFS, y cae
+    en el branch H51: se corrige a update=Y y se resintetiza 'fields'."""
+    ktr_data = _cargar_dim_producto_single_step_ktr()
+    contracts = [_FakeDimContract(
+        "dim_producto", 1,
+        technical_key="sk_producto", version_field="version",
+        date_from="fecha_inicio", date_to="fecha_fin",
+        attributes_scd1=["nombre_producto", "precio_unitario"],
+    )]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    step = ktr_data["steps"][0]
+    assert step["type"] == "DimensionLookup"
+    assert step["config"]["update"] == "Y"
+    assert step["config"]["fields"] == [
+        {"stream_field": "nombre_producto", "table_field": "nombre_producto", "type": "Update"},
+        {"stream_field": "precio_unitario", "table_field": "precio_unitario", "type": "Update"},
+    ]
+    assert any(r["tipo"] == "warning" and "loader" in r["mensaje"] for r in results)
+    assert not any(r["tipo"] == "error" for r in results)
+
+
+# ─── D58 — already_readonly ya no da por bueno el vocabulario en silencio ───
+
+def test_already_readonly_fact_lookup_with_crossed_vocabulary_reports_error():
+    """D58: rol fact_lookup genuino (2 steps candidatos para dim_producto,
+    BFS legítimamente aplicable) que llega YA en update=N pero con 'fields'
+    heredado en vocabulario modo Y — antes de este fix, 'already_readonly'
+    cortaba con `continue` mudo sin mirar 'fields'. Ahora valida y reporta
+    error; no repara (sin contrato para saber qué hacer con esas columnas)."""
+    ktr_data = _err1_like_ktr()
+    lookup_step = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
+    lookup_step["config"]["update"] = "N"
+    lookup_step["config"]["fields"] = [
+        {"stream_field": "nombre", "table_field": "nombre", "type": "Update"},
+    ]
+    contracts = [_FakeDimContract("dim_producto", 2)]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    lookup = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
+    assert lookup["config"]["fields"] == [
+        {"stream_field": "nombre", "table_field": "nombre", "type": "Update"},
+    ]  # no reparado, D58 solo valida y reporta
+    assert any(
+        r["tipo"] == "error" and "vocabulario cruzado" in r["mensaje"] and r["campo"] == "dim_producto"
+        for r in results
+    )
+
+
+# ─── D58 (segunda vuelta) — 1 candidato no basta, tiene que traer los atributos
+
+def test_single_candidate_without_contract_attributes_is_not_forced_to_loader():
+    """El riesgo dejado anotado en la primera versión de D58: 1 solo step
+    candidato para una tabla declarada en dim_contracts no prueba que sea
+    el loader — puede ser un lookup huérfano (el LLM omitió el loader
+    real). Acá el step no trae en 'fields' ningún atributo de los que el
+    contrato declara (nombre, precio) — no se fuerza update=Y; se reporta
+    error y el step queda tal cual, sin tocar."""
+    ktr_data = {
+        "steps": [
+            {"name": "Lookup Huerfano Producto", "type": "DimensionLookup",
+             "config": {
+                 "table": "dim_producto", "connection": "conn_dwh", "return_field": "sk_producto",
+                 "update": "N",
+                 "keys": [{"stream_field": "id_producto", "table_field": "id_producto"}],
+             }},
+            {"name": "Cargar Fact Venta", "type": "InsertUpdate",
+             "config": {"table": "fact_venta", "connection": "conn_dwh"}},
+        ],
+        "hops": [
+            {"from": "Lookup Huerfano Producto", "to": "Cargar Fact Venta", "enabled": True},
+        ],
+    }
+    contracts = [_FakeDimContract(
+        "dim_producto", 1, attributes_scd1=["nombre", "precio"],
+    )]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    step = ktr_data["steps"][0]
+    assert step["config"]["update"] == "N"  # NO forzado a Y
+    assert "fields" not in step["config"]  # no tocado
+    assert any(
+        r["tipo"] == "error" and "loader faltante" in r["mensaje"] and r["campo"] == "dim_producto"
+        for r in results
+    )
+
+
+def test_single_candidate_with_partial_contract_attributes_is_not_forced_to_loader():
+    """Match parcial (trae 'nombre' pero no 'precio', ambos del contrato) es
+    tan indistinguible de un lookup con columnas de retorno puntuales
+    (P3-1) como de un loader incompleto — se exige el conjunto COMPLETO,
+    no 'alguno'. Ante la duda, se reporta, no se fuerza (D5).
+
+    Hop hacia 'Cargar Fact Venta' (tabla distinta) es necesario para que
+    role_of_dimension_step resuelva 'fact_lookup' primero — el discriminador
+    de D58 solo interviene sobre ese resultado (ver comentario en
+    enforce_dimension_step_policy); sin hop, el BFS ya resuelve 'loader'
+    sin ambigüedad y este test no ejercitaría el discriminador."""
+    ktr_data = {
+        "steps": [
+            {"name": "Lookup Parcial Producto", "type": "DimensionLookup",
+             "config": {
+                 "table": "dim_producto", "connection": "conn_dwh", "return_field": "sk_producto",
+                 "update": "N",
+                 "keys": [{"stream_field": "id_producto", "table_field": "id_producto"}],
+                 "fields": [{"stream_field": "nombre", "table_field": "nombre", "type": "String"}],
+             }},
+            {"name": "Cargar Fact Venta", "type": "InsertUpdate",
+             "config": {"table": "fact_venta", "connection": "conn_dwh"}},
+        ],
+        "hops": [
+            {"from": "Lookup Parcial Producto", "to": "Cargar Fact Venta", "enabled": True},
+        ],
+    }
+    contracts = [_FakeDimContract("dim_producto", 1, attributes_scd1=["nombre", "precio"])]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    step = ktr_data["steps"][0]
+    assert step["config"]["update"] == "N"
+    assert any(r["tipo"] == "error" and "falta(n): precio" in r["mensaje"] for r in results)
+
+
+def test_single_candidate_with_all_contract_attributes_resolves_loader():
+    """Contraparte positiva: si el único candidato SÍ trae, en 'fields',
+    todos los atributos que el contrato declara, el discriminador lo deja
+    pasar como loader (mismo resultado que
+    test_single_dimension_lookup_step_per_table_resolves_loader_not_fact_lookup,
+    acotado a solo el chequeo del discriminador, sin hops hacia otra
+    tabla)."""
+    ktr_data = {
+        "steps": [
+            {"name": "Cargar Dim Producto", "type": "DimensionLookup",
+             "config": {
+                 "table": "dim_producto", "connection": "conn_dwh", "return_field": "sk_producto",
+                 "update": "N",
+                 "keys": [{"stream_field": "id_producto", "table_field": "id_producto"}],
+                 "fields": [
+                     {"stream_field": "nombre", "table_field": "nombre", "type": "Update"},
+                     {"stream_field": "precio", "table_field": "precio", "type": "Update"},
+                 ],
+             }},
+        ],
+        "hops": [],
+    }
+    contracts = [_FakeDimContract("dim_producto", 1, attributes_scd1=["nombre", "precio"])]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    step = ktr_data["steps"][0]
+    assert step["config"]["update"] == "Y"
+    assert not any(r["tipo"] == "error" for r in results)
+
+
+# ─── Hallazgo (01-hallazgos.md) — 'sobra' + marcador 'repairable' ───────────
+
+def _dim_producto_ktr_with_stream():
+    """Análogo minimal del corpus real (etl-llm-raw-test-01_sonnet_fase4.json,
+    'Cargar dim_producto'): el stream trae 'categoria' (texto crudo), NO
+    'nombre_categoria' (columna real del contrato) — y 'fields' del step
+    trae 'fk_categoria', que no pertenece a dim_producto (vocabulario de
+    fact_inventario). RowGenerator como fuente porque su 'produces' es
+    determinístico por config explícito (a diferencia de TableInput, que
+    depende de parsear SQL)."""
+    return {
+        "steps": [
+            {"name": "Generar Stream", "type": "RowGenerator", "config": {"fields": [
+                {"name": "cod_producto"}, {"name": "nombre_producto"},
+                {"name": "categoria"}, {"name": "precio_unitario"}, {"name": "fk_categoria"},
+            ]}},
+            {"name": "Cargar dim_producto", "type": "DimensionLookup", "config": {
+                "table": "dim_producto", "connection": "conn_dwh", "return_field": "sk_producto",
+                "update": "N",
+                "keys": [{"stream_field": "cod_producto", "table_field": "id_producto_origen"}],
+                "fields": [
+                    {"stream_field": "nombre_producto", "table_field": "nombre_producto", "type": "Update"},
+                    {"stream_field": "fk_categoria", "table_field": "fk_categoria", "type": "Update"},
+                    {"stream_field": "precio_unitario", "table_field": "precio_unitario", "type": "Update"},
+                ],
+                "date_from": "fecha_inicio", "date_to": "fecha_fin", "version_field": "version",
+            }},
+            {"name": "Cargar fact_inventario", "type": "InsertUpdate",
+             "config": {"table": "fact_inventario", "connection": "conn_dwh"}},
+        ],
+        "hops": [
+            {"from": "Generar Stream", "to": "Cargar dim_producto", "enabled": True},
+            {"from": "Cargar dim_producto", "to": "Cargar fact_inventario", "enabled": True},
+        ],
+    }
+
+
+def _dim_producto_contract():
+    return _FakeDimContract(
+        "dim_producto", 2, technical_key="sk_producto",
+        date_from="fecha_inicio", date_to="fecha_fin",
+        attributes_scd1=["nombre_producto", "nombre_categoria"],
+        attributes_scd2=["precio_unitario"],
+    )
+
+
+def test_discriminator_reports_sobra_and_marks_repairable():
+    """Complementa D58 (que solo miraba qué falta): ahora también reporta
+    qué 'sobra' (fk_categoria, vocabulario de fact_inventario) y marca la
+    finding 'repairable' con la info estructurada que el caller
+    (etl_generator._repair_dimension_loader_fields) necesita para intentar
+    un repair dirigido, sin re-derivar la condición del discriminador."""
+    ktr_data = _dim_producto_ktr_with_stream()
+    contracts = [_dim_producto_contract()]
+
+    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+
+    assert len(results) == 1
+    r = results[0]
+    assert r["repairable"] is True
+    assert r["step_name"] == "Cargar dim_producto"
+    assert r["missing"] == ["nombre_categoria"]
+    assert r["sobra"] == ["fk_categoria"]
+    assert "Sobra" in r["mensaje"] and "fk_categoria" in r["mensaje"]
+    # piso: step sin tocar
+    step = ktr_data["steps"][1]
+    assert step["config"]["update"] == "N"
+
+
+def test_synthesize_field_mapping_chain_repaired_identity_and_omitted():
+    """Los 3 niveles de la cadena en una sola llamada: 'nombre_producto'
+    resuelve por identidad, 'nombre_categoria' por el mapeo del repair
+    (inferencia real -> finding info), 'campo_inexistente' no tiene ni
+    mapeo ni homónimo -> se omite + finding error. Un solo lugar construye
+    'fields' (acordado explícitamente: no duplicar esta lógica en el
+    caller)."""
+    contract = _FakeDimContract(
+        "dim_producto", 2,
+        attributes_scd1=["nombre_producto", "nombre_categoria", "campo_inexistente"],
+        attributes_scd2=["precio_unitario"],
+    )
+    findings: list[dict] = []
+
+    cfg = _synthesize_dimension_lookup_config(
+        {"table": "dim_producto", "connection": "conn_dwh"}, contract, update="Y",
+        upstream_fields={"nombre_producto", "categoria", "precio_unitario"},
+        repaired_mapping={"nombre_categoria": "categoria"},
+        findings=findings, step_name="Cargar dim_producto", table="dim_producto",
+    )
+
+    dest_names = {f["table_field"] for f in cfg["fields"]}
+    assert dest_names == {"nombre_producto", "nombre_categoria", "precio_unitario"}  # campo_inexistente omitido
+    by_dest = {f["table_field"]: f["stream_field"] for f in cfg["fields"]}
+    assert by_dest["nombre_producto"] == "nombre_producto"   # identidad
+    assert by_dest["nombre_categoria"] == "categoria"         # mapeo del repair
+    assert by_dest["precio_unitario"] == "precio_unitario"    # identidad
+
+    infos = [f for f in findings if f["tipo"] == "info"]
+    errors = [f for f in findings if f["tipo"] == "error"]
+    assert len(infos) == 1 and "categoria" in infos[0]["mensaje"] and "nombre_categoria" in infos[0]["mensaje"]
+    assert len(errors) == 1 and "campo_inexistente" in errors[0]["mensaje"]
+
+
+def test_synthesize_rejects_repaired_mapping_not_present_in_upstream():
+    """El repair también puede alucinar — un stream_field propuesto que no
+    existe de verdad en upstream_fields NO se confía a ciegas; cae al mismo
+    chequeo de identidad (que tampoco aplica acá) y termina omitido+error,
+    igual que si no hubiera repaired_mapping."""
+    contract = _FakeDimContract("dim_producto", 1, attributes_scd1=["nombre_categoria"])
+    findings: list[dict] = []
+
+    cfg = _synthesize_dimension_lookup_config(
+        {}, contract, update="Y",
+        upstream_fields={"categoria"},
+        repaired_mapping={"nombre_categoria": "campo_alucinado"},
+        findings=findings, step_name="X", table="dim_producto",
+    )
+
+    assert cfg["fields"] == []
+    assert any(f["tipo"] == "error" and "nombre_categoria" in f["mensaje"] for f in findings)
+    assert not any(f["tipo"] == "info" for f in findings)

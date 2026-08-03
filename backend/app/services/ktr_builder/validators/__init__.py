@@ -27,11 +27,19 @@ from app.services.ktr_builder.validators.guard_staging_layer import (
     STAGING_GUARD_PREFIX,
     guard_staging_layer,
 )
+from app.services.ktr_builder.validators.narration_crosscheck import (
+    NARRATION_CROSSCHECK_PREFIX,
+    check_narration_crosscheck,
+)
+from app.services.ktr_builder.validators.monetary_scale import (
+    MONETARY_SCALE_PREFIX,
+    check_monetary_scale,
+)
 from app.services.ktr_builder.validators.table_key_recovery import TABLE_KEY_PREFIX, recover_table_key
 
 PRE_EMIT_PASSES: tuple[KtrPass, ...] = (
     recover_table_key, flag_dead_computed_fields, check_dimension_lookup_fields, check_insert_update_bypass,
-    check_constraint_filter_rows, guard_staging_layer,
+    check_constraint_filter_rows, guard_staging_layer, check_narration_crosscheck, check_monetary_scale,
 )
 
 
@@ -62,4 +70,8 @@ __all__ = [
     "check_constraint_filter_rows",
     "STAGING_GUARD_PREFIX",
     "guard_staging_layer",
+    "NARRATION_CROSSCHECK_PREFIX",
+    "check_narration_crosscheck",
+    "MONETARY_SCALE_PREFIX",
+    "check_monetary_scale",
 ]

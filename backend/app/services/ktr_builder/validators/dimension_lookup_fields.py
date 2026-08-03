@@ -20,7 +20,7 @@ por su cuenta (no hay forma segura de adivinar el nombre de columna correcto
 ni el modo de negocio de un atributo)."""
 from __future__ import annotations
 
-from app.domain.scd import ATTRIBUTE_UPDATE_TYPE_CODES
+from app.domain.scd import ATTRIBUTE_UPDATE_TYPE_CODES, VALUE_META_TYPE_NAMES
 from app.services.ktr_builder.contracts import parse_cfg
 from app.services.ktr_builder.validators.base import Finding, ValidationContext
 
@@ -29,6 +29,7 @@ DIMENSION_LOOKUP_FIELDS_PREFIX = "[Dimension lookup/update] "
 name = "check_dimension_lookup_fields"
 
 _VALID_TYPE_CODES = {c.lower() for c in ATTRIBUTE_UPDATE_TYPE_CODES}
+_VALID_VALUE_META_NAMES = {c.lower() for c in VALUE_META_TYPE_NAMES}
 
 
 def check_dimension_lookup_fields(ctx: ValidationContext) -> list[Finding]:
@@ -59,6 +60,14 @@ def check_dimension_lookup_fields(ctx: ValidationContext) -> list[Finding]:
                     "config — mismo riesgo que 'date_from' (el emisor cae al literal 'fecha_hasta')."
                 ),
             ))
+        # D-1 (REV3): el vocabulario válido de <field><update> depende del modo
+        # del step (Y/N), nunca de si 'fields' está vacío — DimensionLookupMeta
+        # (getFields() 776-803) usa 'fields' en modo N como mecanismo de
+        # retorno de columnas adicionales del lookup, no como residuo.
+        step_update_mode = "Y" if str(cfg.get("update", "Y")).strip().upper() != "N" else "N"
+        valid_vocab = _VALID_TYPE_CODES if step_update_mode == "Y" else _VALID_VALUE_META_NAMES
+        vocab_literals = ATTRIBUTE_UPDATE_TYPE_CODES if step_update_mode == "Y" else VALUE_META_TYPE_NAMES
+
         for f in cfg.get("fields", []):
             raw_field_type = f.get("type")
             field_type = str(raw_field_type or "").strip()
@@ -67,21 +76,18 @@ def check_dimension_lookup_fields(ctx: ValidationContext) -> list[Finding]:
                 findings.append(Finding(
                     severity="error", step_name=step_name,
                     message=(
-                        f"{DIMENSION_LOOKUP_FIELDS_PREFIX}Step '{step_name}', atributo '{field_name}': "
-                        "sin 'type' explícito — el emisor cae al default 'Insert' (versiona, semántica "
-                        "SCD2), que puede no ser lo que el contrato pide para este atributo. "
-                        f"Literales válidos (Kettle): {', '.join(ATTRIBUTE_UPDATE_TYPE_CODES)}."
+                        f"{DIMENSION_LOOKUP_FIELDS_PREFIX}Step '{step_name}' (modo {step_update_mode}), "
+                        f"atributo '{field_name}': sin 'type' explícito. "
+                        f"Literales válidos para este modo: {', '.join(vocab_literals)}."
                     ),
                 ))
-            elif field_type.lower() not in _VALID_TYPE_CODES:
+            elif field_type.lower() not in valid_vocab:
                 findings.append(Finding(
                     severity="error", step_name=step_name,
                     message=(
-                        f"{DIMENSION_LOOKUP_FIELDS_PREFIX}Step '{step_name}', atributo '{field_name}': "
-                        f"type='{raw_field_type}' no es un literal que Kettle reconozca — "
-                        "DimensionLookupMeta.getUpdateType() cae SILENCIOSAMENTE en 'Insert' (versiona) "
-                        "ante cualquier valor fuera de la lista, sin error visible en Spoon. "
-                        f"Literales válidos: {', '.join(ATTRIBUTE_UPDATE_TYPE_CODES)}."
+                        f"{DIMENSION_LOOKUP_FIELDS_PREFIX}Step '{step_name}' (modo {step_update_mode}), "
+                        f"atributo '{field_name}': type='{raw_field_type}' no pertenece al vocabulario de "
+                        f"este modo — {', '.join(vocab_literals)}."
                     ),
                 ))
     return findings

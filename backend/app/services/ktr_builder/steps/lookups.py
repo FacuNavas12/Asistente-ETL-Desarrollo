@@ -6,7 +6,8 @@ import logging
 from xml.etree.ElementTree import Element, SubElement
 
 from app.domain.scd import ATTRIBUTE_UPDATE_TYPE_CODES, VALUE_META_TYPE_NAMES
-from app.services.ktr_builder.common import _sub, KtrBuilderError
+from app.services.ktr_builder.common import KtrBuilderError
+from app.services.ktr_builder.xml_helpers import _sub
 
 logger = logging.getLogger(__name__)
 

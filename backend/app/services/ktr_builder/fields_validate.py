@@ -262,6 +262,46 @@ def find_missing_field_producers(ktr_data: dict, step_type_aliases: dict[str, st
     return records
 
 
+def upstream_fields_for_step(
+    ktr_data: dict, step_type_aliases: dict[str, str], step_name: str
+) -> set[str] | None:
+    """Campos disponibles en el stream que llega a `step_name` — unión
+    transitiva de lo que producen sus predecesores, mismo cálculo que
+    find_missing_field_producers() pero cortado en el step pedido en vez de
+    recorrer todo el grafo. None = no resoluble con certeza (sin
+    predecesor, o algún ancestro de producción desconocida) — mismo
+    criterio "no validar" que el resto del módulo (ver docstring de arriba).
+
+    Usado por dimension_step_policy.py: gate del repair de campos de
+    DimensionLookup (¿el stream_field propuesto existe de verdad?) y por
+    _synthesize_dimension_lookup_config (no asumir stream_field==table_field
+    cuando se puede verificar contra el stream real — ver hallazgo en
+    01-hallazgos.md)."""
+    steps = ktr_data.get("steps", [])
+    hops = ktr_data.get("hops", [])
+    step_by_name = {s.get("name"): s for s in steps}
+
+    order, preds = _topo_order(steps, hops)
+    produced: dict[str, set[str] | None] = {}
+
+    for name in order:
+        step = step_by_name.get(name)
+        if step is None:
+            continue
+        canonical = step_type_aliases.get(step.get("type", ""), step.get("type", ""))
+        cfg = _parse_cfg(step.get("config", {}))
+        pred_names = preds.get(name, [])
+        if not pred_names:
+            upstream: set[str] | None = None
+        else:
+            pred_outputs = [produced.get(p) for p in pred_names]
+            upstream = None if any(p is None for p in pred_outputs) else set().union(*pred_outputs)
+        if name == step_name:
+            return upstream
+        produced[name] = _step_output_fields(canonical, cfg, upstream)
+    return None
+
+
 def validate_field_resolution(ktr_data: dict, step_type_aliases: dict[str, str]) -> list[str]:
     """Recorre el grafo por hops en orden topológico. Devuelve mensajes (sin
     el prefijo FIELD_INTEGRITY_PREFIX) para cada campo que un step consumidor

@@ -61,16 +61,14 @@ export default function InferenceReview({
         </div>
 
         <div className="infer-review__header-side infer-review__header-side--right">
-          {stagesReady > 0 && (
-            <button
-              className="infer-btn infer-btn--secondary"
-              onClick={onOpenModelResponses}
-              disabled={isRefining}
-              title="Respuestas crudas del modelo guardadas por etapa"
-            >
-              Respuestas del modelo <span className="infer-btn__badge">{stagesReady}/2</span>
-            </button>
-          )}
+          <button
+            className="infer-btn infer-btn--secondary"
+            onClick={onOpenModelResponses}
+            disabled={isRefining}
+            title="Respuestas crudas del modelo guardadas por etapa, o importar una respuesta ya descargada"
+          >
+            Respuestas del modelo <span className="infer-btn__badge">{stagesReady}/2</span>
+          </button>
           <button
             className="infer-btn infer-btn--secondary"
             onClick={onGuardar}

@@ -144,18 +144,25 @@ async def generate_from_inference(
 @router.post("/api/v1/etl/build-from-raw", response_model=ETLGenerateResponse)
 async def build_from_raw(
     req: BuildFromRawRequest,
+    llm: BaseLLM = Depends(get_main_llm),
     db: Session = Depends(get_db),
     payload: Optional[dict] = Depends(require_auth),
 ):
     """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada previamente
     por el frontend (descargada tras un fallo de build_ktr, o "Reutilizar respuesta" del
-    drawer de respuestas). No llama al LLM.
+    drawer de respuestas).
 
-    Repair loop (repair_ktr_steps) desconectado a propósito acá — ver discusión
-    pendiente sobre si "Reutilizar respuesta" debe poder llamar al modelo.
-
-    dim_contracts sí se usa siempre que venga (enforce_dimension_step_policy es
-    determinístico, no llama al modelo) — ver build_etl_from_raw().
+    Repair SÍ llama al LLM acá (decisión tomada, 2026-08-02 — antes desconectado
+    a propósito, ver git blame de esta línea): repair_ktr_steps() (config
+    incompleto, por step) y _repair_dimension_loader_fields() (hallazgo H53,
+    docs/refactor/01-hallazgos.md — mapeo table_field->stream_field de un
+    DimensionLookup, doble gate) corren igual que en el flujo de generación
+    normal. Llamadas acotadas a un step por vez, no una regeneración completa
+    — el punto de "reutilizar respuesta" (evitar 2 llamadas grandes al modelo)
+    se preserva; lo que se habilita son reparaciones puntuales y baratas.
+    repair_integrity_gaps() y enforce_dimension_step_policy() ya corrían acá
+    sin depender de esto (el primero por fallback determinístico, el segundo
+    porque nunca llama al modelo) — ver build_etl_from_raw().
 
     connections_map (opcional): antes este endpoint no tenía forma de recibir
     conexiones y "Reutilizar respuesta" siempre entregaba el .ktr con
@@ -171,7 +178,7 @@ async def build_from_raw(
         )
         conn_warnings = [*conn_warnings, *missing_layer_warnings(real_connections)]
     return await _handle(
-        build_etl_from_raw, req.raw_llm_data, None, req.dim_contracts,
+        build_etl_from_raw, req.raw_llm_data, llm, req.dim_contracts,
         real_connections or None, conn_warnings or None,
     )
 

@@ -7,7 +7,8 @@ from __future__ import annotations
 import logging
 from xml.etree.ElementTree import Element, SubElement
 
-from app.services.ktr_builder.common import _sub, _yn
+from app.services.ktr_builder.common import _yn
+from app.services.ktr_builder.xml_helpers import _sub
 
 logger = logging.getLogger(__name__)
 
@@ -252,10 +253,8 @@ def _step_ReplaceString(el: Element, cfg: dict) -> None:
 
 
 def _step_ConcatFields(el: Element, cfg: dict) -> None:
-    _sub(el, "extra_field",         cfg.get("target_field", "concat_result"))
     _sub(el, "separator",           cfg.get("separator", ""))
     _sub(el, "enclosure",           cfg.get("enclosure", ""))
-    _sub(el, "remove_selected_fields", "N")
     fe = SubElement(el, "fields")
     for f in cfg.get("fields", []):
         field = SubElement(fe, "field")
@@ -263,6 +262,10 @@ def _step_ConcatFields(el: Element, cfg: dict) -> None:
         _sub(field, "type",      "String" if isinstance(f, str) else f.get("type", "String"))
         _sub(field, "length",    "-1")
         _sub(field, "precision", "-1")
+    concat_el = SubElement(el, "ConcatFields")
+    _sub(concat_el, "targetFieldName",      cfg.get("target_field", "concat_result"))
+    _sub(concat_el, "targetFieldLength",    str(cfg.get("target_field_length", 255)))
+    _sub(concat_el, "removeSelectedFields", "Y" if cfg.get("remove_selected_fields", False) else "N")
 
 
 def _step_ValueMapper(el: Element, cfg: dict) -> None:
