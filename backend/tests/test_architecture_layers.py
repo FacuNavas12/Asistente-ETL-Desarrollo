@@ -76,6 +76,12 @@ DOMAIN_MODULES = {
     # (D45 punto 1). La implementación real vive en
     # services/adapters/sql_table_resolver.py (infra, sqlglot).
     "domain.sql_resolution",
+    # step_table.py: resolve_step_table() (T1, D62 en 02-decisiones.md) — solo
+    # normaliza un candidato de tabla ya extraído por el caller y devuelve un
+    # mensaje en vez de tragar el caso vacío. Sin imports de proyecto (ni
+    # siquiera de validators.base.Finding — cerraba un ciclo real con
+    # fragmentation.py vía validators/__init__.py, verificado).
+    "domain.step_table",
 }
 
 # Invariante que sostiene 2.b del cierre de la sesión de arquitectura: nada de

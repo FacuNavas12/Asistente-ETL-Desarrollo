@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-08-03 (D61, O2-a: split de `common.py`)
+**Última actualización:** 2026-08-03 (D62, O2-b: `resolve_step_table()` en `domain/`)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -75,6 +75,7 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D59 | O1, lote E-04…E-08: StringOperations/Unique/ExcelInput/JsonInput/TextFileOutput corregidos contra `readData()` real de Kettle, evidencia citada por clase+línea | Ejecutado (2026-08-03) |
 | D60 | O1-b: `VALUE_META_TYPE_NAMES` verificada y corregida (E-02); criterio de degradación legítima escrito; política de los 4 sitios de aborto por contenido — supersede la parte de D55 (rótulo interno "D-1") que exige `KtrBuilderError` en esos 4 sitios | Decidido (2026-08-03); criterio y `VALUE_META_TYPE_NAMES` ejecutados, conversión de los 4 sitios pendiente (Alcance punto 2 de `10-estabilizar-emision.md`) |
 | D61 | O2-a: `common.py` partido — `_yn`/`KtrBuilderError` quedan (dominio puro), `_sub` se muda a `xml_helpers.py` nuevo (infra) | Ejecutado (2026-08-03) |
+| D62 | O2-b (T1): `resolve_step_table()` nueva en `domain/step_table.py` — unifica el `if not table: continue` mudo de `fragmentation.py`/`dimension_step_policy.py`/`fields_validate.py`, devuelve mensaje en vez de tragarlo | Ejecutado (2026-08-03) |
 
 ---
 
@@ -1689,6 +1690,27 @@ Nota de capa física: el mapa marca `common.py` como `domain/` "ejecutado", pero
 `docs/services/ktr_builder/README.md` actualizado: fila `common.py` marcada "Ejecutado (O2-a)", fila nueva `xml_helpers.py` agregada. `test_architecture_layers.py`: comentario de `DOMAIN_MODULES` actualizado para reflejar el split ya ejecutado (ya no dice "se incluye para permitir que `contracts.py` importe la mitad pura" — ahora todo el módulo es dominio puro sin excepción parcial).
 
 **Verificación:** `test_architecture_layers.py` verde. `FROZEN_*` sin cambios (esta sesión no corrige ninguna violación existente, solo mueve código ya conforme).
+
+<a id="d62"></a>
+### D62 — O2-b (T1): `resolve_step_table()` en `domain/`, tres call sites dejan de tragar la tabla vacía en silencio `[O2]`
+
+Estado: decidido, ejecutado, mismo turno.
+
+**Problema (T1, `docs/refactor/05-transversales.md`):** `fragmentation.build_rw_matrix`, `dimension_step_policy.enforce_dimension_step_policy` y `fields_validate.validate_dimension_lookup_races` reimplementaban, cada uno por separado, "extraer candidato de tabla, normalizar, y si viene vacío, `continue` sin dejar rastro". D40 (`table_key_recovery.py`) adelantó la resolución de la causa (recupera `table` por contenido antes de que estos 3 módulos corran) pero no tocó la reacción — los 3 `continue` mudos seguían intactos, tal como registra el `Estado` de T1.
+
+**Decisión:** `resolve_step_table(step_name, table_raw) -> (tabla | None, mensaje | None)` nueva en `domain/step_table.py`. Reemplaza la parte realmente duplicada (`.strip()`, chequeo de vacío, notificación) — no decide qué candidato mirar (`cfg["table"]` vs. `cfg["target_table"]`/`cfg["table_name"]`, prioridad entre ellos) ni si el tipo de step "debería" tener tabla: eso sigue siendo contrato de cada caller. Sin ese filtro previo, notificar por cada step sin `table` sería ruido (la mayoría de los steps de una transformación — `Sort`, `FilterRows`, `JavaScript`... — legítimamente no tocan ninguna tabla), no señal.
+
+**Por qué NO devuelve `Finding` (`services/ktr_builder/validators/base.py`), pese a que R12 pide una entidad tipada:** se intentó primero, y cierra un ciclo de imports real y verificado — `domain/step_table.py` → `validators.base` fuerza la ejecución de `validators/__init__.py` (para llegar al submódulo `base`), que importa `guard_staging_layer`, que importa `fragmentation`, que importa `domain/step_table.py` de vuelta (`ImportError: cannot import name 'resolve_step_table' from partially initialized module`, reproducido antes de revertir). `resolve_step_table()` devuelve un mensaje de texto plano; cada caller lo envuelve en su propia forma de notificación (`Finding` en `fragmentation.py`, dict `{"tipo","campo","mensaje"}` en `dimension_step_policy.py`, string plano acumulado en `errors` en `fields_validate.py` — mismo contrato que ya tenía esa función). `domain/step_table.py` queda sin ningún import de proyecto — cumple la regla direccional Y el proxy conservador ("domain solo importa stdlib") a la vez, sin necesidad de una excepción nombrada.
+
+**Los tres call sites, reordenados para notificar solo donde corresponde** (antes: extraían la tabla ANTES de saber si el step era relevante, así que el `continue` mudo cubría tanto "step sin tabla porque no le corresponde" como "step que sí debería tener tabla y no la tiene" — indistinguibles):
+
+1. **`fragmentation.build_rw_matrix`** — `_step_rw(canonical, cfg)` (no depende de `table`, solo de `canonical`+`cfg["update"]`) se evalúa primero; si es `None` (step sin rol R/W, ej. `Sort`), `continue` sin tabla ni aviso, igual que antes. Si tiene rol R/W (`TableOutput`, `InsertUpdate`, `DimensionLookup`...) y la tabla no resuelve, se agrega un `Finding(severity="error")` a la lista que la función ya devuelve (`tuple[dict, list[Finding]]` — sin cambio de firma).
+2. **`dimension_step_policy.enforce_dimension_step_policy`** — la función sigue necesitando `table` para CUALQUIER step (no solo `DIMENSION_STEP_TYPES`: el desenlace "tipo de step fuera de `{DimensionLookup, CombinationLookup}` sobre una tabla de `dim_contracts`" depende de resolverla primero). Se preserva ese comportamiento; lo que cambia es que un `DimensionLookup`/`CombinationLookup` (`DIMENSION_STEP_TYPES`) SIN tabla resoluble — antes invisible — ahora agrega `{"tipo": "error", "campo": "", "mensaje": ...}` a `results` antes del `continue`. Sin cambio de firma (sigue devolviendo `list[dict]`).
+3. **`fields_validate.validate_dimension_lookup_races`** — ya filtraba por `canonical in ("DimensionLookup", "CombinationLookup", "DBLookup")` ANTES de resolver tabla, así que acá el mensaje se agrega siempre que la tabla no resuelva (los tres tipos, por contrato, tienen que tocar una tabla). Sin cambio de firma (sigue devolviendo `list[str]`, mismo canal que ya promueve `build.py` a `Validacion tipo="error"` vía `FIELD_INTEGRITY_PREFIX`).
+
+**No tocado, a propósito:** `table_key_recovery.py` — resuelve la causa (recupera `table` antes de que estos 3 corran), no la reacción; esta entrada hace lo que D40 no hizo, no lo repite. Casing preservado por sitio: `dimension_step_policy.py` seguía comparando con `.strip()` sin forzar minúsculas (para no cambiar el casing en sus propios mensajes al usuario), mientras que `fragmentation.py`/`fields_validate.py` siguen normalizando a minúsculas después de llamar a `resolve_step_table()` — la función no fuerza ningún casing, cada caller decide, igual que antes.
+
+**Verificación:** `test_architecture_layers.py`, `test_build_ktr_emission.py`, `test_contract_validate.py`, `test_dimension_field_repair.py`, `test_dimension_step_policy.py`, `test_fragmentation.py`, `test_ktr_xml_validator.py` — 77 passed / 1 failed (`test_build_ktr_get_system_info_without_fields_gets_default_field`, preexistente e independiente, ver D60). Suite completa corrida contra la misma base.
 
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido

@@ -35,8 +35,8 @@ El trabajo abierto está separado en tres objetivos y un congelador. **Una sesi�
 | **O1-a** | Fixes baratos de T (E-04…E-08) | cerrada, D59 |
 | **O1-b** | El crash + criterio de degradación (E-01, E-02, E-03) | — |
 | **O1-c** | T estructural (E-09, E-10, E-11) | cerrada, 2026-08-03 |
-| **O2-a** | Partir `common.py` | cerrada 2026-08-03, D-N pendiente de escribir (ver cierre de sesión) |
-| **O2-b** | `resolve_step_table()` en `domain/` | — |
+| **O2-a** | Partir `common.py` | cerrada 2026-08-03, D61 |
+| **O2-b** | `resolve_step_table()` en `domain/` | cerrada 2026-08-03, D62 |
 | **O2-c** | Partir `lineage_builder.py` | — |
 | **REF** | Escribir `referencia/` | — |
 | **O3** | La línea Python/modelo | — |

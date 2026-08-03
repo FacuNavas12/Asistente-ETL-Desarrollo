@@ -38,7 +38,9 @@ Algoritmo (resumen, detalle completo en 03-plan.md):
    fact_lookup + resolución SQL real para TableInput/StreamLookup/ExecSQL
    (D45 punto 1).
 2. Dos disparadores de corte: C1 (W+R por steps distintos) y C1-bis (doble
-   escritor). Steps sin tabla no participan (D15: notifica, no bloquea).
+   escritor). Steps sin rol R/W no participan; un step CON rol R/W pero sin
+   tabla resoluble notifica en vez de descartarse en silencio (T1/D62,
+   D15: notifica, no bloquea).
 3. Componentes conexos por hops habilitados (grafo no dirigido, ignorando
    tablas). Si escritor y lector de una tabla-disparadora ya caen en
    componentes distintos -> no hace falta partir más, alcanza con ordenarlos.
@@ -53,6 +55,7 @@ Algoritmo (resumen, detalle completo en 03-plan.md):
 from __future__ import annotations
 
 from app.domain.sql_resolution import SqlTableResolver
+from app.domain.step_table import resolve_step_table
 from app.domain.table_layer import infer_table_layer
 from app.services.ktr_builder.contracts import normalize_config, parse_cfg
 from app.services.ktr_builder.validators.base import Finding
@@ -133,7 +136,11 @@ def build_rw_matrix(
     resolve_sql_tables: SqlTableResolver | None = None,
 ) -> tuple[dict[MatrixKey, dict[str, str]], list[Finding]]:
     """{(conexión, tabla_lower): {step_name: "R"|"W"|"RW"}}, [Finding] (SQL no
-    parseable, D45 punto 1). Steps sin tabla no aportan.
+    parseable, D45 punto 1). Steps sin rol R/W propio (Sort, FilterRows...)
+    no aportan y no notifican — no tienen tabla que resolver. Un step CON rol
+    R/W (TableOutput, InsertUpdate, DimensionLookup...) pero sin tabla
+    resoluble sí notifica (T1/D62, `domain/step_table.py`) en vez de
+    descartarse en silencio.
 
     resolve_sql_tables (`domain/sql_resolution.py`, implementación real
     `services/adapters/sql_table_resolver.py`, D45 punto 1,
@@ -215,12 +222,15 @@ def build_rw_matrix(
             continue
 
         cfg = normalize_config(canonical, parse_cfg(step.get("config", {})))
-        table = (cfg.get("table") or "").strip().lower()
-        if not table:
-            continue
         rw = _step_rw(canonical, cfg)
         if rw is None:
+            continue  # tipo de step sin rol R/W propio (Sort, FilterRows, ...) — no toca tabla, no hay nada que notificar
+        table, message = resolve_step_table(step_name, cfg.get("table"))
+        if table is None:
+            # T1/D62: step con rol R/W pero sin tabla resoluble — sí amerita aviso
+            findings.append(Finding(severity="error", step_name=step_name, message=message))
             continue
+        table = table.lower()
         key = (_connection_key(cfg, table), table)
         matrix.setdefault(key, {})[step_name] = rw
 

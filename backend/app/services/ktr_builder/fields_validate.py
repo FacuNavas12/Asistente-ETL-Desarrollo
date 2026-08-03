@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 
+from app.domain.step_table import resolve_step_table
 from app.services.ktr_builder.contracts import ROW_GENERATOR_TYPES, STEP_CONTRACTS, missing_required_keys
 from app.services.ktr_builder.contracts import parse_cfg as _parse_cfg
 
@@ -460,9 +461,15 @@ def validate_dimension_lookup_races(ktr_data: dict, step_type_aliases: dict[str,
         if canonical not in ("DimensionLookup", "CombinationLookup", "DBLookup"):
             continue
         cfg = _parse_cfg(step.get("config", {}))
-        table = (cfg.get("table") or cfg.get("target_table") or cfg.get("table_name") or "").strip().lower()
-        if not table:
+        table_candidate = cfg.get("table") or cfg.get("target_table") or cfg.get("table_name")
+        table, message = resolve_step_table(step.get("name", ""), table_candidate)
+        if table is None:
+            # T1/D62: acá SIEMPRE amerita aviso — el filtro de canonical de
+            # arriba (DimensionLookup/CombinationLookup/DBLookup) ya garantiza
+            # que este step, por su propio tipo, tiene que tocar una tabla.
+            errors.append(message)
             continue
+        table = table.lower()
         if canonical in ("DimensionLookup", "CombinationLookup"):
             load_tables.setdefault(table, step.get("name"))
         else:

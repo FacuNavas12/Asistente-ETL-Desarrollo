@@ -43,6 +43,7 @@ from app.domain.scd import (
     derive_dimension_loader_step,
     derive_fact_lookup_step,
 )
+from app.domain.step_table import resolve_step_table
 from app.services.ktr_builder.contracts import normalize_config, parse_cfg
 from app.services.ktr_builder.fields_validate import upstream_fields_for_step
 
@@ -397,8 +398,15 @@ def enforce_dimension_step_policy(
         # H4: alias de tabla resuelto vía contracts.STEP_CONTRACTS.key_aliases
         # (misma fuente que el builder XML), no un `or` inline propio.
         cfg = normalize_config(canonical, parse_cfg(step.get("config", {})))
-        table = (cfg.get("table") or "").strip()
-        if not table:
+        table, message = resolve_step_table(step.get("name", ""), cfg.get("table"))
+        if table is None:
+            # T1/D62: la mayoría de los steps de una transformación no tocan
+            # ninguna tabla de dim_contracts (Sort, FilterRows...) — para esos,
+            # "sin tabla" es el caso normal, no un defecto. Un DimensionLookup/
+            # CombinationLookup sin tabla configurada sí lo es: ese tipo de step
+            # no tiene razón de ser sin una tabla que cargar/consultar.
+            if canonical in DIMENSION_STEP_TYPES and message is not None:
+                results.append({"tipo": "error", "campo": "", "mensaje": message})
             continue
         contract = contracts_by_table.get(table.lower())
         if contract is None:
