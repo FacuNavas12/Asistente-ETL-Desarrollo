@@ -6,11 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 El sistema hoy fuerza todo ETL a 2 KTR fijos (Origen→STG, STG→DWH) + 1 KJB. Ese forzado está identificado como la causa raíz de una clase de errores (carreras lectura/escritura, dimensiones no cargadas, doble escritor) y se está desacoplando: la fase lógica queda, pero el backend decide de forma determinista cuántos archivos físicos la materializan.
 
+> **Entrada obligatoria: [`docs/README.md`](docs/README.md).** Desde 2026-08-03 el trabajo abierto está separado en tres objetivos — O0 higiene de repo, O1 estabilizar la emisión (prioridad), O2 arquitectura objetivo — más `docs/refactor/90-congelado.md`. Ese archivo dice qué leer, en qué orden, y cuál es el presupuesto de lectura por sesión. **Una sesión trabaja sobre un objetivo, no sobre "el refactor".** La tabla de acá abajo sigue siendo válida para ubicar un archivo puntual, pero no es el punto de entrada.
+
 **Un archivo = una pregunta.** Tabla de ruteo — de acá se decide dónde va cualquier cosa nueva:
 
 | Pregunta | Archivo |
 |---|---|
-| ¿En qué estado está cada fase, ahora? | `docs/refactor/ESTADO.md` |
+| ¿Por dónde empiezo y qué leo? | `docs/README.md` — **entrada** |
+| ¿Qué estoy tratando de lograr ahora? | `docs/refactor/00-higiene-repo.md` (O0), `10-estabilizar-emision.md` (O1), `20-arquitectura.md` (O2) |
+| ¿Qué quedó afuera y qué lo destraba? | `docs/refactor/90-congelado.md` |
+| ¿En qué estado está cada fase, ahora? | `docs/refactor/ESTADO.md` — para fases. **No es autoridad sobre si algo está implementado**: se desfasó del código el 2026-08-01 y una sesión clasificó mal 5 ítems por leerlo. Para "¿esto existe?", `grep` y la línea |
 | ¿Por qué hacemos esto? | `docs/refactor/00-objetivo.md` |
 | ¿Qué encontramos, y dónde exactamente? | `docs/refactor/01-hallazgos.md` |
 | ¿Qué elegimos, y por qué? | `docs/refactor/02-decisiones.md` — **fuente de verdad**, manda sobre cualquier análisis o plan que lo contradiga |

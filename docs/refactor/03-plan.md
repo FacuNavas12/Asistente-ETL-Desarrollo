@@ -2,7 +2,7 @@
 
 **Mutable.** Se reescribe en el mismo turno en que una fase avanza. No repite estado de fase (ver `ESTADO.md`).
 
-**Última actualización:** 2026-07-29
+**Última actualización:** 2026-08-01
 
 Deriva de [`00-objetivo.md`](00-objetivo.md) y [`01-hallazgos.md`](01-hallazgos.md), evaluado contra [`02-decisiones.md`](02-decisiones.md) — esa es la fuente de verdad cuando algo choca. Narrativa de sesión (algoritmos, investigación, reportes de cierre) vive en [`03b-reportes.md`](03b-reportes.md). El estado vigente de cada fase vive únicamente en [`ESTADO.md`](ESTADO.md) — acá no se repite, solo fases, dependencias y qué es cada una.
 
@@ -105,6 +105,7 @@ Track F: F1 ✓ (2026-07-22)
 - Emisión del anti-join + `Union` de miembro inferido (D21) — diseño cerrado, código pendiente.
 - **H28(a)** — agregar `("Constant", "fields", "field", "name", "type")` a `FIELD_TYPE_SOURCES` (`error_catalog_checks.py:305-317`). Fix de una línea, sin riesgo.
 - **H28(b)** — barrer el resto de los ~12 step types de `registry.py` que declaran `type`/`value_type` por campo, confirmar si `Constant` era el único hueco de `FIELD_TYPE_SOURCES`.
+- **D55 (plan de reparación del generador ETL, 8 ítems)** — confirmado 2026-08-01, no ejecutado. Vocabulario `<field><update>` de `DimensionLookup` por modo sin condición de vacío (cierra H51), `ConcatFields` al formato real (`<ConcatFields>` anidado), suite que genera vía `build_ktr()` en vez de consumir el golden como input, semilla `tk=0` sintetizada determinísticamente en el DDL (mecanismo de D47, sin reabrirlo), contra-chequeo narración↔XML, `check_constraint_filter_rows` comparando contra el bound del CHECK, `guard_staging_layer` detectando transformación en la proyección SQL (`sqlglot`), escala `BigNumber` desde `CanonicalField.precision`/`.scale`. Detalle de implementación por ítem en [`plan-reparacion-etl.md`](plan-reparacion-etl.md) — razonamiento y correcciones de revisión en D55, `02-decisiones.md`.
 
 **Verificaciones humanas previas** (nadie con trabajo apoyado en ETLs guardados; D6 re-verificado en frío; ubicación de `err1.ktr`/`err2.ktr` entregada) — las tres resueltas 2026-07-22, ver "Verificaciones pendientes" en `02-decisiones.md`.
 

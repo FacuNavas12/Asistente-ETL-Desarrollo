@@ -12,12 +12,60 @@ El trabajo abierto está separado en tres objetivos y un congelador. **Una sesi�
 
 | # | Objetivo | Archivo | Estado |
 |---|---|---|---|
-| **O0** | Higiene de repo — que el estado real sea legible desde git | [`refactor/00-higiene-repo.md`](refactor/00-higiene-repo.md) | Precondición de O1 y O2 |
-| **O1** | Estabilizar la emisión — que `build_ktr()` siempre entregue archivo, con el problema documentado | [`refactor/10-estabilizar-emision.md`](refactor/10-estabilizar-emision.md) | **Prioridad 1** |
-| **O2** | Aplicar la arquitectura objetivo | [`refactor/20-arquitectura.md`](refactor/20-arquitectura.md) | **Prioridad 2** |
-| — | Todo lo que queda fuera de O0/O1/O2 | [`refactor/90-congelado.md`](refactor/90-congelado.md) | Congelado hasta después de entregar |
+| **O0** | Higiene de repo — que el estado real sea legible desde git | [`refactor/00-higiene-repo.md`](refactor/00-higiene-repo.md) | Precondición de todo |
+| **O1** | Estabilizar la emisión — que siempre se entregue archivo **y que lo entregado no mienta** | [`refactor/10-estabilizar-emision.md`](refactor/10-estabilizar-emision.md) | **Prioridad 1** |
+| **O2** | Arquitectura de capas — dónde vive cada cosa | [`refactor/20-arquitectura.md`](refactor/20-arquitectura.md) | **Prioridad 2** |
+| **O3** | Dónde se decide — qué sintetiza Python y qué le pregunta al modelo | [`refactor/30-decision-python-llm.md`](refactor/30-decision-python-llm.md) | Después de O1 + `referencia/` |
+| — | Registro de errores encadenados | [`refactor/errores.md`](refactor/errores.md) | Se actualiza siempre |
+| — | Todo lo que queda fuera | [`refactor/90-congelado.md`](refactor/90-congelado.md) | Congelado hasta después de entregar |
 
-**Regla de asignación:** si un hallazgo nuevo no entra en O0, O1 ni O2, va a `90-congelado.md` con una línea. No se abre un objetivo nuevo antes de entregar. No se arregla algo porque se lo vio — eso ya es la regla 4 de `CLAUDE.md`, acá se vuelve más estricta: descubrir es libre, actuar necesita objetivo.
+**O2 y O3 son distintos objetivos, no dos partes del mismo.** O2 responde *dónde vive cada archivo* — capas, R1-R12, barato y verificable por test. O3 responde *qué decide el sistema solo y qué le pregunta al modelo* — es lo que corta la cascada de errores, y `arquitectura-objetivo.md` no lo cubre. Confundirlos hace que se mueva código sin que ningún error se cierre.
+
+**Regla de asignación:** si un hallazgo nuevo no entra en un objetivo abierto, se registra en `errores.md` (si es un error) o en `90-congelado.md` (si es trabajo), con una línea. No se abre un objetivo nuevo antes de entregar. Descubrir es libre, actuar necesita objetivo.
+
+---
+
+## Nomenclatura de sesiones
+
+**Una sesión = una conversación que trabaja un solo objetivo y cierra con la Regla 10.** Se nombra por su objetivo, nunca por número correlativo — "sesión 3" no significa nada dentro de un mes.
+
+| Sesión | Qué | Estado |
+|---|---|---|
+| **O0** | Higiene de repo | cerrada 2026-08-03 |
+| **O1-a** | Fixes baratos de T (E-04…E-08) | cerrada, D59 |
+| **O1-b** | El crash + criterio de degradación (E-01, E-02, E-03) | — |
+| **O1-c** | T estructural (E-09, E-10, E-11) | cerrada, 2026-08-03 |
+| **O2-a** | Partir `common.py` | cerrada 2026-08-03, D-N pendiente de escribir (ver cierre de sesión) |
+| **O2-b** | `resolve_step_table()` en `domain/` | — |
+| **O2-c** | Partir `lineage_builder.py` | — |
+| **REF** | Escribir `referencia/` | — |
+| **O3** | La línea Python/modelo | — |
+
+**Dependencias, y son todas las que hay:**
+
+- **O1 va en orden** (a → b → c). Cada una apoya a la siguiente.
+- **O2 no tiene orden.** Las tres son independientes entre sí y de O1 — se intercalan donde convenga. Sirven para cortar con algo chico y verde cuando una sesión de O1 se puso larga.
+- **O3 va al final.** Necesita O1 cerrado y REF escrito.
+
+El estado vigente de cada sesión vive en esta tabla y en `errores.md`. Si las dos discrepan, gana `errores.md` — está más cerca del trabajo.
+
+---
+
+## Cómo abrir una sesión
+
+**Con Claude Code (ejecuta):** se le da el objetivo y los dos archivos. Nunca "seguí con el refactor".
+
+> Leé `docs/README.md` y `docs/refactor/<archivo del objetivo>`. Esto es **<O1-b>**. <qué hacer>. Cerrá según la Regla 10.
+
+**Con Claude en Cowork (analiza, planifica, contrasta):** se conecta la carpeta del repo y se dice en una línea dónde estás. **No hace falta pedirle que lea todo `docs/`** — eso viola el presupuesto de lectura y es lo que hace que una sesión empiece a inferir en vez de verificar.
+
+> Repo conectado. Estoy en **<O1-b>**. Cerré <O1-a> con <D59>. <Qué necesito>.
+
+Con eso alcanza: lee este archivo, el del objetivo, `errores.md`, y verifica el resto contra el código.
+
+**La diferencia entre las dos** no es de detalle sino de trabajo: Code implementa dentro del repo con el contexto de su propia sesión. Cowork sirve para lo que Code no hace bien desde adentro — contrastar documentación contra código, encontrar contradicciones, decidir dónde va algo nuevo, planificar el objetivo siguiente. Arranca en frío siempre, así que lo que necesita es **qué es cierto hoy**, no cómo se implementa.
+
+**Lo que nunca se pide, a ninguno de los dos:** "leé toda la documentación". `01-hallazgos.md` son 135 KB y `02-decisiones.md` 267 KB. Una sesión que intenta leerlos completos se queda sin contexto antes de empezar a trabajar — ver Regla B.
 
 ---
 
@@ -71,8 +119,10 @@ Si una sesión necesita más que eso, el objetivo está mal cortado, y eso mismo
 | Archivo | Qué pregunta responde | Naturaleza |
 |---|---|---|
 | `refactor/00-higiene-repo.md` | ¿Por qué no puedo leer el estado desde git, y qué lo arregla? | Mutable |
-| `refactor/10-estabilizar-emision.md` | ¿Qué aborta hoy la generación, y con qué criterio deja de abortar? | Mutable |
-| `refactor/20-arquitectura.md` | ¿Qué deuda de arquitectura hay registrada y cuál se paga ahora? | Mutable |
+| `refactor/10-estabilizar-emision.md` | ¿Qué aborta hoy, qué se entrega mintiendo, y con qué criterio se arregla cada cosa? | Mutable |
+| `refactor/20-arquitectura.md` | ¿Qué deuda de capas se paga ahora, con qué prompt se abre cada sesión? | Mutable |
+| `refactor/30-decision-python-llm.md` | ¿Qué deriva Python solo y qué le pregunta al modelo? | Mutable |
+| `refactor/errores.md` | ¿Qué errores hay abiertos y de cuál salió cada uno? | Mutable en `Estado`/`Objetivo`, append-only el resto |
 | `refactor/90-congelado.md` | ¿Qué quedó afuera y qué lo destraba? | Mutable |
 
 ### Fuentes de verdad (append-only — no se reescriben)
@@ -155,3 +205,17 @@ Nuevas, de esta reorganización:
 7. **Toda sesión que tome una decisión cierra escribiéndola en `02-decisiones.md` en el mismo turno.** Ya estaba en `CLAUDE.md`; se repite porque es la que más se incumplió.
 8. **Un documento que discrepa del código se corrige en el momento en que se detecta**, sin abrir hallazgo. Ver Regla A.
 9. **Ningún archivo de objetivo supera las ~200 líneas.** Si crece, es señal de que acumuló historia — la historia va a `03b-reportes.md`, el objetivo queda con lo accionable.
+
+### Regla 10 — cómo cierra una sesión
+
+**Una sesión que tocó código no termina hasta que estas tres cosas están hechas, en el mismo turno:**
+
+1. **El código commiteado.**
+2. **`errores.md` al día** — los errores que cerró pasan a `cerrado`; los que encontró se agregan con su `Origen`. Esto no es opcional: es lo único que evita que la cascada vuelva a vivir en la memoria de quien estaba trabajando.
+3. **El archivo del objetivo actualizado** — qué quedó hecho, qué no, y el resultado de la suite si la corrió.
+
+Y si tomó una decisión, la D-N (regla 7).
+
+Una sesión que termina sin esto deja a la siguiente arrancando a ciegas. Ya pasó una vez: el código de tres ítems de D55 se escribió a las 22:00 y `ESTADO.md` quedó con la frase de las 19:09 — una sesión posterior clasificó mal cinco ítems por leerla.
+
+**Corolario:** si una sesión encuentra algo fuera de su objetivo, lo registra en `errores.md` y **no lo arregla**. Registrar es parte del cierre; arreglar necesita otro objetivo.

@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-07-31 (D54, análisis corrida real Fase 4)
+**Última actualización:** 2026-08-03 (D61, O2-a: split de `common.py`)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -68,6 +68,13 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D52 | Fase 2-bis, mitigaciones 1+2 (finding de consecuencia por dimensión + regla dura columna monetaria en `attributes_scd2`) — mitigaciones 3/4 quedan backlog explícito | Ejecutado (2026-07-30) |
 | D53 | Fase 2-ter ejecutada: `FilterRows` de saneamiento exigido por CHECK del DDL (S-4/H45) + guard determinista de capa staging (S-5/H-5) | Ejecutado (2026-07-30) |
 | D54 | Fase 4 (corrida real): 1 corrida completa (sonnet), 0 corridas Haiku (fallo de inferencia previo al ETL) — criterio de cierre (S-12, 2+ modelos × N corridas) no se cumple todavía, sigue en curso | Parcial (2026-07-31) |
+| D55 | Plan de reparación del generador ETL (8 ítems): vocabulario `<field><update>` por modo sin condición de vacío (cierra H51), `ConcatFields` al formato real, suite que genera en vez de consumir el golden, semilla `tk=0` sintetizada en el DDL (alineada con D47, no lo reabre), contra-chequeo narración↔XML, `check_constraint_filter_rows`/`guard_staging_layer` completados, escala `BigNumber` desde el DDL | Planificado (2026-08-01), no ejecutado — ítem 1, rótulo interno "D-1" (`KtrBuilderError` obligatorio en `lookups.py`/`build.py`), **superseded en parte por D60** |
+| D56 | Ítem 5 de D55 (contra-chequeo narración↔XML): implementado con limitación conocida (falso negativo si el regex no matchea) | Ejecutado, limitación registrada |
+| D57 | Reclasificación a fact_lookup en `enforce_dimension_step_policy`: se limpia `fields`, no se conserva vocabulario Y-mode cruzado | Ejecutado |
+| D58 | `role_of_dimension_step`: BFS solo desambigua con 2+ candidatos; `already_readonly` valida vocabulario antes de dejar pasar | Ejecutado |
+| D59 | O1, lote E-04…E-08: StringOperations/Unique/ExcelInput/JsonInput/TextFileOutput corregidos contra `readData()` real de Kettle, evidencia citada por clase+línea | Ejecutado (2026-08-03) |
+| D60 | O1-b: `VALUE_META_TYPE_NAMES` verificada y corregida (E-02); criterio de degradación legítima escrito; política de los 4 sitios de aborto por contenido — supersede la parte de D55 (rótulo interno "D-1") que exige `KtrBuilderError` en esos 4 sitios | Decidido (2026-08-03); criterio y `VALUE_META_TYPE_NAMES` ejecutados, conversión de los 4 sitios pendiente (Alcance punto 2 de `10-estabilizar-emision.md`) |
+| D61 | O2-a: `common.py` partido — `_yn`/`KtrBuilderError` quedan (dominio puro), `_sub` se muda a `xml_helpers.py` nuevo (infra) | Ejecutado (2026-08-03) |
 
 ---
 
@@ -91,7 +98,7 @@ Navegación rápida — clic para ir directo a la decisión. Grupos según la ta
 [D16](#d16) dependencia externa real: eje `dim_contracts` · [D19](#d19) wiring de servicio cerrado, HTTP en modo notificación · [D20](#d20) forma de la respuesta con N archivos
 
 **F4** — track de errores / contenido generado
-[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo · [D36](#d36) B17 reescrita + `FIELD_TYPE_SOURCES` +6 entradas (cierra H27/H28) · [D38](#d38) validador de contrato entre KTR implementado (cierra D23) · [D39](#d39) `validate_business_rules()` removido, responsabilidad a DDL + Data Validator · [D40](#d40) recuperación determinista de `table` por contenido (cierra parcial H29), nace `ktr_builder/validators/` · [D42](#d42) staging deja de recibir reglas de negocio en el prompt · [D44](#d44) vocabulario de dimensión uniforme por rol (supersede parcial D16) · [D45](#d45) corte visible: resolución SQL por port, clave normalizada, RW desdoblado · [D46](#d46) severidad promovida + `error_catalog_checks` cableada + golden negativo · [D47](#d47) C.12: sembrado fila `tk=0` en el DDL · [D48](#d48) C.10: materialización de hops cruzados vía tabla de staging · [D49](#d49) C.11a: `PREFERRED_SCHEMA_NAME` obligatorio · [D52](#d52) Fase 2-bis mitigaciones 1+2: finding de consecuencia + regla dura monetaria en `attributes_scd2` · [D53](#d53) Fase 2-ter: `FilterRows` de CHECK del DDL + guard capa staging · [D54](#d54) Fase 4 corrida real: resultado parcial, 1 corrida sonnet, H51 nuevo
+[D12](#d12) dialecto SQL: Postgres por defecto + notificación obligatoria · [D21](#d21) miembro inferido (cierra C.6) · [D22](#d22) triage F4, 3 gaps cerrados por prompt · [D23](#d23) alcance del validador de contrato entre KTR (cierra ítem pendiente de D22) · [D29](#d29) progreso observable del job async · [D30](#d30) checkpoint por etapa del LLM · [D31](#d31) reanudación de la etapa 2 sin estado servidor nuevo · [D32](#d32) contrato del status extendido (`stages`) · [D33](#d33) superficie de acceso a las respuestas del modelo · [D36](#d36) B17 reescrita + `FIELD_TYPE_SOURCES` +6 entradas (cierra H27/H28) · [D38](#d38) validador de contrato entre KTR implementado (cierra D23) · [D39](#d39) `validate_business_rules()` removido, responsabilidad a DDL + Data Validator · [D40](#d40) recuperación determinista de `table` por contenido (cierra parcial H29), nace `ktr_builder/validators/` · [D42](#d42) staging deja de recibir reglas de negocio en el prompt · [D44](#d44) vocabulario de dimensión uniforme por rol (supersede parcial D16) · [D45](#d45) corte visible: resolución SQL por port, clave normalizada, RW desdoblado · [D46](#d46) severidad promovida + `error_catalog_checks` cableada + golden negativo · [D47](#d47) C.12: sembrado fila `tk=0` en el DDL · [D48](#d48) C.10: materialización de hops cruzados vía tabla de staging · [D49](#d49) C.11a: `PREFERRED_SCHEMA_NAME` obligatorio · [D52](#d52) Fase 2-bis mitigaciones 1+2: finding de consecuencia + regla dura monetaria en `attributes_scd2` · [D53](#d53) Fase 2-ter: `FilterRows` de CHECK del DDL + guard capa staging · [D54](#d54) Fase 4 corrida real: resultado parcial, 1 corrida sonnet, H51 nuevo · [D55](#d55) plan de reparación del generador ETL (8 ítems), cierra H51, semilla `tk=0` alineada con D47
 
 **Track A** — auditoría de arquitectura
 [D24](#d24) Track A retomada, A0 ejecutada · [D25](#d25) A0.5 ejecutada (censo de fallos silenciosos), H29 · [D26](#d26) adelanta en chico una porción de A2/R1 (test de arquitectura), sin esperar a A7 · [D27](#d27) split `registry.py`, `KNOWN_PDI_STEP_TYPES` borrado, `CanonicalType` a `domain/`, criterio vocabulario-PDI-es-dominio
@@ -1331,6 +1338,357 @@ Default SCD1 respaldado por F2: *"most data warehouses start out with Type 1 as 
 **Hallazgo nuevo derivado de esta corrida:** H51 — `enforce_dimension_step_policy` y `check_dimension_lookup_fields` no verifican el flag `update` de un `DimensionLookup` en rol loader (solo lo hacen para rol `fact_lookup`), así que un loader mal configurado como solo-lectura pasa sin ningún finding. Abierto, sin dueño de track.
 
 **Estado:** parcial (2026-07-31). F4 sigue "en curso" — falta al menos 1 corrida más de sonnet (mismo caso), retomar Haiku con un caso más chico o esperar crédito Gemini para cumplir S-12, y decidir dueño para H51.
+
+<a id="d55"></a>
+### D55 — Plan de reparación del generador ETL (8 ítems): vocabulario `<field><update>` por modo sin condición de vacío, semilla `tk=0` sintetizada en el DDL (alineada con D47), escala monetaria desde el DDL `[F4]`
+
+**Contexto:** sesión de planificación (no de investigación — el diagnóstico de los 8 defectos venía cerrado de una auditoría externa al repo, no re-investigado en esta sesión) sobre defectos confirmados en el generador: vocabulario cruzado en `<field><update>` de `DimensionLookup` (mismo síntoma que H51, abierto desde D54, sin dueño de track hasta ahora), `ConcatFields` con tag inexistente en el formato real de Kettle (`<extra_field>` en vez de `<ConcatFields><targetFieldName>`), suite de tests que valida contra el fixture-golden usado como input en vez de generar y comparar la salida real de `build_ktr()`, ausencia de sembrado determinista de la fila `tk=0` (evidencia: cero resultados de `seed`/`ON CONFLICT` en `app/services`), narración del modelo sin contra-chequeo contra el XML emitido, dos checkers incompletos (`check_constraint_filter_rows` no compara el valor contra el bound del CHECK; `guard_staging_layer` no mira la proyección SQL de `TableInput`/`ExecSQL`), y escala `BigNumber` sin longitud/precisión. Los identificadores P1-x/P2-x/P3-x/V-x/NUEVA-x usados durante la sesión vienen de un análisis externo a este repo (no están en `01-hallazgos.md`, salvo H51 que D54 ya había dejado abierto) — se listan acá por trazabilidad de la sesión, no como referencia a hallazgos ya indexados en este archivo.
+
+**Decisión — plan de 8 ítems, confirmado por el usuario tras dos rondas de revisión.** La primera versión del plan reintroducía, en tres ítems distintos, la misma clase de defecto que venía a reparar — un default silencioso ante un valor que no se conoce. Corregido antes de confirmar:
+
+1. **Vocabulario `<field><update>` de `DimensionLookup` seleccionado por modo del step, sin ninguna condición sobre si `fields` está vacío.** La primera versión proponía "fields no vacío en modo N = error" — refutada contra `DimensionLookupMeta.java` (`pentaho/pentaho-kettle`, `master`: `getFields()` 741-820, `actualizeWithInjectedValues()` 564-569, `readData()` 930-937, `readRep()` 995-1000). En modo N (`update=N`, rol lookup/fact_lookup, D16), `fields` es el mecanismo real de retorno de columnas adicionales del lookup — uso legítimo, no residuo de cuando el step era loader; bloquearlo además impide la deduplicación de lookups que quedó anotada como mejora posible. Regla final (D-1): modo Y → vocabulario `ATTRIBUTE_UPDATE_TYPE_CODES` (ya en `domain/scd.py`); modo N → vocabulario `ValueMetaFactory` (constante nueva, `VALUE_META_TYPE_NAMES`, lista completa pendiente de verificar contra fuente antes de mergear — mismo tipo de verificación que el ítem 4 necesita para el formato de `JOBENTRYSQL`, ver abajo). El validador pre-emisión (`dimension_lookup_fields.py`) reporta error ante vocabulario cruzado; el emisor (`lookups.py`) levanta `KtrBuilderError` — no hay fallback silencioso a "Insert" — usando el mismo precedente que ya existe en `build.py:376-385` para step-type no soportado (un `.ktr` mal formado es peor que uno que no se genera), aplicado acá porque el costo de emitir en silencio (dimensión quedando en modo Insert-siempre, SCD2 no pedido) es del mismo orden. **Cierra H51** (D54) — pasa a tener dueño de track.
+2. **`ConcatFields` reescrito al formato real** (`<ConcatFields><targetFieldName>/<targetFieldLength>/<removeSelectedFields>` anidado, no `<extra_field>` suelto), confirmado contra el fixture del propio repo (`golden_run_base_01/ktr_1_origen_a_staging.ktr:951-955`).
+3. **Suite nueva que genera vía `build_ktr()` en vez de consumir el golden como input.** No existe en el repo un `ktr_data` de entrada que reproduzca `golden_run_base_01` (son captura de una corrida real, sin companion) — comparar byte-a-byte contra ese fixture específico no es viable sin ingeniería inversa. Se usa un fixture nuevo y mínimo, diseñado para ejercitar los casos de los ítems 1 y 2, en vez de forzar el golden existente. `test_golden_run_base_01_zero_findings` (ya existente, válido para lo que valida) no se toca.
+4. **Semilla `tk=0`: el mecanismo NO reabre D47.** La primera versión de este ítem proponía una entry `JOBENTRYSQL` nueva en el `.kjb` — exactamente el mecanismo que D47 ya evaluó y descartó explícitamente ("agrega un segundo escritor sobre la dimensión... obligaría a garantizar orden respecto del loader, costo que el sembrado en DDL no tiene"). Corregido antes de confirmar: el mecanismo sigue siendo el de D47 (INSERT embebido en el DDL). Lo que este ítem agrega es la pieza que D47 dejó abierta sin marcarla como tal — el sembrado depende hoy al 100% de que el LLM seleccionado siga la instrucción de `prompt_validacion_src.txt` (I8/V5); no hay verificación determinista de que el INSERT realmente llegó al DDL final (`validate_and_correct_ddl()`, `ddl_validation.py`, es también una llamada al modelo, no una síntesis de código). Se agrega un pass posterior a `validate_and_correct_ddl()` que sintetiza el INSERT en el texto del DDL final cuando no está — determinista, sin tocar `.ktr`/`.kjb`, sin agregar un segundo escritor. Bloqueo de fuente pendiente, no de decisión: el formato exacto de `JOBENTRYSQL` ya no aplica (mecanismo descartado); no queda gap de fuente en este ítem.
+5. **Contra-chequeo narración↔XML** — pass nuevo que cruza afirmaciones de `validaciones`/`advertencias_buenas_practicas` del modelo contra `cfg["update"]`/vocabulario real del step correspondiente en el `.ktr` emitido.
+6. **`check_constraint_filter_rows` compara el valor de la constante contra el bound del CHECK**, no solo la presencia de un `FilterRows` con operador de la familia correcta — gap confirmado por lectura directa del checker antes de planificar sobre él.
+7. **`guard_staging_layer` detecta transformación en la proyección SQL** (`CASE`/`NULLIF`/`COALESCE`/aritmética, vía `sqlglot` — ya dependencia del repo, `requirements.txt:119`, verificado contra la versión instalada `30.8.0` con el caso real), no `WHERE`. La primera versión de este ítem proponía una heurística `\bWHERE\b`, que no detecta el caso que motivó la sección (`CASE WHEN` en la proyección, sin `WHERE`) y dispara falsos positivos sobre filtros técnicos legítimos (fecha, tenant, flag de activo).
+8. **Escala `BigNumber` tomada de `CanonicalField.precision`/`.scale`** (ya poblados por `ddl_adapter.py` desde el DDL — extracción existente, no nueva) en vez de un default fijo. La primera versión de este ítem defaulteaba a `18,2` ("precedente estándar de columna monetaria") — rechazado por ser exactamente el defecto que el ítem viene a cerrar, con un número más plausible que `-1` pero igual de inventado por columna. Corregido: nuevo campo `ValidationContext.dwh_numeric_scale` + pass pre-emisión que repara desde el DDL cuando resuelve por nombre de columna, y deja error (sin fabricar nada — el XML sigue mostrando `-1,-1`) cuando no. Confirmado explícitamente para este ítem: un finding `severity="error"` de un pass pre-emisión **no bloquea la entrega** (`validators/base.py:9-12`, D15 — "notifica, no bloquea"; `build.py:163-174` no usa esos findings para abortar) — a diferencia del `KtrBuilderError` del ítem 1, que si bloquea (capa distinta, el emisor, no el validador).
+
+**Plan completo (archivos, funciones, código propuesto, criterio de aceptación sobre el XML por ítem, dependencias entre ítems) fuera de este archivo por volumen — documento de sesión, no append-only.** Esta entrada registra la decisión, su razonamiento y las tres correcciones que la sesión de revisión forzó — no duplica el detalle de implementación línea por línea.
+
+**Nota (2026-08-01):** el detalle completo se movió a `docs/refactor/plan-reparacion-etl.md` (antes vivía fuera del repo, en Desktop, mientras el usuario lo revisaba). Mutable, no append-only — el usuario confirmó que va a explorar al menos un punto abierto en sesión aparte y, de corresponder, impactarlo ahí directamente en vez de en esta entrada.
+
+**Estado:** ítems 1-3 ejecutados (2026-08-01); 4-8 planificados, no ejecutados. Ítem 1: `domain/scd.py` (`VALUE_META_TYPE_NAMES`), `dimension_lookup_fields.py` (vocabulario por modo Y/N, sin condición de `fields` vacío), `steps/lookups.py` (un solo tag `<update>` por field, `KtrBuilderError` en vocabulario cruzado), `dimension_step_policy.py` (rama nueva: loader con `update=N` reparado a `Y`, override respetado — cierra H51). Ítem 2: `steps/transform.py` `_step_ConcatFields` reescrito al formato real (`<ConcatFields><targetFieldName>/...` anidado tras `<fields>`), confirmado contra `golden_run_base_01/ktr_1_origen_a_staging.ktr:951-955`. Ítem 3: `test_build_ktr_emission.py` nuevo (parsea XML real de `build_ktr()`, no el golden como input) + 2 tests nuevos en `test_dimension_step_policy.py`. Verificación: `pytest tests/test_dimension_step_policy.py tests/test_build_ktr_emission.py tests/test_dimension_lookup_fields.py` — 28 passed. Suite completa: 695 passed / 33 failed, mismo set preexistente confirmado por `git stash` (sin relación con estos 3 ítems) — cero regresión. Ítems 4-8 quedan para sesión(es) aparte — ver "Pendientes concretos de F4" en `03-plan.md`.
+
+<a id="d56"></a>
+### D56 — Ítem 5 (contra-chequeo narración↔XML): implementado con limitación conocida. Se registra el alcance real y la alternativa pendiente.
+
+Estado: decidido. Complementa el ítem 5 de D55, no lo revierte.
+
+Qué quedó implementado en la tanda C: el renombrado del canal
+(etl_generator.py:825, la prosa del modelo pasa a `narracion_modelo`) y
+narration_crosscheck.py, que cruza afirmaciones sobre el modo de un
+DimensionLookup contra el XML emitido, vía regex de patrón acotado sobre
+la narración en español del modelo.
+
+Limitación conocida, registrada a propósito. Un regex que no matchea
+produce cero findings, indistinguible de "narración consistente". El falso
+negativo es invisible — el mismo modo de falla de V-1, que este ítem venía
+a reparar. Es la cuarta instancia de la clase de defecto que las
+revisiones 2, 5 y 6 del plan corrigieron en otros ítems bajo D5 y D45
+pt.1; sobrevivió porque su forma es un regex y no un `return` mudo.
+
+Mitigación aplicada. El pass declara su cobertura real: Finding
+severity="info" al cierre, con "N/M step(s) DimensionLookup cruzados
+contra alguna afirmación de la narración". Con cobertura 0 el mensaje dice
+explícitamente que "sin hallazgos" significa "no verificado", no
+"narración consistente". Severidad "info" y no "error"/"warning":
+"error" sería falso positivo sistemático en todo KTR sano cuya narración
+no mencione el modo, y "warning" sugeriría una reparación que este pass no
+hace; precedente en el branch de override de dimension_step_policy.py.
+No convierte al pass en confiable — lo hace honesto sobre cuándo no lo es.
+
+Punto ciego residual, no corregido. Si la narración afirma algo sobre el
+modo de una dimensión y el artefacto no tiene NINGÚN step DimensionLookup,
+el pass devuelve lista vacía: el mismo falso negativo, del lado inverso.
+No se repara acá — es munición para la inversión, no un fix puntual más.
+
+Qué NO se hizo y queda abierto para D. La inversión: derivar el informe de
+validación del XML emitido, determinísticamente, y que la prosa del modelo
+nunca sea fuente de una aserción de validación. No se construye ahora
+porque falta contexto sobre el consumo del informe (quién lo lee, para
+qué, qué hace con él). Registrado como GAP-2 en prompt-sesion-D.txt, Q1.
+Si D adopta la inversión, narration_crosscheck.py se retira; no se
+extiende ni se generaliza el regex mientras tanto.
+
+Procedencia. La objeción venía de la revisión del plan C y quedó anotada
+únicamente en prompt-sesion-D.txt, fuera del repo — por eso el plan
+conservó el alcance viejo y el pass se implementó igual. Tercera instancia
+del mismo patrón: D47 (decisión cerrada ausente del contexto),
+system_etl.txt:369 (convención que solo vive en el prompt del modelo).
+Regla derivada: toda restricción de alcance sobre un ítem del plan se
+registra en este archivo, no en un prompt de sesión.
+
+<a id="d57"></a>
+### D57 — Reclasificación a fact_lookup: se limpia `fields`, no se conserva.
+
+Estado: decidido, aplicado en el mismo turno.
+
+Problema. `enforce_dimension_step_policy`, branch rol=fact_lookup con
+canonical ya DimensionLookup (dimension_step_policy.py:274-283): hacía
+`new_cfg = dict(cfg); new_cfg["update"] = "N"` — pisaba el flag y dejaba
+`fields` intacto. Un step que el LLM generó como loader (update=Y, fields
+con vocabulario Y: Insert/Update/...) y que la policy reclasifica a
+fact_lookup quedaba con modo N + vocabulario Y. Vocabulario cruzado, que
+el emisor rechaza con KtrBuilderError desde el ítem 1(b) de D55.
+Reproducido en la corrida post-C: "DimensionLookup 'Cargar dim_producto':
+campo con type='Update' fuera del vocabulario de modo N".
+
+Por qué se escapó — el hallazgo de proceso. El punto estaba anotado en
+plan-reparacion-etl.md §1(c) línea 113 como "nota, no bloqueo". Esa
+clasificación era correcta cuando se escribió: bajo el régimen anterior el
+vocabulario cruzado producía un .ktr que abría igual, con semántica
+silenciosamente incorrecta. El ítem 1(b) del MISMO plan convirtió esa
+condición en un gate duro. Un ítem del plan invalidó la severidad asignada
+por otro ítem del plan, en secciones distintas, sin que nadie lo notara.
+Regla derivada: cuando un ítem agrega un gate duro, se revisan las notas
+"no bloqueo" del resto del plan que dependan de que esa condición sea
+tolerada.
+
+Decisión. En ese branch, `new_cfg["fields"] = []` más un Finding con
+repaired=True que registre cuántas entradas se descartaron y por qué.
+
+Fundamento — `fields` vacío en modo N es la forma correcta, no un
+degradado. DimensionLookupMeta.getFields() 776-803 guarda el recorrido con
+`if (!update && fieldLookup.length > 0)`: en modo lookup, `fields` es un
+mecanismo OPCIONAL de columnas extra ("retrieve extra fields on lookup?",
+comentario del fuente). La technical key —lo único que un hecho necesita
+de la dimensión— viaja por su propio mecanismo, no por `fields`. Y las
+entradas que se descartan no son columnas de retorno: son modos de
+actualización escritos bajo la premisa de que el step era el loader,
+premisa que la resolución topológica de rol acaba de declarar falsa.
+Conservarlas traducidas (opción evaluada y descartada) presupondría que
+querían ser columnas de retorno, que es exactamente lo que no consta.
+
+Descartado: traducir el vocabulario Y-mode a value-meta real vía contrato
+/DDL. Requiere un mapeo tipo-DDL → ValueMetaFactory que hoy no existe, y
+resuelve un problema del que no hay evidencia.
+
+Test. test_enforce_dimension_step_policy_forces_readonly_on_fact_lookup_scd2
+(test_dimension_step_policy.py:224-238) solo verificaba update=="N", nunca
+`fields` — pasaba en verde con el defecto adentro. Se extiende para
+verificar el vaciado y el Finding.
+
+Queda abierto, sin cambios. El origen de columnas de retorno legítimas
+para un fact_lookup en modo N (P3-1, deduplicación) sigue sin definir.
+Cuando se planifique, ahí se decide de dónde salen esos `fields` — no acá,
+y no reciclando config escrito para otro rol.
+
+<a id="d58"></a>
+### D58 — role_of_dimension_step: BFS solo desambigua con 2+ candidatos; already_readonly valida vocabulario.
+
+Estado: decidido, aplicado en el mismo turno.
+
+Problema. D57 no alcanzaba la corrida real (etl-llm-raw-test-01_sonnet_
+fase4.json): 'Cargar dim_producto', único `DimensionLookup` sobre
+`dim_producto`, llega del LLM con `update="N"` y `fields` en vocabulario Y
+— contradice su propia narración ("update=Y y todos los atributos en modo
+Update"). El step alimenta, vía hop, `Cargar fact_inventario`
+(`InsertUpdate`, tabla distinta) — patrón normal (el loader devuelve su SK
+y esa misma rama sigue hacia el hecho, sin un segundo step dedicado a FK).
+`role_of_dimension_step` (D16/H21) hace BFS hacia adelante y, al alcanzar
+un escritor de otra tabla, concluye `"fact_lookup"` — sin mirar si hay
+OTRO step candidato para `dim_producto`. Clasificado mal, cae en el branch
+D57 (ya arreglado, limpia `fields`), que fuerza `update="N"` — pero el
+step YA estaba en `update="N"`, así que `already_readonly`
+(`dimension_step_policy.py:342-345`, antes de este fix) cortaba con
+`continue` mudo sin validar `fields` contra el vocabulario de modo N —
+mismo defecto de clase que el `continue` de H51. El crash sobrevivía.
+
+Verificación previa a escribir la regla (pedida antes de implementar): ¿un
+lookup de solo lectura contra una dimensión cargada en OTRO `.ktr` podría
+hacer que "contar candidatos en este `ktr_data`" clasifique mal un
+lookup huérfano como loader? Confirmado que NO en el pipeline actual:
+`enforce_dimension_step_policy` corre siempre sobre el dict COMPLETO de
+una sola etapa (KTR_2, STG→DWH) — tanto en el flujo síncrono
+(`etl_generator.py:1392`) como en `build_etl_from_raw`
+(`etl_generator.py:1150-1160`) — ANTES de que `compute_cut()`/
+`split_ktr_by_cut()` fragmente esa etapa en N archivos físicos
+(`_build_response_from_two_ktr_data`/`_build_ktr_stage`, llamadas
+DESPUÉS). KTR_1 (origen→STG) nunca tiene steps de dimensión — las
+dimensiones solo se cargan en KTR_2. Y `DimContract`
+(`schemas/etl_schemas.py:145-162`) no tiene ni necesita un campo de
+alcance/archivo: es puramente descriptivo del contrato SCD, y hoy no
+existe ningún mecanismo de dimensión compartida entre ETLs distintos. El
+supuesto se sostiene — se implementa el conteo tal cual, sin ese guardia
+adicional.
+
+Riesgo distinto, encontrado en la misma verificación y NO cerrado por
+este fix: si el LLM omite por completo el loader de una tabla que sí
+declaró en `dim_contracts`, el único step que quede sobre esa tabla (un
+lookup de solo lectura huérfano) también cuenta 1 candidato, y esta regla
+lo forzaría a loader — ningún campo disponible hoy distingue "único
+candidato porque es inequívocamente el loader" de "único candidato porque
+al loader real le falta su contraparte". No es el caso de la corrida real
+(ahí el step SÍ es el loader — trae los 6 atributos de negocio de la
+dimensión en `fields`) y excede el alcance de este fix. Señalado en el
+código (`_dimension_step_table_counts`, docstring) para quien lo
+encuentre.
+
+Decisión — dos cambios en `dimension_step_policy.py`:
+1. `_dimension_step_table_counts()`: precomputa, una vez por llamada a
+   `enforce_dimension_step_policy`, cuántos steps `DimensionLookup`/
+   `CombinationLookup` targetean cada tabla. Si el conteo para la tabla de
+   un step es ≤1, `role="loader"` directo, sin invocar el BFS — no hay
+   ambigüedad que desambiguar (D16/H21 diseñó el BFS para el caso de 2+
+   candidatos; aplicarlo con 1 solo era sobre-aplicar la heurística fuera
+   de su alcance original).
+2. `already_readonly` (branch fact_lookup, step ya en `update="N"`): antes
+   de dar el step por bueno con `continue`, valida cada `fields[i].type`
+   contra el vocabulario de modo N (`VALUE_META_TYPE_NAMES`). Si hay
+   alguno fuera de vocabulario, agrega un finding `tipo="error"` — no
+   repara (no hay contrato para inventar qué hacer con columnas de retorno
+   legítimas en modo N, mismo principio D5/D45 pt.1 que los ítems 7/8 del
+   plan) pero deja de ser un `continue` mudo.
+
+Con (1), la corrida real cae en el branch H51 (ya existente, ya probado):
+se corrige a `update="Y"` y se resintetiza `fields` desde `dim_contracts`
+— sin crash. (2) cierra el defecto de clase para el próximo fact_lookup
+genuino con vocabulario cruzado que (1) no reclasifica (porque si tiene
+2+ candidatos, sigue yendo por BFS).
+
+Test. `test_single_dimension_lookup_step_per_table_resolves_loader_not_
+fact_lookup` y `test_already_readonly_fact_lookup_with_crossed_vocabulary_
+reports_error` (`test_dimension_step_policy.py`);
+`test_single_step_per_table_reproduction_d58` (`test_build_ktr_emission.py`,
+extremo a extremo contra `build_ktr()`, reproducción literal del payload
+real). `test_policy_reclassified_fact_lookup_does_not_emit_crossed_
+vocabulary` (D57) se ajustó agregando un segundo step candidato — con 1
+solo, (1) hace que ya no ejercite el branch fact_lookup que D57 arregló.
+
+Narración vs. artefacto (nota, no acción). El payload real mostró al LLM
+narrando `update=Y` para `dim_producto` y emitiendo `update=N` — el caso
+exacto que `check_narration_crosscheck` (item 5, plan) existe para
+atrapar. No disparó: el `campo` de la narración llegó compuesto
+("dim_categoria / dim_producto", "dim_producto.fk_categoria") en vez del
+nombre exacto de tabla que el pass compara con `==` estricto — 0/2 steps
+cruzados, solo el finding de cobertura "no verificado". No se toca
+`narration_crosscheck.py` en este turno (instrucción explícita) — queda
+anotado como limitación real de su matching por igualdad exacta.
+
+<a id="d59"></a>
+### D59 — O1, lote E-04…E-08: 5 steps de emisión corregidos contra `readData()` real de Kettle `[O1]`
+
+Estado: decidido, ejecutado, mismo turno.
+
+Alcance. Cierra el "lote barato" de `10-estabilizar-emision.md` (E-04
+StringOperations, E-05 Unique, E-06 ExcelInput, E-07 JsonInput, E-08
+TextFileOutput) — los ítems 3, 5, 6, 7 y 8 de
+`investigacion-tags-validos-por-step.md` § A. Quedan fuera, a propósito:
+E-09 (`CombinationLookup`, falta el bloque `<fields><return>`) y E-10
+(`DataValidator`, mapeo `name`/`fieldname` invertido) — estructurales,
+más caros que 1-3 líneas, sesión aparte de O1 (E-11, `SplitFieldToRows`,
+tampoco entra: es un problema de alias→`<type>` en `step_types.py`, no de
+un builder de `steps/*.py`).
+
+Método. Cada fix se verificó leyendo `readData()`/`getXML()` real de la
+clase `*Meta.java` en `github.com/pentaho/pentaho-kettle` (rama
+`master`), citando clase y método — la autoridad que exige
+`docs/README.md` § "Autoridad sobre comportamiento de Pentaho". Un
+commit por step, cada uno con test propio contra la salida real de
+`build_ktr()` (patrón de `test_build_ktr_emission.py`, no fixtures
+consumidas como input).
+
+1. **StringOperations** (`steps/transform.py:_step_StringOperations`,
+   commit `d0a79b9`) — `StringOperationsMeta.readData()` lee
+   `trim_type`/`lower_upper` como los literales `none/left/right/both` y
+   `none/lower/upper`; el emisor escribía índices numéricos (`"0".."3"`),
+   que nunca matchean — el step no recortaba ni cambiaba
+   mayúsculas/minúsculas con ninguna configuración. Corregido a los
+   literales; `"title"` (no existe como código real de `lower_upper`) se
+   resuelve vía el flag `init_cap`, independiente en Kettle.
+2. **Unique** (`steps/transform.py:_step_Unique`, commit `3194463`) —
+   `UniqueRowsMeta.readData()` lee `case_insensitive` (ausente = `true`,
+   siempre case-insensitive); el emisor escribía `case_sensitive`,
+   inexistente, con la polaridad invertida. Corregido a `case_insensitive`
+   con la polaridad real.
+3. **ExcelInput** (`steps/input.py:_step_ExcelInput`, commit `58d4e89`) —
+   `ExcelInputMeta.readData()` parsea `spreadsheet_type` vía
+   `SpreadSheetType.valueOf()` dentro de un try/catch que cae a `JXL`
+   (motor legado, no lee `.xlsx`) ante tag ausente o no reconocido; el
+   emisor nunca lo escribía. Corregido: se emite por extensión de archivo
+   (`.xls`→`JXL`, cualquier otro caso→`POI`, que lee Excel 2007+). Valores
+   reales del enum confirmados en `SpreadSheetType.java`: `JXL`, `POI`,
+   `SAX_POI`, `ODS`.
+4. **JsonInput** (`steps/input.py:_step_JsonInput`, commit `1462d85`) —
+   `JsonInputMeta.getincludeNulls()` cae, sin el tag `includeNulls`, a
+   `kettle.properties` del entorno de ejecución
+   (`KETTLE_JSON_INPUT_INCLUDE_NULLS`) — no-determinismo entre máquinas
+   para el mismo `.ktr`. Corregido: se emite siempre explícito (default
+   `"N"`, igual al fallback real de la property).
+5. **TextFileOutput** (`steps/output.py:_step_TextFileOutput`, commit
+   `37e792d`) — `TextFileOutputMeta.readData()` lee `create_parent_folder`
+   como hijo directo de `<step>`, no anidado en `<file>`; el emisor lo
+   anidaba, inocuo hasta hoy solo porque el único valor emitido (`"Y"`)
+   coincide con el default ante tag ausente. Corregido: se emite al nivel
+   correcto.
+
+Evidencia. 5 commits (`d0a79b9`, `3194463`, `58d4e89`, `1462d85`,
+`37e792d`), 5 tests nuevos en `test_build_ktr_emission.py`
+(`test_string_operations_emits_literal_kettle_codes_not_numeric_indices`,
+`test_unique_emits_case_insensitive_tag_with_correct_polarity`,
+`test_excel_input_emits_spreadsheet_type_by_extension`,
+`test_json_input_emits_include_nulls_explicit`,
+`test_text_file_output_emits_create_parent_folder_at_step_level`), los 12
+tests del archivo en verde. Suite completa corrida antes del lote: 693
+passed / 55 failed (failures preexistentes, de red/API-key y del rojo ya
+conocido E-03 — ninguno en los 3 archivos tocados por este lote).
+
+<a id="d60"></a>
+### D60 — O1-b: `VALUE_META_TYPE_NAMES` corregida, criterio de degradación legítima, política de los 4 sitios de aborto `[O1]`
+
+Estado: decidido, mismo turno. Ejecutado: verificación/fix de `VALUE_META_TYPE_NAMES` (E-02) y el criterio de abajo. Pendiente: convertir los 4 sitios (Alcance punto 2 de `10-estabilizar-emision.md`) — esta entrada fija la regla con la que esa conversión se hace, no la ejecuta.
+
+**1. `VALUE_META_TYPE_NAMES` (E-02) — verificada contra fuente, estaba incompleta.**
+
+`DimensionLookupMeta.getUpdateType()` (`pentaho/pentaho-kettle`, rama `master`, `plugins/dimensionlookup/.../DimensionLookupMeta.java`, método ~842-858, invocado desde `readData()` ~1080-1090) delega a `ValueMetaFactory.getIdForValueMeta(ty)` cuando el step está en modo `update=false` — interpreta el tag `<field><update>` como nombre de value-meta. `getIdForValueMeta()` (`ValueMetaFactory.java:97-103`) resuelve por nombre exacto (case-insensitive) contra **todos** los plugins `ValueMetaPluginType` registrados y devuelve `TYPE_NONE` si no matchea ninguno — el mismo `TYPE_NONE` que es el id de `"-"` (colisión de sentinel ya registrada en `10-estabilizar-emision.md`).
+
+El vocabulario que el emisor debe aceptar como legítimo no es "todo lo que resuelve" (eso incluiría `Serializable`, un tipo interno que Kettle mismo no ofrece como opción) sino exactamente `ValueMetaFactory.getValueMetaNames()` (`ValueMetaFactory.java:87-96`): filtra `id > 0` (excluye `"-"`/`TYPE_NONE`, el sentinel) y excluye `TYPE_SERIALIZABLE` explícitamente. Contra `ValueMetaInterface.java:95-128` (`TYPE_NONE=0` … `TYPE_INET=10`, array `typeCodes`), el resultado de `getValueMetaNames()` son 9 nombres: `Number, String, Date, Boolean, Integer, BigNumber, Binary, Timestamp, Internet Address`.
+
+`VALUE_META_TYPE_NAMES` (`domain/scd.py`) traía 8 de los 9 — faltaba **`Internet Address`** (`TYPE_INET=10`). Corregido en el mismo turno (commit pendiente de este cierre), con la cita completa de clase+línea dejada como comentario en el símbolo.
+
+**No explica el crash de `'Cargar dim_producto'` (E-01).** Ese step tenía `type='Update'` — un código de modo Y (`ATTRIBUTE_UPDATE_TYPE_CODES`), no un nombre de value-meta — mientras el step estaba clasificado en modo N. Agregar `Internet Address` no lo hubiera aceptado: el defecto de E-01 es que `fields` no se reescribió al vocabulario del modo nuevo cuando D58 forzó `update=N` sin loader completo (ver diagnóstico), no que el vocabulario N estuviera incompleto. E-02 era un defecto real e independiente — sin este fix, cualquier atributo legítimamente tipado `Internet Address` hubiera abortado el build sin motivo real — pero no cierra E-01.
+
+**2. Criterio de degradación legítima vs. rota (E-03).**
+
+Investigado antes de escribir el criterio: `test_repair_dimension_loader_fields_floor_when_gate_fails` (rojo, registrado como E-03) falla porque reusa el fixture de `test_repair_dimension_loader_fields_success` (mismo contrato, mismo stream — atributo faltante `nombre_categoria`, stream con `categoria`). `_deterministic_field_mapping()` (`etl_generator.py:629-655`) resuelve ese caso por el atajo sin LLM (sinónimo sin prefijo `nombre_`) **antes** de que el test alcance el LLM fake que simula la alucinación — el mapeo que sale (`categoria`→`nombre_categoria`) es real y verificado contra el stream, no inventado. El test nunca ejercía el camino que dice probar; **no es un defecto de `_repair_dimension_loader_fields`, es un defecto del fixture del test.** Corregido en el mismo turno: el test ahora usa un atributo sin match determinístico (`descripcion_categoria`), lo que sí fuerza el camino del LLM fake, y confirma que el gate (`etl_generator.py:805-815`, `mapping[a].lower() in upstream_lower` para cada atributo faltante) rechaza el `stream_field` alucinado en los 2 intentos y deja el step intacto — el "piso" que el diagnóstico prometía **sí existe**, contra lo que E-03 y este mismo archivo (`10-estabilizar-emision.md`, sección "La degradación ya existe, y está rota") afirmaban. Corrección de Regla A aplicada — ver `errores.md`.
+
+Con esa verificación hecha, el criterio que hacía falta para generalizar (y que sigue siendo necesario para los 4 sitios, más allá de que este caso puntual resultara no roto):
+
+> **Una degradación es legítima si y solo si el dato que sale al `.ktr` pasó, en el momento del build, por una verificación contra un inventario real — nunca porque quien lo propuso (LLM original, LLM de repair, heurística determinística) lo afirma.**
+>
+> 1. Para un `stream_field`, el inventario es `upstream_fields_for_step()` (lo que el grafo real de ESTE `.ktr` produce en ese punto); para una tabla/columna del DWH, el DDL real parseado. Nunca "el modelo dijo que existe".
+> 2. **Sin inventario resoluble no hay verificación posible.** No se asume identidad ni ningún otro valor por default en ese caso — el atributo se omite de la salida y el finding es `error`, señalando que no se pudo verificar (no que se decidió inventar algo).
+> 3. La severidad refleja el estado de verificación, no el esfuerzo invertido en producirlo:
+>    - Verificado, coincide por identidad → sin finding (ya confiable).
+>    - Verificado, pero con nombre distinto del esperado (inferencia real) → `info` — funciona, un experto lo confirma antes de correr en Spoon.
+>    - No verificable, o verificación fallida → `error` — el valor sale tal cual llegó (nunca sustituido por un default plausible) y el finding dice explícitamente qué no va a funcionar.
+> 4. Un intento de reparación que falla dos veces deja el mismo rastro que no haber intentado — nunca se sube la severidad a `info` porque "se intentó".
+
+Contra este criterio: `_repair_dimension_loader_fields` (gate en `etl_generator.py:805-815`) y `_deterministic_field_mapping` cumplen — verificado en el punto anterior. `_synthesize_dimension_lookup_config` (`dimension_step_policy.py:229-267`) cumple en el camino de repair (línea 234-241: exige `upstream_lower is not None` y pertenencia). **No cumple** en su rama de `upstream_lower is None` (grafo no resoluble, línea 243-244): asume `stream_field = attr` por identidad sin verificación y sin finding — comportamiento heredado, documentado como tal en su propio docstring ("preserva el comportamiento histórico... asume... sin verificar"), pero es exactamente el patrón que el punto 2 del criterio prohíbe. Registrado como **E-16** (`errores.md`, origen E-03) — no se toca en este turno (profundidad de cadena ya en 2, y está fuera del alcance puntual de E-03, que era sobre el mapeo del repair).
+
+**3. Política de los 4 sitios de aborto (Alcance punto 2), derivada del criterio.**
+
+Regla compartida: **nunca abortar todo el build por el contenido de un step.** Aislar el defecto al step, emitir el dato exactamente como llegó (nunca sustituido por un valor adivinado) y agregar `Finding(severity="error")` con step, campo, valor literal y qué va a pasar en Kettle — predicho contra el `Meta` real (leer como Kettle), pero reportado en voz alta en vez de dejarlo pasar en silencio (fallar distinto que Kettle, ver `docs/README.md` § Autoridad sobre Pentaho).
+
+| Sitio | Hoy | Política nueva |
+|---|---|---|
+| `build.py` `incomplete` (`missing_required_keys`, ~L142-157) | Aborta TODO el build por una clave estructural faltante en un step | Sin inventario que verificar (una clave ausente no tiene "valor real" contra qué contrastar) — se emite el step con esa clave vacía/ausente tal cual y `Finding(error)` nombrando el step y la clave. No bloquea el resto del build. |
+| `build.py` `critical_incomplete` (`_CRITICAL_FIELDS`, ~L230-253) | Aborta TODO el build por un campo crítico vacío o placeholder (`"SELECT 1"`) | Mismo tratamiento: se emite el valor literal (incluso el placeholder — es lo que llegó, no se inventa nada mejor) + `Finding(error)` explícito de que ese step no va a producir filas reales. |
+| `build.py` `STEP_BUILDERS.get(canonical_type) is None` (~L381-385) | Aborta TODO el build — no hay builder registrado, literalmente no hay código que emita XML para ese tipo | Único sitio de naturaleza distinta: no hay "valor tal cual llegó" que preservar, porque no existe forma de codificarlo. Sustituto defendible: emitir un step `Dummy` real de Kettle (no-op documentado, no una invención de comportamiento) en su lugar, conservando nombre y hops, + `Finding(error)` con el tipo original no soportado. |
+| `steps/lookups.py` `_step_DimensionLookup` vocabulario cruzado (~L90-96) | Aborta TODO el build — `KtrBuilderError` (el crash de E-01) | Se emite el `field_value` literal tal como llegó (nunca coaccionado a un valor "corregido" adivinado) + `Finding(error)` que cita el vocabulario esperado para el modo asignado y predice el efecto real en Kettle (mode Y: cae a `TYPE_UPDATE_DIM_INSERT` sin aviso, R-K7; mode N: `getIdForValueMeta` cae a `TYPE_NONE`) — la predicción va en el mensaje, no en el comportamiento del emisor. |
+
+Los 3 primeros comparten mecanismo (pass-through + finding); el tercero es la única excepción de forma (no de contenido) entre los 4 — coherente con la línea que ya traza `10-estabilizar-emision.md` § "Qué sigue abortando, a propósito".
+
+**Supersede, específicamente:** la frase de D55 ítem 1 (rótulo interno "D-1" en ese texto) — *"El validador pre-emisión... reporta error ante vocabulario cruzado; el emisor (`lookups.py`) levanta `KtrBuilderError` — no hay fallback silencioso a 'Insert' — usando el mismo precedente que ya existe en `build.py:376-385` para step-type no soportado"* — en la parte que exige `KtrBuilderError`/abort total para esos dos sitios (`lookups.py` vocabulario cruzado y `build.py` step no soportado) y, por la misma tabla de D55, extiende a los otros 2 sitios de `build.py` que comparten la clase de problema (contenido, no forma). El resto de D55 (selección de vocabulario por modo, sin condición de `fields` vacío) sigue vigente — no se toca acá.
+
+**Pendiente, explícito:** esta entrada decide la regla; no reescribe `build.py`/`lookups.py`. Eso es la parte no ejecutada del Alcance punto 2 de `10-estabilizar-emision.md`, sesión aparte de O1.
+
+<a id="d61"></a>
+### D61 — O2-a: `common.py` partido en dominio (`common.py`) e infraestructura (`xml_helpers.py`) `[O2]`
+
+Estado: decidido, ejecutado, mismo turno.
+
+`common.py` era una fila **partido** del mapa capa-objetivo (`docs/arquitectura-objetivo.md`): `_yn`/`KtrBuilderError` son puros (normalización de un valor de config, una excepción de dominio) mientras que `_sub` arma un `xml.etree.ElementTree.Element` — infraestructura de serialización XML. Mismo criterio ya aplicado a `registry.py` → `step_types.py`/`step_emitters.py`.
+
+Ejecutado: `_sub` se mudó a `xml_helpers.py` (nuevo, `services/ktr_builder/`). `common.py` queda con `_yn`/`KtrBuilderError`, docstring actualizado explicando el split. Todo import de `_sub` en `build.py`, `connection.py`, `steps/control.py`, `steps/input.py`, `steps/output.py`, `steps/transform.py` apunta ahora a `xml_helpers.py`; donde un módulo también usaba `_yn`, el import se separó en dos líneas (`common` para `_yn`, `xml_helpers` para `_sub`).
+
+Nota de capa física: el mapa marca `common.py` como `domain/` "ejecutado", pero el archivo sigue viviendo en `services/ktr_builder/common.py`, no en `backend/app/domain/`. Es la misma distinción que ya usa `arquitectura-objetivo.md` para `step_types.py`: el mapa fotografía la capa lógica a la que pertenece el contenido, no compromete una fecha de reubicación física — mudar el archivo es la migración grande (`ports/`/`infrastructure/` físicos), pospuesta a propósito (ver `20-arquitectura.md` § "Lo que O2 NO hace antes de entregar").
+
+`docs/services/ktr_builder/README.md` actualizado: fila `common.py` marcada "Ejecutado (O2-a)", fila nueva `xml_helpers.py` agregada. `test_architecture_layers.py`: comentario de `DOMAIN_MODULES` actualizado para reflejar el split ya ejecutado (ya no dice "se incluye para permitir que `contracts.py` importe la mitad pura" — ahora todo el módulo es dominio puro sin excepción parcial).
+
+**Verificación:** `test_architecture_layers.py` verde. `FROZEN_*` sin cambios (esta sesión no corrige ninguna violación existente, solo mueve código ya conforme).
 
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido
