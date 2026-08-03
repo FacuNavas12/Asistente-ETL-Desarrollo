@@ -422,3 +422,24 @@ def test_json_input_emits_include_nulls_explicit():
     xml, _, _ = build_ktr(ktr_data)
     assert _find_step(xml, "Leer Pedidos Json").findtext("includeNulls") == "N"
     assert _find_step(xml, "Leer Pedidos Json Con Nulls").findtext("includeNulls") == "Y"
+
+
+def test_text_file_output_emits_create_parent_folder_at_step_level():
+    """E-08 (investigacion-tags-validos-por-step.md § A.8) --
+    TextFileOutputMeta.readData() lee 'create_parent_folder' como hijo
+    directo de <step>, no anidado en <file>. El emisor lo anidaba -- inocuo
+    hoy solo porque el default ante ausencia ('Y') coincide con lo emitido."""
+    ktr_data = _minimal_ktr(
+        steps=[
+            {
+                "name": "Escribir Log", "type": "TextFileOutput",
+                "config": {"filename": "log.txt", "fields": [{"name": "mensaje"}]},
+            },
+        ],
+        hops=[],
+    )
+    xml, _, _ = build_ktr(ktr_data)
+    step = _find_step(xml, "Escribir Log")
+    assert step.findtext("create_parent_folder") == "Y"
+    file_el = step.find("file")
+    assert file_el.find("create_parent_folder") is None

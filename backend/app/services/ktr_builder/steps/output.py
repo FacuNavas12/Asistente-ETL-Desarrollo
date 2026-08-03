@@ -146,6 +146,14 @@ def _step_TextFileOutput(el: Element, cfg: dict) -> None:
     _sub(el, "endedLine")
     _sub(el, "fileNameInField",        "N")
     _sub(el, "fileNameField")
+    # TextFileOutputMeta.readData() lee "create_parent_folder" como hijo
+    # DIRECTO de <step> (XMLHandler.getTagValue(stepnode, CONST)), no anidado
+    # en <file> como el resto de las opciones de archivo -- el emisor lo
+    # anidaba, así que Kettle nunca lo encontraba ahí y caía al default
+    # (tag ausente = true). Hoy inocuo solo porque el único valor emitido
+    # ("Y") coincide con ese default (docs/refactor/
+    # investigacion-tags-validos-por-step.md § A.8).
+    _sub(el, "create_parent_folder",   "Y")
 
     file_el = SubElement(el, "file")
     _sub(file_el, "name",                     filename)
@@ -158,7 +166,6 @@ def _step_TextFileOutput(el: Element, cfg: dict) -> None:
     _sub(file_el, "SpecifyFormat",            "N")
     _sub(file_el, "date_time_format")
     _sub(file_el, "add_to_result_filenames",  "Y")
-    _sub(file_el, "create_parent_folder",     "Y")
     _sub(file_el, "servlet_output",           "N")
     _sub(file_el, "do_not_open_new_file_init", "N")
     _sub(file_el, "pad",                      "N")
