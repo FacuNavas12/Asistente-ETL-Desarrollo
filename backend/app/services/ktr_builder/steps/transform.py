@@ -203,18 +203,25 @@ def _step_Constant(el: Element, cfg: dict) -> None:
 
 def _step_StringOperations(el: Element, cfg: dict) -> None:
     fe = SubElement(el, "fields")
-    trim_map = {"both": "3", "left": "1", "right": "2", "none": "0"}
-    case_map = {"upper": "1", "lower": "2", "none": "0", "title": "3"}
+    # StringOperationsMeta.readData() lee trim_type/lower_upper como los
+    # códigos literales de abajo (Const.NVL(getTagValue(...), "")), no como
+    # índices numéricos -- un índice nunca matchea ningún código real y el
+    # step queda siempre en el modo "none" (docs/refactor/
+    # investigacion-tags-validos-por-step.md § A.3). "title" no es un código
+    # real de lower_upper: se resuelve aparte, vía el flag init_cap.
+    trim_map = {"both": "both", "left": "left", "right": "right", "none": "none"}
+    case_map = {"upper": "upper", "lower": "lower", "none": "none"}
     for f in cfg.get("fields", []):
+        case = str(f.get("case", "none")).lower()
         field = SubElement(fe, "field")
         _sub(field, "in_stream_name",          f.get("name", ""))
         _sub(field, "out_stream_name",         f.get("rename", ""))
-        _sub(field, "trim_type",               trim_map.get(str(f.get("trim_type", "both")).lower(), "3"))
-        _sub(field, "lower_upper",             case_map.get(str(f.get("case", "none")).lower(), "0"))
+        _sub(field, "trim_type",               trim_map.get(str(f.get("trim_type", "both")).lower(), "both"))
+        _sub(field, "lower_upper",             case_map.get(case, "none"))
         _sub(field, "padding_type",            "0")
         _sub(field, "pad_char")
         _sub(field, "pad_len")
-        _sub(field, "init_cap",                "N")
+        _sub(field, "init_cap",                "Y" if case == "title" else "N")
         # StringOperationsMeta.readData() lee "mask_xml" (minúscula) y "digits"
         # (no "mask_XML"/"digits_only") con valores enum string, no Y/N ni
         # índices: maskXMLCode = {none,escapexml,cdata,unescapexml,escapesql,

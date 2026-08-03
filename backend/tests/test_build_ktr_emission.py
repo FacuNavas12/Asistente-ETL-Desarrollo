@@ -322,3 +322,32 @@ def test_orphan_lookup_single_candidate_without_contract_attributes_is_not_force
     xml, _, _ = build_ktr(ktr_data)  # no se emite un loader espurio; tampoco crashea
     step = _find_step(xml, "Lookup Huerfano Producto")
     assert step.findtext("update") == "N"
+
+
+def test_string_operations_emits_literal_kettle_codes_not_numeric_indices():
+    """E-04 (docs/refactor/investigacion-tags-validos-por-step.md § A.3) --
+    StringOperationsMeta.readData() lee trim_type/lower_upper como los
+    literales 'none/left/right/both' y 'none/lower/upper', no como índices
+    ('0'..'3'). Con índices el step nunca hacía nada, sin importar el cfg."""
+    ktr_data = _minimal_ktr(
+        steps=[
+            {
+                "name": "Normalizar Nombre", "type": "StringOperations",
+                "config": {
+                    "fields": [
+                        {"name": "nombre", "rename": "nombre", "trim_type": "both", "case": "upper"},
+                        {"name": "categoria", "rename": "categoria", "case": "title"},
+                    ],
+                },
+            },
+        ],
+        hops=[],
+    )
+    xml, _, _ = build_ktr(ktr_data)
+    fields = _find_step(xml, "Normalizar Nombre").findall("fields/field")
+    assert fields[0].findtext("trim_type") == "both"
+    assert fields[0].findtext("lower_upper") == "upper"
+    assert fields[0].findtext("init_cap") == "N"
+    # 'title' no es un código real de lower_upper -- se resuelve vía init_cap
+    assert fields[1].findtext("lower_upper") == "none"
+    assert fields[1].findtext("init_cap") == "Y"
