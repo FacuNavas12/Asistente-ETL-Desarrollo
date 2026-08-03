@@ -396,3 +396,29 @@ def test_excel_input_emits_spreadsheet_type_by_extension():
     xml, _, _ = build_ktr(ktr_data)
     assert _find_step(xml, "Leer Ventas Xlsx").findtext("spreadsheet_type") == "POI"
     assert _find_step(xml, "Leer Ventas Xls").findtext("spreadsheet_type") == "JXL"
+
+
+def test_json_input_emits_include_nulls_explicit():
+    """E-07 (investigacion-tags-validos-por-step.md § A.7) --
+    JsonInputMeta.getincludeNulls() cae al kettle.properties del entorno
+    (KETTLE_JSON_INPUT_INCLUDE_NULLS) cuando el tag está ausente -- el mismo
+    .ktr se comportaba distinto según la máquina que lo ejecutara."""
+    ktr_data = _minimal_ktr(
+        steps=[
+            {
+                "name": "Leer Pedidos Json", "type": "JsonInput",
+                "config": {"filename": "pedidos.json", "fields": [{"name": "id", "path": "$.id"}]},
+            },
+            {
+                "name": "Leer Pedidos Json Con Nulls", "type": "JsonInput",
+                "config": {
+                    "filename": "pedidos.json", "include_nulls": True,
+                    "fields": [{"name": "id", "path": "$.id"}],
+                },
+            },
+        ],
+        hops=[],
+    )
+    xml, _, _ = build_ktr(ktr_data)
+    assert _find_step(xml, "Leer Pedidos Json").findtext("includeNulls") == "N"
+    assert _find_step(xml, "Leer Pedidos Json Con Nulls").findtext("includeNulls") == "Y"

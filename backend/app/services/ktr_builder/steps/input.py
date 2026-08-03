@@ -231,6 +231,13 @@ def _step_JsonInput(el: Element, cfg: dict) -> None:
     _sub(el, "defaultPathLeafToNull", "Y")
     _sub(el, "IsInFields",           "Y" if in_fields else "N")
     _sub(el, "rownum_field")
+    # JsonInputMeta.getincludeNulls(): si el tag <includeNulls> está ausente,
+    # cae a getIncludeNullsProperty() -- lee kettle.properties del entorno que
+    # ejecuta Spoon (KETTLE_JSON_INPUT_INCLUDE_NULLS, default "N"). El emisor
+    # nunca lo escribía: el mismo .ktr se comportaba distinto según la máquina
+    # (docs/refactor/investigacion-tags-validos-por-step.md § A.7). Escribirlo
+    # siempre explícito saca la ambigüedad del entorno.
+    _sub(el, "includeNulls",         "Y" if cfg.get("include_nulls", False) else "N")
 
     file_el = SubElement(el, "file")
     _sub(file_el, "name",               filename)
