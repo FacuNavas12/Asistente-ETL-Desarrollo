@@ -26,7 +26,7 @@ Depende del archivo: `ETLGenerateResponse`/`JobPlan` para los casos de uso; fila
 | `masker.py` | `infrastructure/db_inspection/` | Enmascarado format-preserving de valores de muestra. |
 | `documenter.py`, `validator.py` | `services/` | Documentación / validación de calidad vía LLM. |
 | `sql_defaults.py` | `domain/` | Clasifica un DEFAULT SQL como literal vs. función/expresión. Puro. |
-| `lineage_builder.py` | **partido** — `build_lineage`/`stitch_lineage_many` puros (`domain/`), `_parse_ktr_xml` lee XML (`infrastructure/pentaho/`) | Construcción del grafo de linaje. |
+| `lineage_builder.py` | **Ejecutado (O2-c)** — `build_lineage`/`stitch_lineage_many`/`stitch_lineage` puros movidos a `domain/lineage.py`; acá queda el borde: envuelve `LineageGraphData` en `Lineage` (Pydantic) para la API y `_parse_ktr_xml` (lee XML, infra) | Construcción del grafo de linaje. |
 
 Detalle de cada uno con línea exacta: `docs/auditoria/00-inventario.md` sección 1.
 

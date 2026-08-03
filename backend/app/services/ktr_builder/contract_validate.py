@@ -6,7 +6,7 @@ esa tabla) — no usa stg_definition/dwh_model como tercera fuente de verdad
 para el contenido, solo para saber qué columnas son NOT NULL en cada tabla.
 
 Fuente de aristas escritor→lector: build_rw_matrix() (fragmentation.py),
-corrida por archivo — no _resolve_table_endpoints() (lineage_builder.py).
+corrida por archivo — no _resolve_table_endpoints() (domain/lineage.py).
 Motivo: _resolve_table_endpoints solo matchea TableOutput/TableInput
 terminales (pensado para el diagrama de linaje) y no ve un lector vía
 DBLookup/DimensionLookup no-terminal. build_rw_matrix ya clasifica ese

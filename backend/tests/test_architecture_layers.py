@@ -82,6 +82,14 @@ DOMAIN_MODULES = {
     # siquiera de validators.base.Finding — cerraba un ciclo real con
     # fragmentation.py vía validators/__init__.py, verificado).
     "domain.step_table",
+    # lineage.py: split de lineage_builder.py (O2-c). build_lineage/
+    # stitch_lineage_many/stitch_lineage puros sobre el dict KTR, devuelven
+    # LineageGraphData (dataclass stdlib) — NO schemas.lineage.Lineage
+    # (Pydantic, prohibido acá por domain/README.md). services/lineage_builder.py
+    # envuelve el resultado en Lineage para el borde de la API; _parse_ktr_xml
+    # (lee XML ya serializado) se queda ahí, es infra. Importa
+    # ktr_builder.step_types y ktr_builder.contracts, ambos domain→domain.
+    "domain.lineage",
 }
 
 # Invariante que sostiene 2.b del cierre de la sesión de arquitectura: nada de

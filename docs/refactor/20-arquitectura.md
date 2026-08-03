@@ -64,6 +64,8 @@ Bajo R12, una sola `resolve_step_table(step) -> (tabla | None, Notification | No
 
 **Terminado:** el mapa dice ejecutado, la suite verde.
 
+**Cerrado — 2026-08-03.** `build_lineage`/`stitch_lineage_many`/`stitch_lineage` movidas a `domain/lineage.py`, devolviendo `LineageGraphData` (dataclass propia, stdlib) en vez de `schemas.lineage.Lineage` — un `BaseModel` de Pydantic no puede vivir en `domain/` (`domain/README.md`, sección "Qué NO va acá"), eso no estaba explícito en la fila del mapa. `services/lineage_builder.py` queda como borde: convierte `LineageGraphData` → `Lineage` para la API y conserva `_parse_ktr_xml` (infra). Firmas públicas y nombres sin cambios (`build_lineage`, `stitch_lineage_many`, `stitch_lineage`, `build_lineage_from_xml`, `stitch_lineage_from_xml` todas siguen en `services/lineage_builder.py`) — `routers/ai.py` y `etl_generator.py` (congelado, no tocado) no necesitaron ningún cambio. `domain.lineage` agregado a `DOMAIN_MODULES` en `test_architecture_layers.py`, `FROZEN_R1` sigue vacío (sin excepción nueva que registrar — el import a `schemas.lineage` que tenía el módulo original ya no existe del lado domain). Suite completa: 697 passed / 54 failed, igual a la cifra de O1-c. Cero regresión. D-N pendiente de redactar en `02-decisiones.md`.
+
 ---
 
 ## Lo que O2 NO hace antes de entregar

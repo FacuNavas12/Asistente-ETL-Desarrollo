@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-08-03 (D62, O2-b: `resolve_step_table()` en `domain/`)
+**Última actualización:** 2026-08-03 (D64, O1: Alcance punto 3 de `10-estabilizar-emision.md` verificado en corrida real — sin cambios de código)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -76,6 +76,8 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D60 | O1-b: `VALUE_META_TYPE_NAMES` verificada y corregida (E-02); criterio de degradación legítima escrito; política de los 4 sitios de aborto por contenido — supersede la parte de D55 (rótulo interno "D-1") que exige `KtrBuilderError` en esos 4 sitios | Decidido (2026-08-03); criterio y `VALUE_META_TYPE_NAMES` ejecutados, conversión de los 4 sitios pendiente (Alcance punto 2 de `10-estabilizar-emision.md`) |
 | D61 | O2-a: `common.py` partido — `_yn`/`KtrBuilderError` quedan (dominio puro), `_sub` se muda a `xml_helpers.py` nuevo (infra) | Ejecutado (2026-08-03) |
 | D62 | O2-b (T1): `resolve_step_table()` nueva en `domain/step_table.py` — unifica el `if not table: continue` mudo de `fragmentation.py`/`dimension_step_policy.py`/`fields_validate.py`, devuelve mensaje en vez de tragarlo | Ejecutado (2026-08-03) |
+| D63 | O1-b: dedupe de vocabulario cruzado en `DimensionLookup` — canal único `check_dimension_lookup_fields`, registro retroactivo de D60 | Ejecutado (2026-08-03) |
+| D64 | O1: Alcance punto 3 de `10-estabilizar-emision.md` (findings de `enforce_dimension_step_policy` llegan al usuario) — verificado en corrida real contra el corpus de E-01, canal ya existía, sin cambio de código. Encontrado E-20 (duplicación de `PRE_EMIT_PASSES`) | Verificado (2026-08-03); E-20 abierto, no bloquea |
 
 ---
 
@@ -1711,6 +1713,56 @@ Estado: decidido, ejecutado, mismo turno.
 **No tocado, a propósito:** `table_key_recovery.py` — resuelve la causa (recupera `table` antes de que estos 3 corran), no la reacción; esta entrada hace lo que D40 no hizo, no lo repite. Casing preservado por sitio: `dimension_step_policy.py` seguía comparando con `.strip()` sin forzar minúsculas (para no cambiar el casing en sus propios mensajes al usuario), mientras que `fragmentation.py`/`fields_validate.py` siguen normalizando a minúsculas después de llamar a `resolve_step_table()` — la función no fuerza ningún casing, cada caller decide, igual que antes.
 
 **Verificación:** `test_architecture_layers.py`, `test_build_ktr_emission.py`, `test_contract_validate.py`, `test_dimension_field_repair.py`, `test_dimension_step_policy.py`, `test_fragmentation.py`, `test_ktr_xml_validator.py` — 77 passed / 1 failed (`test_build_ktr_get_system_info_without_fields_gets_default_field`, preexistente e independiente, ver D60). Suite completa corrida contra la misma base.
+
+<a id="d63"></a>
+### D63 — O1-b: dedupe de vocabulario cruzado en `DimensionLookup` — canal único `check_dimension_lookup_fields` `[O1]`
+
+Estado: decidido y ejecutado en la sesión que cerró el Bloque 1 (D60); esta entrada es el registro faltante — se escribió el resultado (el bloque de reporte se borró de `dimension_step_policy.py:551-567`) sin dejar la justificación, y una sesión posterior (Bloque 0 de la siguiente) la pidió por separado. Auditado retroactivamente acá, sin encontrar regresión.
+
+**Problema:** con el Sitio 3 de D60 (`enforce_dimension_step_policy`, rama `already_readonly`) y `validators/dimension_lookup_fields.py::check_dimension_lookup_fields` corriendo los dos, un `DimensionLookup` que llega ya en modo N con `fields` heredado en vocabulario modo Y se reportaba DOS VECES — mismo step, mismo defecto, dos redacciones distintas (`enforce_dimension_step_policy` inline vs. el validador pre-emisión). Se decidió un canal único: `check_dimension_lookup_fields` (corre incondicional en `build.py` para TODO `DimensionLookup`, ambos modos — cubre lo que el bloque borrado cubría y más). El bloque de `dimension_step_policy.py` se borró, dejando solo el comentario que explica por qué (líneas 539-551).
+
+**Verificación (auditoría retroactiva, esta sesión), en el orden pedido:**
+
+1. **¿El Finding llega al frontend?** Sí, sin regresión. `check_dimension_lookup_fields` corre vía `run_passes()` dentro de `build.py` (`table_findings`, línea ~187) → `split_findings_by_severity()` marca cada `Finding(severity="error")` con `PRE_EMIT_ERROR_PREFIX` → esa lista entra a `warnings` que `build_ktr()` devuelve → `_build_ktr_stage()` la acumula en `ktr_warnings` → `etl_generator.py` la pasa a `_split_integrity_warnings()` (líneas ~1099, ~1237), que reconoce `PRE_EMIT_ERROR_PREFIX` (junto a `FIELD_INTEGRITY_PREFIX`/`CONTRACT_PREFIX`/`ERROR_CATALOG_PREFIX`) y promueve a `Validacion(tipo="error")` en la respuesta. Cadena completa verificada archivo por archivo, no por inspección superficial.
+2. **Cobertura por timing.** El bloque borrado corría dentro de `enforce_dimension_step_policy()` (llamado en `etl_generator.py` ANTES de `split_ktr_by_cut`/`compute_cut`, sobre el dict completo de la etapa). `check_dimension_lookup_fields` corre dentro de `build_ktr()`, llamado una vez POR sub-transformación después del corte (`_build_ktr_stage`, un `build_ktr()` por elemento de `sub_dicts`). Verificado que no hay pérdida: `split_ktr_by_cut()` → `compute_cut()` → `_connected_components()` (`fragmentation.py:240-266`) arma la lista `names` a partir de TODOS los steps de `ktr_data["steps"]` (no solo los que tienen hops — un step aislado es un componente singleton) y a cada `name` le asigna un `comp_id`; `groups` particiona esa asignación completa. Cada step del dict original cae en exactamente un grupo, y `_build_ktr_stage` llama `build_ktr()` una vez por grupo — la unión de lo que ven las N llamadas es exactamente el conjunto que el bloque borrado veía en una sola pasada. Sin gap de cobertura.
+3. **Whitespace (hueco 0a).** Confirmado el sentido correcto: Kettle compara `<field><update>` con `equalsIgnoreCase()`, que NO recorta whitespace. Antes de `392a0f9`, `check_dimension_lookup_fields` matcheaba con `field_type.lower()` (la variable YA stripeada, usada para detectar ausencia) en vez de `raw_field_type` — divergencia real entre lo que el validador aceptaba y lo que Kettle acepta, registrada como **E-19** (`errores.md`, origen E-01). `392a0f9` ya lo corrigió a `str(raw_field_type).lower() not in valid_vocab` (línea 103) — sin strip, lee como Kettle. `lookups.py` (Sitio 4, mismo commit) no adoptó ningún strip: el bloque que abortaba (`if field_value not in valid_vocab: raise KtrBuilderError`) se borró entero, no se invirtió — el emisor ahora solo emite `field_value` tal cual llegó (D60 política de los 4 sitios), sin comparación propia. No hay inversión que revertir.
+4. **Fragilidad del test.** `test_already_readonly_fact_lookup_with_crossed_vocabulary_is_left_untouched` (`test_dimension_step_policy.py`) asertaba `not any(r["campo"]=="dim_producto" and "vocabulario cruzado" in r["mensaje"] for r in results)` — frágil: pasa igual si `enforce_dimension_step_policy` empezara a emitir un finding con otra redacción para el mismo defecto. Con el fixture de ese test (loader ya coincide con `expected`, lookup ya `already_readonly`), NINGÚN branch de la función agrega nada a `results` — se cambió el assert a `results == []`, estructural: falla ante cualquier finding nuevo para este caso, no solo ante la reaparición de una frase puntual.
+
+**Ejecutado en esta sesión:** fix de E-19 (assert) en `test_dimension_step_policy.py`, registro de E-19 en `errores.md`, esta entrada.
+
+**Verificación runtime:** `test_dimension_step_policy.py` + `test_dimension_lookup_fields.py` + `test_build_ktr_emission.py` — 50 passed / 0 failed (corrida completa de los 3 archivos tocados por D60/D63, incluido el assert estructural nuevo).
+
+<a id="d64"></a>
+### D64 — O1: Alcance punto 3 (`10-estabilizar-emision.md`) verificado en corrida real — canal ya existía, sin cambio de código `[O1]`
+
+Estado: verificado, mismo turno. **Ningún archivo de código se modificó en esta sesión** — solo trazado + corrida real + esta documentación.
+
+**Pregunta (Alcance punto 3, pendiente desde que se escribió `10-estabilizar-emision.md`):** los findings de `enforce_dimension_step_policy` (canal (a): `results` → `job.model_json["step_policy_conflictos"]`) — ¿llegan al usuario, y por qué camino?
+
+**Trazado (canal a), archivo por archivo:** `enforce_dimension_step_policy()` (`dimension_step_policy.py:507-523`) agrega `{"tipo": "error", "campo": tabla, "mensaje": "...falta(n)... Sobra(n)...", "repairable": True, ...}` a `results`. Ese `results` (tras el intento de `_repair_dimension_loader_fields()`, que lo deja intacto si el gate no cierra) se persiste sin transformar en:
+- Flujo async (`generate_etl_async`, `etl_generator.py:2074`): `job.model_json["step_policy_conflictos"]`, leído por `_try_build()` (`etl_generator.py:1820`) y convertido con `Validacion(**c)` — Pydantic v2 ignora las claves extra (`repairable`/`step_name`/`missing`/`sobra`) por default (`Validacion` no declara `model_config(extra=...)`), así que `tipo`/`campo`/`mensaje` (el texto completo, con los nombres de columna) pasan intactos a `extra_validaciones`.
+- Flujo síncrono (`etl_generator.py:1683`) y `build_etl_from_raw()` (`etl_generator.py:1393`/`1433`): mismo patrón, `Validacion(**r)` o `.extend(step_policy_results)` directo a `data_2["validaciones"]` (que Pydantic valida igual al construir `ETLGenerateResponse`).
+
+En los tres casos, `extra_validaciones`/`data_2["validaciones"]` entra a `ETLGenerateResponse.validaciones` (`_build_response_from_two_ktr_data`, `etl_generator.py:1248-1251`) — el MISMO campo, la MISMA lista, donde cae el canal (b) (`check_dimension_lookup_fields` vía `_split_integrity_warnings`, D63). El frontend (`ResultView.jsx:116-121`, `ValidationItem` línea 28) renderiza `validaciones` sin distinguir canal: un badge por `tipo` (`Error`/`Advertencia`/`Info`), campo, mensaje completo sin truncar, dentro de la sección "Validaciones".
+
+**Conclusión: no hay hueco que cerrar — el canal ya era el mismo (canónico) desde `149b836` (commit que introdujo `step_policy_conflictos`, anterior a toda la serie D57/D58/D60).** El punto 3 del Alcance se escribió como pendiente pero la wiring ya existía; lo que faltaba era la verificación contra una corrida real, no el código.
+
+**Verificación (corrida real, no unit test con mocks):** `build_etl_from_raw()` invocado directamente con el corpus real de E-01 (`docs/refactor/fase4_manual/sonnet/etl-llm-raw-test-01_sonnet_fase4.json`) y `dim_contracts` reconstruidos a mano desde `DDL-inferido-test-con-raw.txt` (`dim_producto` SCD1: `technical_key=sk_producto`, `attributes_scd1=[bk_producto, nombre_producto, nombre_categoria, precio_unitario]`), `llm=None` (sin costo, sin red — mismo modo que "Reutilizar respuesta"). Resultado en `result.validaciones`:
+
+```
+[error] campo='dim_producto': Step 'Cargar dim_producto' es la única candidata para 'dim_producto'
+(dimensión declarada en dim_contracts), pero no trae en 'fields' los atributos que el contrato
+declara — falta(n): nombre_categoria. Sobra(n) (no pertenecen a esta dimensión): fk_categoria,
+precio_lista, stock. Probable loader faltante...
+```
+
+más 6 findings `[Dimension lookup/update]` (canal b) nombrando cada atributo (`nombre_producto`, `fk_categoria`, `precio_lista`, `precio_unitario`, `stock`, `bk_producto_calculado`) con `type='Update'` fuera de vocabulario modo N. **Ambas señales — vocabulario cruzado Y los 3 nombres de columna inexistentes — llegan al usuario antes de ejecutar, en la misma corrida.** Build completo, sin excepción: 1 archivo (`origen_stg`) + 2 archivos + 1 `.kjb` (`stg_dwh`, partido por `compute_cut`) + `.kjb` maestro. Los 3 `.ktr` generados son XML bien formado (verificado con `xml.etree.ElementTree.parse()` — no se abrió Spoon literalmente en este entorno, mismo proxy que el resto de este objetivo usa).
+
+**Repair no se disparó en esta corrida** (el finding de canal (a) llegó sin reparar, con `llm=None`): `_repair_dimension_loader_fields()` retorna sin intentar nada apenas `llm is None` (`etl_generator.py:700-702`), ANTES de evaluar `_deterministic_field_mapping()` — que no necesita LLM y hubiera resuelto `nombre_categoria`→`categoria` (prefijo `nombre_`) igual. No es un bug de esta verificación: es una oportunidad de repair gratis que hoy queda gateada detrás de un chequeo que no debería aplicarle — registrado como **E-21** (`errores.md`), no corregido acá (fuera del alcance de este punto — el piso, entregar con el problema documentado, se cumple igual con o sin repair).
+
+**Encontrado, no buscado — E-20 (`errores.md`):** los 6 findings de canal (b) aparecen **duplicados** (12, no 6) en `result.validaciones`. Causa confirmada con stack trace: `_recover_table_keys()` (H29, `etl_generator.py:305-334`) corre `run_passes()` — el tuple `PRE_EMIT_PASSES` COMPLETO, no solo `recover_table_key` — sobre el `ktr_data` completo ANTES del corte; `build_ktr()` (vía `_build_ktr_stage`) corre el mismo `run_passes()` completo otra vez sobre el sub-dict ya partido. `check_dimension_lookup_fields` (y cualquier otro pass de `PRE_EMIT_PASSES` insensible a si `table` ya se recuperó) no tiene forma de saber que ya corrió — el mismo finding sale dos veces, byte a byte. No es específico de este corpus: aplica a toda corrida con dimensiones (sync, async, `build_etl_from_raw`), desde que `_recover_table_keys` se cableó (H29). No bloquea el criterio de aceptación (el finding SÍ llega, con toda la info) pero es ruido real para el usuario — el mismo error se ve dos veces sin explicación. Abierto, `Origen=E-01` (encontrado verificando su cierre), no se corrige en esta sesión (regla de escritura: descubrir es libre, actuar necesita ruta — y esto no estaba en el alcance del prompt que originó esta sesión).
+
+**Verificación runtime:** ninguna (sin cambio de código, no aplica correr la suite). La corrida real de arriba se hizo con un script ad-hoc (`repro_dim_producto.py`, scratchpad), no un test nuevo — no se agrega a `backend/tests/` porque no hay código nuevo que cubrir; si E-20 se corrige en una sesión futura, ESE cambio sí necesita test.
 
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido

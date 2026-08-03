@@ -465,7 +465,14 @@ def test_already_readonly_fact_lookup_with_crossed_vocabulary_is_left_untouched(
     reportar acá: el reporte de vocabulario cruzado es responsabilidad única
     de validators/dimension_lookup_fields.py (canal canónico decidido en D60
     para evitar el mismo problema reportado dos veces con dos redacciones —
-    ver test_dimension_lookup_fields.py para la cobertura de ESE chequeo)."""
+    ver test_dimension_lookup_fields.py para la cobertura de ESE chequeo).
+
+    Assert estructural (D63): con este fixture (loader ya coincide con
+    'expected', lookup ya es already_readonly) NINGÚN branch de
+    enforce_dimension_step_policy agrega nada a 'results' — se verifica
+    results == [] en vez de buscar la ausencia de un substring del mensaje
+    ('vocabulario cruzado'), que se rompe en silencio si la redacción del
+    mensaje cambia en otro lado sin que este test se entere."""
     ktr_data = _err1_like_ktr()
     lookup_step = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
     lookup_step["config"]["update"] = "N"
@@ -480,7 +487,7 @@ def test_already_readonly_fact_lookup_with_crossed_vocabulary_is_left_untouched(
     assert lookup["config"]["fields"] == [
         {"stream_field": "nombre", "table_field": "nombre", "type": "Update"},
     ]  # no reparado
-    assert not any(r["campo"] == "dim_producto" and "vocabulario cruzado" in r["mensaje"] for r in results)
+    assert results == []
 
 
 # ─── D58 (segunda vuelta) — 1 candidato no basta, tiene que traer los atributos
