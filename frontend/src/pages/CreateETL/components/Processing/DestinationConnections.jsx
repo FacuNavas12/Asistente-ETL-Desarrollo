@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { listConnections } from "@/api/connections";
 import DestinationConnectionForm, {
   EMPTY_DESTINATION_CONNECTION,
   isDestinationConnectionComplete,
+  fromSavedConnection,
 } from "../Input/DestinationConnectionForm";
+import SavedConnectionSelect from "../Input/SavedConnectionSelect";
 import "./destinationConnections.css";
 
 const _toPayload = (value) => ({ ...value, port: Number(value.port) });
@@ -37,6 +40,17 @@ export default function DestinationConnections({ onFinalize, origenConnectionId 
   const [dwhSkip,       setDwhSkip]      = useState(false);
   const [sameForBoth,  setSameForBoth]  = useState(false);
   const [submitted,    setSubmitted]    = useState(false);
+  // Conexiones guardadas (metadata sin password) para precargar staging/DWH/
+  // origen sin retipear — mismo patrón que ConnectionForm (origen inicial).
+  const [savedConns,   setSavedConns]   = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+    listConnections()
+      .then(list => { if (alive) setSavedConns(Array.isArray(list) ? list : []); })
+      .catch(() => { /* sin conexiones guardadas o backend sin auth: se ignora */ });
+    return () => { alive = false; };
+  }, []);
 
   const needsOrigenForm = !origenConnectionId;
   const origenReady = !needsOrigenForm || origenSkip || isDestinationConnectionComplete(origenValue);
@@ -87,7 +101,14 @@ export default function DestinationConnections({ onFinalize, origenConnectionId 
               Completar en Spoon (dejar host/usuario/base sin completar acá)
             </label>
             {!origenSkip && (
-              <DestinationConnectionForm value={origenValue} onChange={setOrigenValue} />
+              <>
+                <SavedConnectionSelect
+                  conns={savedConns}
+                  value=""
+                  onSelect={c => c && setOrigenValue(fromSavedConnection(c))}
+                />
+                <DestinationConnectionForm value={origenValue} onChange={setOrigenValue} />
+              </>
             )}
           </>
         ) : (
@@ -108,7 +129,14 @@ export default function DestinationConnections({ onFinalize, origenConnectionId 
           Completar en Spoon (dejar host/usuario/base sin completar acá)
         </label>
         {!stagingSkip && (
-          <DestinationConnectionForm value={stagingValue} onChange={setStagingValue} />
+          <>
+            <SavedConnectionSelect
+              conns={savedConns}
+              value=""
+              onSelect={c => c && setStagingValue(fromSavedConnection(c))}
+            />
+            <DestinationConnectionForm value={stagingValue} onChange={setStagingValue} />
+          </>
         )}
       </section>
 
@@ -133,7 +161,14 @@ export default function DestinationConnections({ onFinalize, origenConnectionId 
             Completar en Spoon (dejar host/usuario/base sin completar acá)
           </label>
           {!dwhSkip && (
-            <DestinationConnectionForm value={dwhValue} onChange={setDwhValue} />
+            <>
+              <SavedConnectionSelect
+                conns={savedConns}
+                value=""
+                onSelect={c => c && setDwhValue(fromSavedConnection(c))}
+              />
+              <DestinationConnectionForm value={dwhValue} onChange={setDwhValue} />
+            </>
           )}
         </section>
       )}

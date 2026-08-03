@@ -21,6 +21,19 @@ export function isDestinationConnectionComplete(value) {
   return Boolean(value?.host && value?.port && value?.database && value?.username);
 }
 
+// Mapea una Connection guardada (ver SavedConnectionSelect) a la forma de
+// este formulario. Nunca trae password — DestinationConnectionForm no lo pide.
+export function fromSavedConnection(c) {
+  return {
+    db_type:  c.db_type,
+    host:     c.host ?? "",
+    port:     c.port ?? PORT_DEFAULTS[c.db_type] ?? "",
+    database: c.database ?? "",
+    username: c.username ?? "",
+    ssl_mode: c.ssl_mode ?? "require",
+  };
+}
+
 // Formulario de metadata de conexión destino (staging/DWH) — NUNCA pide
 // password: esta app no conecta de verdad contra staging/DWH, solo hornea
 // esta metadata en el .ktr y deja el password como variable Kettle que se
