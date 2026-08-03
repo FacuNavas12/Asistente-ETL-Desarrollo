@@ -58,6 +58,12 @@ logger = logging.getLogger(__name__)
 # Necesario cuando el ID de plugin difiere del nombre "humano" usado como canónico.
 _XML_TYPE_OVERRIDES: dict[str, str] = {
     "GetSystemInfo": "SystemInfo",  # UI: "Get System Info", plugin ID real: SystemInfo
+    # E-11 (investigacion-tags-validos-por-step.md § A.4) — kettle-steps.xml solo
+    # registra id="SplitFieldToRows3"; "SplitFieldToRows" (sin el 3) no es un
+    # plugin id real y Spoon marca el step "missing". El alias "Split fields" de
+    # step_types.py resuelve al canónico sin el 3 -- este override es lo que
+    # evita que ese <type> llegue mal formado al XML.
+    "SplitFieldToRows": "SplitFieldToRows3",
 }
 
 

@@ -502,3 +502,23 @@ def test_data_validator_emits_real_field_as_name_and_label_as_validation_name():
     assert val.findtext("name") == "precio"
     assert val.findtext("validation_name") == "precio_no_negativo"
     assert val.find("fieldname") is None
+
+
+def test_split_field_to_rows_emits_registered_plugin_id():
+    """E-11 (investigacion-tags-validos-por-step.md § A.4) --
+    kettle-steps.xml solo registra id="SplitFieldToRows3"; "SplitFieldToRows"
+    (sin el 3, al que resuelve el alias 'Split fields' de step_types.py) no es
+    un plugin id real -- Spoon marca el step "missing" y la transformación no
+    corre."""
+    ktr_data = _minimal_ktr(
+        steps=[
+            {
+                "name": "Separar Tags", "type": "SplitFieldToRows",
+                "config": {"split_field": "tags", "delimiter": ",", "new_field": "tag"},
+            },
+        ],
+        hops=[],
+    )
+    xml, _, _ = build_ktr(ktr_data)
+    step = _find_step(xml, "Separar Tags")
+    assert step.findtext("type") == "SplitFieldToRows3"
