@@ -218,3 +218,27 @@
 .etl-doc p:last-child {
   margin-bottom: 0;
 }
+
+/* ── Botón flotante: subir al inicio de la página ─────────────────────────── */
+.etl-scroll-top {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  z-index: 50;
+  transition: opacity 0.15s;
+}
+
+.etl-scroll-top:hover {
+  opacity: 0.85;
+}
