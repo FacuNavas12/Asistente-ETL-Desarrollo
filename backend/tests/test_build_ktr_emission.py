@@ -476,3 +476,29 @@ def test_combination_lookup_emits_return_block_with_named_surrogate_key():
     key = step.find("fields/key")
     assert key.findtext("name") == "canal"
     assert step.findtext("commit") == "100"
+
+
+def test_data_validator_emits_real_field_as_name_and_label_as_validation_name():
+    """E-10 (investigacion-tags-validos-por-step.md § A.2) --
+    ValidatorMeta/Validation(Node) lee 'name' como el CAMPO REAL del stream a
+    validar y 'validation_name' como la etiqueta de la regla (fallback a
+    'name' si ausente). El emisor anterior invertía esto -- la validación
+    quedaba rota para toda regla donde etiqueta != campo, el caso esperado."""
+    ktr_data = _minimal_ktr(
+        steps=[
+            {
+                "name": "Validar Precio", "type": "DataValidator",
+                "config": {
+                    "validations": [
+                        {"name": "precio_no_negativo", "field": "precio", "min_value": 0},
+                    ],
+                },
+            },
+        ],
+        hops=[],
+    )
+    xml, _, _ = build_ktr(ktr_data)
+    val = _find_step(xml, "Validar Precio").find("validator_field")
+    assert val.findtext("name") == "precio"
+    assert val.findtext("validation_name") == "precio_no_negativo"
+    assert val.find("fieldname") is None

@@ -67,8 +67,13 @@ def _step_DataValidator(el: Element, cfg: dict) -> None:
     _sub(el, "concat_errors", "Y")
     for v in cfg.get("validations", []):
         val = SubElement(el, "validator_field")
-        _sub(val, "name",                  v.get("name", ""))
-        _sub(val, "fieldname",             v.get("field", v.get("name", "")))
+        # E-10 (investigacion-tags-validos-por-step.md § A.2) — ValidatorMeta/
+        # Validation(Node) lee 'name' como el CAMPO REAL del stream a validar,
+        # no la etiqueta de la regla; 'fieldname' no tiene lector. El emisor
+        # anterior invertía esto (name=etiqueta, fieldname=campo real), rompiendo
+        # la validación siempre que ambos difieren -- el caso esperado por diseño.
+        _sub(val, "name",                  v.get("field", v.get("name", "")))
+        _sub(val, "validation_name",       v.get("name", v.get("field", "")))
         _sub(val, "max_length",            str(v.get("max_length", -1)))
         _sub(val, "min_length",            str(v.get("min_length", -1)))
         _sub(val, "null_allowed",          "Y" if v.get("null_allowed", True) else "N")
