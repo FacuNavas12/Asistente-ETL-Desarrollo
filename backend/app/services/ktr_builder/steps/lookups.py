@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from xml.etree.ElementTree import Element, SubElement
 
-from app.services.ktr_builder.common import _sub
+from app.domain.scd import ATTRIBUTE_UPDATE_TYPE_CODES, VALUE_META_TYPE_NAMES
+from app.services.ktr_builder.common import _sub, KtrBuilderError
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,8 @@ def _step_DimensionLookup(el: Element, cfg: dict) -> None:
     # lookup de FK del lado del hecho (solo lectura) — ver Paso 4 en
     # dimension_step_policy.py. Default "Y" preserva el comportamiento
     # anterior para cualquier caller que no pase por esa política.
-    _sub(el, "update",                    "Y" if str(cfg.get("update", "Y")).strip().upper() != "N" else "N")
+    step_update_mode = "Y" if str(cfg.get("update", "Y")).strip().upper() != "N" else "N"
+    _sub(el, "update",                    step_update_mode)
     _sub(el, "returnfield",               return_field)
     _sub(el, "preload_cache",             "N")
     _sub(el, "cache_size",                "5000")
@@ -61,18 +63,38 @@ def _step_DimensionLookup(el: Element, cfg: dict) -> None:
     _sub(el, "start_date_alternative")
     _sub(el, "use_alternative_start_date","N")
     _sub(el, "batch_size",                "0")
+    # V-3 (docs/refactor/plan-reparacion-etl.md, item 8): mismos valores que
+    # Kettle usa como fallback interno (readData()) -- emitirlos explícitos
+    # no cambia el runtime, evita que un futuro golden-file compare contra un
+    # tag ausente.
+    _sub(el, "min_year", str(cfg.get("min_year", 1900)))
+    _sub(el, "max_year", str(cfg.get("max_year", 2199)))
     fe = SubElement(el, "fields")
     for k in cfg.get("keys", []):
         ke = SubElement(fe, "key")
         # LLM puede usar stream/stream_field/name para el campo del stream
         _sub(ke, "name",   k.get("stream") or k.get("stream_field") or k.get("name", ""))
         _sub(ke, "lookup", k.get("lookup") or k.get("table_field") or k.get("name", ""))
+    # D-1: vocabulario válido por modo del step, no por si 'fields' está vacío
+    # (getFields() 776-803 de DimensionLookupMeta.java — en modo N, 'fields'
+    # es el mecanismo de retorno de columnas adicionales, no un residuo de
+    # modo loader). check_dimension_lookup_fields.py corre ANTES y ya debió
+    # reportar severity=error si el vocabulario no matchea el modo — este
+    # KtrBuilderError es la red de contención del emisor, no el gate normal.
+    valid_vocab = ATTRIBUTE_UPDATE_TYPE_CODES if step_update_mode == "Y" else VALUE_META_TYPE_NAMES
     for f in cfg.get("fields", []):
         field = SubElement(fe, "field")
         _sub(field, "name",   f.get("stream") or f.get("stream_field") or f.get("name", ""))
         _sub(field, "lookup", f.get("lookup") or f.get("table_field") or f.get("name", ""))
-        _sub(field, "update", "Y" if f.get("update", True) else "N")
-        _sub(field, "type",   f.get("type", "Insert"))
+        field_value = f.get("type")
+        if field_value not in valid_vocab:
+            raise KtrBuilderError(
+                f"DimensionLookup '{el.findtext('name', '?')}': campo con type={field_value!r} fuera "
+                f"del vocabulario de modo {step_update_mode} ({', '.join(valid_vocab)}) — "
+                "check_dimension_lookup_fields.py debió reportar esto antes; no se emite XML con "
+                "vocabulario cruzado (D-1)."
+            )
+        _sub(field, "update", field_value)
     # DimensionLookupMeta espera <date><name>/<from>/<to></date> (readData L920-923).
     # "name" = campo stream con la fecha de referencia; vacío = usa fecha de
     # sistema (comportamiento válido de Kettle, "No datefield: use system date").
@@ -124,20 +146,29 @@ def _step_DBLookup(el: Element, cfg: dict) -> None:
 
 
 def _step_CombinationLookup(el: Element, cfg: dict) -> None:
-    _sub(el, "schema",       cfg.get("schema", ""))
-    _sub(el, "table",        cfg.get("table", ""))
-    _sub(el, "connection",   cfg.get("connection", ""))
-    _sub(el, "useautoinc",   "N")
-    _sub(el, "returnfield",  cfg.get("return_field", "id_sk"))
-    _sub(el, "lastUpdateField")
+    # E-09 (investigacion-tags-validos-por-step.md § A.1) — CombinationLookupMeta.java
+    # readData 404-450/getXML 497-529: el bloque <fields><return> es el único lugar
+    # donde Kettle lee el nombre real de la surrogate key; sin él, technicalKeyField
+    # queda null (readData:441) y useAutoinc se fuerza a true sin importar el cfg
+    # (readData:442). useautoinc/returnfield/lastUpdateField planos de abajo nunca
+    # tuvieron lector — quedan retirados, no solo renombrados.
+    return_field = cfg.get("return_field", "id_sk")
+    _sub(el, "schema",     cfg.get("schema", ""))
+    _sub(el, "table",      cfg.get("table", ""))
+    _sub(el, "connection", cfg.get("connection", ""))
+    _sub(el, "commit",     "100")
     fe = SubElement(el, "fields")
     for k in cfg.get("keys", []):
         ke = SubElement(fe, "key")
         _sub(ke, "name",   k.get("stream", k.get("name", "")))
         _sub(ke, "lookup", k.get("lookup", k.get("name", "")))
+    ret_el = SubElement(fe, "return")
+    _sub(ret_el, "name",            return_field)
+    _sub(ret_el, "creation_method", "autoinc")
+    _sub(ret_el, "use_autoinc",     "Y")
+    _sub(el, "last_update_field", cfg.get("last_update_field", ""))
     _sub(el, "cache_size",   "5000")
-    _sub(el, "preload_cache","N")
-    _sub(el, "commit_size",  "100")
+    _sub(el, "preloadCache", "N")
 
 
 def _step_StreamLookup(el: Element, cfg: dict) -> None:

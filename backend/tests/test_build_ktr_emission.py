@@ -443,3 +443,36 @@ def test_text_file_output_emits_create_parent_folder_at_step_level():
     assert step.findtext("create_parent_folder") == "Y"
     file_el = step.find("file")
     assert file_el.find("create_parent_folder") is None
+
+
+def test_combination_lookup_emits_return_block_with_named_surrogate_key():
+    """E-09 (investigacion-tags-validos-por-step.md § A.1) --
+    CombinationLookupMeta.readData() 404-450 solo conoce la surrogate key vía
+    <fields><return><name>; el emisor anterior escribía 'returnfield' plano
+    (sin lector) y nunca el bloque <return> -- technicalKeyField quedaba null
+    y useAutoinc se forzaba a true sin importar el cfg."""
+    ktr_data = _minimal_ktr(
+        steps=[
+            {
+                "name": "Cargar Dim Canal", "type": "CombinationLookup",
+                "config": {
+                    "schema": "public", "table": "dim_canal", "connection": "conn_dwh",
+                    "return_field": "sk_canal",
+                    "keys": [{"stream": "canal", "lookup": "canal"}],
+                },
+            },
+        ],
+        hops=[],
+    )
+    xml, _, _ = build_ktr(ktr_data)
+    step = _find_step(xml, "Cargar Dim Canal")
+    assert step.find("useautoinc") is None
+    assert step.find("returnfield") is None
+    ret = step.find("fields/return")
+    assert ret is not None
+    assert ret.findtext("name") == "sk_canal"
+    assert ret.findtext("creation_method") == "autoinc"
+    assert ret.findtext("use_autoinc") == "Y"
+    key = step.find("fields/key")
+    assert key.findtext("name") == "canal"
+    assert step.findtext("commit") == "100"
