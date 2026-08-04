@@ -76,9 +76,7 @@ Bajo R12, una sola `resolve_step_table(step) -> (tabla | None, Notification | No
 
 **Terminado:** `test_file_schema.py` verde (incluye 2 tests nuevos: 413 por tamaño, `.xlsx` completo por endpoint). `test_architecture_layers.py` verde con `FROZEN_*` **sin cambios** (esto era R2, que el test no mide — ni se achica ni se agranda). Contrato HTTP de `/api/schema/infer` idéntico para el frontend. Fila `routers/schema.py` (upload) agregada al mapa de `arquitectura-objetivo.md`, marcada Ejecutado.
 
-D-N — El borde de un upload vive en infraestructura, no en el router (O2-d).
-routers/schema.py::infer_schema manejaba tempfile/límite/cleanup del upload directo en el router (viola R2). Se movió a services/file_schema.py::infer_schema_from_upload(filename, chunks), que recibe AsyncIterator[bytes] en vez de fastapi.UploadFile — a propósito distinto del patrón de job_analyzer.py (que sí importa UploadFile y está congelado como violación de R3 en FROZEN_R3). Copiar ese patrón acá hubiera hecho fallar test_services_do_not_import_fastapi. Encontrado porque test_architecture_layers.py nunca midió R2 — solo R1/R3/R4 en su recorte —, registrado como E-25 en errores.md. infer_file_schema(path, source_name) no cambió de firma. Contrato HTTP de /api/schema/infer idéntico.
-
+**Cerrado — 2026-08-04, D69 (`02-decisiones.md`).**
 
 ---
 

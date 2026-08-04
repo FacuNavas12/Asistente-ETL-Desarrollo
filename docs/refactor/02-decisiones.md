@@ -82,6 +82,7 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D66 | O2-c: `lineage_builder.py` partido — `build_lineage`/`stitch_lineage_many`/`stitch_lineage` a `domain/lineage.py` (`LineageGraphData`, dataclass stdlib); `_parse_ktr_xml` queda de infra en `services/lineage_builder.py`. Registro retroactivo — código y mapa ya decían "Ejecutado" sin D-N propia | Ejecutado (2026-08-03) |
 | D67 | O2 verificado completo al pedir "empezar O2": O2-a/b/c ya ejecutadas (D61/D62/D66), `test_architecture_layers.py` verde, `FROZEN_R1` vacío. Nada nuevo que ejecutar — corrección de `docs/README.md` (línea O2-c apuntaba a D63, que ya era de otro tema) | Verificado (2026-08-03), sin cambio de código |
 | D68 | O3 caso testigo: el step de dimensión se sintetiza siempre (`apply_dimension_contracts`/`build_dimension_lookup_config`), no se pide y corrige. Estación de reparación borrada (cierra E-21/E-23 por construcción); `PRE_EMIT_PASSES` partida en `TABLE_RECOVERY_PASSES`/`VERIFY_PASSES`; prompt y `_format_dim_contracts` recortados. Supersede parcialmente D58 | Ejecutado (2026-08-04) — falta criterio 5 de `30-decision-python-llm.md` (corrida real end-to-end) |
+| D69 | O2-d: el borde de un upload vive en infraestructura, no en el router — `routers/schema.py::infer_schema` manejaba tempfile/límite/cleanup directo, `services/file_schema.py::infer_schema_from_upload()` pasa a ser dueño de eso | Ejecutado (2026-08-04) |
 
 ---
 
@@ -1849,6 +1850,25 @@ Estado: verificado, mismo turno. **Ningún archivo de código se modificó en es
 **Verificación:** `apply_dimension_contracts()` corrido en aislamiento (no vía pytest) contra el corpus real `etl-llm-raw-test-01_sonnet_fase4.json` (el mismo de E-01/D64) — el step 'Cargar dim_producto' resuelve `nombre_categoria`→`categoria` (paso 3, prefijo) y `bk_producto`→`bk_producto_calculado` (paso 1, mapeo propuesto por el modelo), e ignora `fk_categoria`/`precio_lista`/`stock` (vocabulario cruzado de `fact_inventario`, finding `info`) — sin ninguna llamada a LLM. No corrido contra la suite completa (la corre el usuario) ni contra `/generate-async`→`/status` end-to-end — criterio 5 de `30-decision-python-llm.md`, pendiente.
 
 **Estado:** ejecutado, esta sesión (2026-08-04). Decisiones 2, 4 y 5 de la tabla de `30-decision-python-llm.md` quedan resueltas como consecuencia directa de esta; decisión 3 (ramificar por `scd_type` en la emisión) sin tocar — D44 vigente sin cambios.
+
+---
+
+<a id="d69"></a>
+### D69 — O2-d: el borde de un upload vive en infraestructura, no en el router `[O2]`
+
+**Contexto:** una sesión de validación de `routers/`+`repositories/` contra `docs/arquitectura-objetivo.md` encontró que `routers/schema.py::infer_schema` manejaba el ciclo de vida completo del upload (crear el `tempfile`, iterar `UploadFile.read()` con el límite de 50 MB, borrar el archivo en un `finally`) dentro del router — viola R2 ("el router no toca... el disco. Solo llama a un service"). No estaba en ninguna lista `FROZEN_*` de `test_architecture_layers.py`: ese test cubre a propósito solo un recorte de R1/R3/R4 (ver su docstring), nunca midió R2. No era deuda ya registrada, era un hueco del radar de verificación. Registrado como E-25 en `errores.md`.
+
+**Decisión:** se agrega `infer_schema_from_upload(filename, chunks)` a `services/file_schema.py`, dueña de la extensión permitida, el límite de tamaño, el tempfile y su cleanup. `infer_file_schema(path, source_name)` no cambia de firma — sigue recibiendo un path ya escrito, los 7 tests que la llaman directo no se tocan. El router queda como traductor puro: arma un `AsyncIterator[bytes]` desde `UploadFile.read()`, llama al service, y mapea `UnsupportedFileType`→422, `FileTooLarge`→413, `ValueError`→422, el resto→500.
+
+**Por qué NO se copió el patrón de `job_analyzer.py`:** ese service recibe `fastapi.UploadFile` directo — es una violación de R3 ya congelada (`FROZEN_R3`). Copiarla acá hubiera hecho fallar `test_services_do_not_import_fastapi`, porque `file_schema.py` no está congelado. `infer_schema_from_upload` recibe `filename: str | None` + `chunks: AsyncIterator[bytes]`, sin conocer `fastapi` — el test fuerza el diseño correcto en vez de dejarlo a criterio.
+
+**Por qué se ejecutó sin abrir un objetivo nuevo:** la regla de migración prohíbe sesiones cuyo único fin es mover archivos, pero acá no se movió un archivo — se reubicó una responsabilidad que estaba del lado equivocado de una regla, en un cambio acotado a 2 archivos de código con contrato HTTP idéntico. Se reabrió O2 (cerrado 2026-08-03, D67) como O2-d en `20-arquitectura.md` en vez de crear un objetivo nuevo.
+
+**Alcance descartado a propósito:** no se tocó `job_analyzer.py` (mismo problema de fondo, R3 en vez de R2, congelado en `FROZEN_R3`, superficie mucho mayor sin corrida real que la ejerza) ni `routers/ai.py`/`routers/connections.py` (violaciones de R2 más amplias — `db.commit()`/`db.rollback()` directo en el router —, ya con su parte de ORM cubierta por `FROZEN_R4`).
+
+**Verificación:** `test_file_schema.py` con 2 tests nuevos (413 por tamaño excedido, `.xlsx` completo por endpoint). `test_architecture_layers.py` verde con `FROZEN_*` sin cambios — R2 no es lo que ese test mide, así que este fix ni la achica ni la agranda. `grep -n "tempfile\|os.unlink" backend/app/routers/schema.py` sin resultados.
+
+**Estado:** ejecutado, esta sesión (2026-08-04).
 
 ---
 
