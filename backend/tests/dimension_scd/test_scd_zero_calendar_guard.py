@@ -8,7 +8,7 @@ NO matchee is_calendar_dimension(), sin abortar el build (D15).
 from __future__ import annotations
 
 from app.schemas.etl_schemas import DimContract
-from app.services.etl_generator import _scd_zero_calendar_guard
+from app.services.ddl_checks import _scd_zero_calendar_guard
 from app.services.ktr_builder.validators.base import PRE_EMIT_ERROR_PREFIX
 
 _DWH_DDL = """

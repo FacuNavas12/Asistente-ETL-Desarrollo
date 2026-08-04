@@ -85,4 +85,4 @@ Lo que sí cambia es la forma del `UNIQUE`/índice de la clave natural:
 
 ## Nota de consolidación
 
-Este archivo reemplaza el contenido de `docs/SCD/criterios.md`, `docs/SCD/SCD1.md` y `docs/SCD/SCD2.md` (los 3 quedan intactos en disco, no se borraron en esta sesión — decisión de no tocar archivos fuera del alcance puntual de REF sin pedirlo). Cualquier sesión futura que edite SCD debería escribir acá, no reabrir los 3 archivos viejos.
+Este archivo reemplazó el contenido de `docs/SCD/criterios.md`, `docs/SCD/SCD1.md` y `docs/SCD/SCD2.md` — los 3 borrados 2026-08-04 (quedan en `git log` si hace falta el texto original). Cualquier sesión que edite SCD escribe acá, no reabre los 3 archivos viejos.

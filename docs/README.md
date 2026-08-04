@@ -38,7 +38,7 @@ El trabajo abierto está separado en tres objetivos y un congelador. **Una sesi�
 | **O2-a** | Partir `common.py` | cerrada 2026-08-03, D61 |
 | **O2-b** | `resolve_step_table()` en `domain/` | cerrada 2026-08-03, D62 |
 | **O2-c** | Partir `lineage_builder.py` | cerrada 2026-08-03, D66 |
-| **REF** | Escribir `referencia/` | cerrada 2026-08-03 — `contrato-ddl.md`, `scd.md`, `kettle-comportamiento.md` escritos y verificados contra código. `docs/SCD/` (3 archivos) queda intacto en disco, consolidado en `scd.md`, no borrado — decisión pendiente del usuario |
+| **REF** | Escribir `referencia/` | cerrada 2026-08-03 — `contrato-ddl.md`, `scd.md`, `kettle-comportamiento.md` escritos y verificados contra código. `docs/SCD/` (3 archivos, consolidados en `scd.md`) borrado 2026-08-04 |
 | **O3** | La línea Python/modelo | caso testigo cerrado, D68 (2026-08-04) — falta criterio 5 (corrida real) |
 
 **Dependencias, y son todas las que hay:**

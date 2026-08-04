@@ -56,7 +56,7 @@ O3 no inventa un patrón: **nombra el que ya está apareciendo solo, y decide ha
 ## Precondiciones — qué tiene que estar antes
 
 1. **O1 cerrado.** No se rediseña qué decide el sistema mientras el sistema no entrega de forma estable.
-2. **`referencia/scd.md`.** Qué es SCD1 y SCD2 en este producto, cuándo se aplica cada uno, qué implica para el step y para el DDL. Hoy está disuelto entre `docs/SCD/`, `03c-investigacion-vocabulario-dimension-kettle.md` y `domain/scd.py`.
+2. **`referencia/scd.md`.** Qué es SCD1 y SCD2 en este producto, cuándo se aplica cada uno, qué implica para el step y para el DDL. Escrito — REF cerrada 2026-08-03. `docs/SCD/` (los 3 archivos que fusionó) borrado.
 3. **`referencia/kettle-comportamiento.md`.** Destilado de `investigacion-tags-validos-por-step.md`: qué lee Kettle por step, qué vocabularios son condicionados, dónde están los centinelas que colisionan con valores válidos.
 4. **`referencia/contrato-ddl.md`.** Qué garantiza el DDL, porque toda síntesis determinista depende de eso.
 

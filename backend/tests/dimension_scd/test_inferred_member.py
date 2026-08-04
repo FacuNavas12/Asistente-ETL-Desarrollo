@@ -6,9 +6,9 @@ el prompt (_format_inferred_member_dims / _build_prompt_from_inference)."""
 from __future__ import annotations
 
 from app.schemas.etl_schemas import DimContract
+from app.services.ddl_checks import _dims_with_inferred_member
 from app.services.etl_generator import (
     _build_prompt_from_inference,
-    _dims_with_inferred_member,
     _format_inferred_member_dims,
     _inferred_member_notifications,
 )

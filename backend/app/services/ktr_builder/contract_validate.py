@@ -24,7 +24,7 @@ tipos", entregado acá: nombres, con tipos como gap documentado):
     Formula/cast en el archivo que lo produce), fuera del alcance de
     contracts.py (intra-archivo por diseño, ver fields_validate.py). Sin esa
     inferencia, comparar "tipo" sería re-empaquetar el mismo chequeo
-    DDL-vs-DDL que ya hace etl_generator._type_mismatch_warnings() — que D23
+    DDL-vs-DDL que ya hace ddl_checks._type_mismatch_warnings() — que D23
     punto 1 explícitamente dice que NO cuenta como este validador (compara
     declarado contra declarado, no lo que el KTR realmente produjo). Queda
     como gap abierto, no simulado.
@@ -143,7 +143,7 @@ def _find_table_schema(ddl: str, table: str) -> CanonicalSchema | None:
 
 def _required_columns(schema: CanonicalSchema) -> dict[str, str]:
     """{columna_lower: CanonicalType.value} de columnas NOT NULL sin default
-    — mismo filtro que etl_generator._required_columns_from_ddl()."""
+    — mismo filtro que ddl_checks._required_columns_from_ddl()."""
     return {
         f.name.strip().lower(): f.type.value
         for f in schema.fields

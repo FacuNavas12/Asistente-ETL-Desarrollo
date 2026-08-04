@@ -70,19 +70,9 @@ Track F: F1 ✓ (2026-07-22)
 
 ## Fases
 
-### Track A — Auditoría de arquitectura
+### Track A — Auditoría de arquitectura (congelada, no reabrir)
 
-| Fase | Entrada | Salida | Modifica código | Depende de |
-|---|---|---|---|---|
-| A0 | `arquitectura-objetivo.md` reescrito | `docs/auditoria/00-inventario.md` | No | — |
-| A0.5 | A0 | `docs/auditoria/00b-fallos-silenciosos.md` | No | A0 |
-| A1 | A0 | `docs/auditoria/01-doc-vs-real.md` | No | A0. Solapa parcialmente con `00-objetivo.md`/`01-hallazgos.md` (ya contrastan `CLAUDE.md` contra el código para fragmentación específicamente) — no duplicar ese diagnóstico, A1 cubre el backend completo |
-| A2 | A0 | `docs/auditoria/02-cumplimiento.md` | No | A0 |
-| A3 | A0, A2, A0.5 | `docs/auditoria/03-bordes.md` | No | A0.5, A2. Parte A (bordes de step/config) ya diagnosticada por H2-H4/H6/H11 — completar Partes B/C/D (filas de DB, uploads, config de usuario, env vars) |
-| A4 | A2, A3 | `docs/auditoria/04-acoplamiento.md` | No | A2, A3. Cubre H5 (acoplamiento temporal del linaje) |
-| A5 | Todos los reportes previos | `docs/auditoria/05-plan.md` | No | A0-A4. PASO 1 = el borde tipado grande (H2), ya decidido por `00-plan-auditoria.md` |
-| A6 | Plan aprobado | `CLAUDE.md` + `arquitectura-objetivo.md` actualizados | Solo docs | A5 aprobado |
-| A7 | A5 | Un PASO del plan por sesión | Sí | A6 (doctrina consolidada primero) |
+Corrió A0 y A0.5 (salida: `docs/auditoria/00-inventario.md`, `docs/auditoria/00b-fallos-silenciosos.md` — siguen citadas). A1-A7 nunca corrieron y quedan congeladas para siempre — no por falta de tiempo: O2 (`20-arquitectura.md` § "Por qué las auditorías de Track A quedan congeladas") encontró que sus tres hallazgos estructurales ya estaban previstos en doctrina escrita antes, y mecanizó lo que A1-A7 iba a auditar en vez de correr la auditoría. Detalle del razonamiento, ahí — no repetido acá.
 
 ### Track F — Motor de fragmentación
 
@@ -121,8 +111,7 @@ Toda fase de Track A y Track F, sin excepción, cierra solo con: (1) dos tests �
 
 ## Paralelizable
 
-- Track A (A1-A7) es independiente de lo que queda de Track F — puede arrancar ya.
-- F3 cerrada (D28). F4 (validador de contrato D23, business-rules validator) es independiente de Track A — puede avanzar en cualquier orden.
+- F3 cerrada (D28). F4 (validador de contrato D23, business-rules validator) — puede avanzar en cualquier orden.
 - H16 sigue abierto como riesgo genérico (la DB confirma la secuencia de `sk_producto`, pero eso no protege si el step generado mapea algo a esa columna) — no instanciado en el corpus actual, ver H16 en `01-hallazgos.md`.
 
 ---

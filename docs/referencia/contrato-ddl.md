@@ -56,4 +56,4 @@ Todos corren en build-time sobre `ktr_data` ya generado — comparan el KTR cont
 
 ## Vocabulario de `dim_contracts`
 
-Compartido por las dos llamadas y por todo validador de esta lista: `table`, `scd_type`, `technical_key`, `version_field`, `date_from`, `date_to`, `natural_keys`, `unknown_key_value`, `attributes_scd1`, `attributes_scd2` (`prompt_validacion_src.txt:5`). El detalle de qué significa cada uno para SCD1 vs. SCD2 vive en `docs/SCD/criterios.md` (candidato a `referencia/scd.md`, todavía sin escribir).
+Compartido por las dos llamadas y por todo validador de esta lista: `table`, `scd_type`, `technical_key`, `version_field`, `date_from`, `date_to`, `natural_keys`, `unknown_key_value`, `attributes_scd1`, `attributes_scd2` (`prompt_validacion_src.txt:5`). El detalle de qué significa cada uno para SCD1 vs. SCD2 vive en `referencia/scd.md` § "Vocabulario de `dim_contracts`".

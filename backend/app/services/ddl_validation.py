@@ -97,7 +97,7 @@ async def validate_and_correct_ddl(
     ACOPLAMIENTO: este short-circuit asume que "dim_contracts vacio" siempre
     significa "modelo normalizado, sin dimensiones" -- nunca "el contrato se
     perdio en el camino". Esa distincion no se verifica aca: la hace
-    etl_generator._dim_contracts_anomaly_warning() (compara contra dwh_ddl
+    ddl_checks._dim_contracts_anomaly_warning() (compara contra dwh_ddl
     buscando tablas dim_*), en un archivo distinto y sin llamar a esta
     funcion. Si esa advertencia se saca en el futuro, este short-circuit
     queda ciego a un contrato perdido -- no hay redundancia entre las dos."""
@@ -135,7 +135,7 @@ async def validate_and_correct_ddl(
 
 
 def _table_name_variants(table: str) -> set[str]:
-    """Mismo criterio 'full'/'bare' que `etl_generator._dwh_column_check_constraints`
+    """Mismo criterio 'full'/'bare' que `ddl_checks._dwh_column_check_constraints`
     (con/sin schema) para no fallar el match por una diferencia de calificación."""
     normalized = table.strip().lower()
     return {normalized, normalized.rsplit(".", 1)[-1]}
