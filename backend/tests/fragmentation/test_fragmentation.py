@@ -315,7 +315,7 @@ def test_enforce_dimension_step_policy_then_compute_cut_splits_scd1_case_set_a()
     disparaba pese a la carrera real de lectura/escritura sobre la
     dimensión. Con el vocabulario uniforme (D44: DimensionLookup para todo
     scd_type) las dos ramas quedan visibles, y C1 dispara: groups == 2."""
-    from app.services.ktr_builder.dimension_step_policy import enforce_dimension_step_policy
+    from app.services.ktr_builder.dimension_step_policy import apply_dimension_contracts
 
     ktr_data = {
         "steps": [
@@ -347,8 +347,11 @@ def test_enforce_dimension_step_policy_then_compute_cut_splits_scd1_case_set_a()
         attributes_scd1: list[str] = []
         attributes_scd2: list[str] = []
 
-    policy_results = enforce_dimension_step_policy(ktr_data, [_FakeDimContract()], STEP_TYPE_ALIASES, [])
-    assert any(r["tipo"] == "warning" for r in policy_results)  # loader Y lookup, ambos reparados
+    # O3 (docs/refactor/30-decision-python-llm.md): apply_dimension_contracts
+    # sintetiza el config siempre, sin narrar la corrección salvo anomalía —
+    # este contrato no tiene atributos y el mapeo de 'keys' es limpio, así
+    # que no hay nada que reportar; lo que importa es el resultado abajo.
+    apply_dimension_contracts(ktr_data, [_FakeDimContract()], STEP_TYPE_ALIASES, [])
 
     loader = next(s for s in ktr_data["steps"] if s["name"] == "Cargar Dim Categoria")
     lookup = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Categoria")

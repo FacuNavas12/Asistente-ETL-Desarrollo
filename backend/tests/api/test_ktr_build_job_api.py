@@ -498,7 +498,7 @@ def test_attaching_a_foreign_connection_id_to_own_job_falls_back_to_placeholder(
 # (fk_categoria/precio_lista/stock, vocabulario de fact_inventario, no de la
 # dimensión) que motivó el crash original.
 
-_E01_ROOT = pathlib.Path(__file__).resolve().parents[2] / "docs" / "refactor" / "fase4_manual" / "sonnet"
+_E01_ROOT = pathlib.Path(__file__).resolve().parents[3] / "docs" / "refactor" / "fase4_manual" / "sonnet"
 
 
 def _e01_raw_llm_data() -> dict:

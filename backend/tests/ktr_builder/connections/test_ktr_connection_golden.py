@@ -10,7 +10,7 @@ credenciales), así que no hay comportamiento propio que verificar ahí.
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-FIXTURE = Path(__file__).parent / "fixtures" / "connections_sample.ktr"
+FIXTURE = Path(__file__).parent.parent.parent / "fixtures" / "connections_sample.ktr"
 
 
 def _load_connections() -> dict[str, ET.Element]:

@@ -307,3 +307,41 @@ class TestSchemaInferEndpoint:
         body_str = str(body)
         for value in ["Alice", "Bob", "Carol", "1234.56"]:
             assert value not in body_str, f"Raw value '{value}' found in response"
+
+    def test_oversized_upload_returns_413(self):
+        # MAX_UPLOAD_BYTES is 50 MB — one byte over that must 413, not 500 or 200.
+        from app.services.file_schema import MAX_UPLOAD_BYTES
+
+        oversized = b"a" * (MAX_UPLOAD_BYTES + 1)
+        resp = client.post(
+            "/api/schema/infer",
+            files=[("file", ("big.csv", oversized, "text/csv"))],
+        )
+        assert resp.status_code == 413, resp.text
+
+    def test_xlsx_upload_via_endpoint(self):
+        import io
+
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["id", "name"])
+        ws.append([1, "Alice"])
+        ws.append([2, "Bob"])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        resp = client.post(
+            "/api/schema/infer",
+            files=[(
+                "file",
+                ("sheet.xlsx", buf.read(),
+                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            )],
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["source_type"] == "excel"
+        assert {f["name"] for f in body["fields"]} == {"id", "name"}

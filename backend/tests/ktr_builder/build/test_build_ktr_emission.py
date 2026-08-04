@@ -15,7 +15,7 @@ from xml.etree import ElementTree as ET
 
 from app.domain.scd import ATTRIBUTE_UPDATE_TYPE_CODES, VALUE_META_TYPE_NAMES
 from app.services.ktr_builder import build_ktr
-from app.services.ktr_builder.dimension_step_policy import enforce_dimension_step_policy
+from app.services.ktr_builder.dimension_step_policy import apply_dimension_contracts
 from app.services.ktr_builder.validators import ValidationContext
 from app.services.ktr_builder.validators.dimension_lookup_fields import check_dimension_lookup_fields
 from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
@@ -178,7 +178,13 @@ def test_policy_reclassified_fact_lookup_does_not_emit_crossed_vocabulary():
     candidato, D58 resuelve 'loader' sin BFS y este test dejaría de
     ejercitar la reclasificación fact_lookup que D57 vino a arreglar (ver
     test_single_step_per_table_reproduction_d58 más abajo para el caso de
-    1 solo candidato)."""
+    1 solo candidato).
+
+    O3 (docs/refactor/30-decision-python-llm.md): apply_dimension_contracts
+    reemplaza enforce_dimension_step_policy — construye el config siempre en
+    vez de comparar y corregir; la mecánica de reclasificación (D57/D58) no
+    cambia, solo cómo se reporta (ya no hay clave 'repaired', el finding es
+    tipo='info')."""
     ktr_data = _minimal_ktr(
         steps=[
             {
@@ -211,12 +217,12 @@ def test_policy_reclassified_fact_lookup_does_not_emit_crossed_vocabulary():
     )
     contracts = [_FakeDimContract("dim_producto", 2)]
 
-    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+    results = apply_dimension_contracts(ktr_data, contracts, STEP_TYPE_ALIASES, [])
 
     lookup_step = next(s for s in ktr_data["steps"] if s["name"] == "Lookup Dim Producto")
     assert lookup_step["config"]["update"] == "N"
     assert lookup_step["config"]["fields"] == []
-    assert any(r.get("repaired") is True for r in results)
+    assert any(r["tipo"] == "info" for r in results)  # campos descartados al forzar solo lectura
 
     xml, _, _ = build_ktr(ktr_data)  # no debe levantar KtrBuilderError
     step = _find_step(xml, "Lookup Dim Producto")
@@ -264,7 +270,7 @@ def test_single_step_per_table_reproduction_d58():
     )
     contracts = [_FakeDimContract("dim_producto", 1, attributes_scd1=["nombre_producto", "precio_unitario"])]
 
-    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+    results = apply_dimension_contracts(ktr_data, contracts, STEP_TYPE_ALIASES, [])
 
     step_cfg = ktr_data["steps"][0]["config"]
     assert step_cfg["update"] == "Y"
@@ -277,19 +283,23 @@ def test_single_step_per_table_reproduction_d58():
         assert field.findtext("update") in ATTRIBUTE_UPDATE_TYPE_CODES
 
 
-def test_orphan_lookup_single_candidate_without_contract_attributes_is_not_forced_to_loader():
-    """D58 (segunda vuelta) — el riesgo dejado anotado en la primera versión
-    de D58: 1 solo step candidato para una tabla declarada en dim_contracts
-    NO prueba por sí solo que sea el loader. Acá el step es un lookup
-    huérfano real: solo trae 'return_field'/'keys', sin ningún atributo de
-    negocio de la dimensión en 'fields' (el contrato declara nombre_producto/
-    precio_unitario, ninguno presente) — señal de que el loader real falta,
-    no de que este step deba forzarse a escribir. No debe forzarse
-    update=Y; debe reportarse error, y build_ktr() no debe ni intentar
-    emitir un loader espurio (el step queda tal cual, update=N original,
-    sin 'fields' — build_ktr() no falla porque nunca hay vocabulario
-    cruzado en este caso, pero la corrección peligrosa -- convertirlo en
-    escritor -- no debe ocurrir)."""
+def test_orphan_lookup_single_candidate_unresolvable_stream_warns_unverified():
+    """O3 (docs/refactor/30-decision-python-llm.md) supersede D58 (segunda
+    vuelta) para este caso. Antes: 1 solo step candidato NO probaba por sí
+    solo que fuera el loader — el discriminador D58 inspeccionaba si
+    'fields' del modelo ya traía el contrato completo, y si no, reportaba
+    error sin tocar el step. Ese discriminador dependía de 'fields' del
+    modelo como evidencia — evidencia que O3 dejó de usar (el modelo ya no
+    escribe el config completo, así que su 'fields' no prueba nada).
+
+    Con un solo candidato no puede haber doble escritor (D16) sin importar
+    el rol que resuelva el BFS, así que apply_dimension_contracts fuerza a
+    loader igual — si el ETL va a cargar esta dimensión, tiene que ser por
+    acá, no hay otro step candidato. Lo que Python SÍ puede hacer, y hace,
+    es avisar cuando no puede verificar el mapeo: acá el step no tiene
+    predecesor (upstream_fields_for_step devuelve None), así que 'fields'
+    se arma por identidad SIN VERIFICAR contra el stream real — D60 exige
+    reportarlo, no fabricarlo en silencio."""
     ktr_data = _minimal_ktr(
         steps=[
             {
@@ -312,12 +322,12 @@ def test_orphan_lookup_single_candidate_without_contract_attributes_is_not_force
     )
     contracts = [_FakeDimContract("dim_producto", 1, attributes_scd1=["nombre_producto", "precio_unitario"])]
 
-    results = enforce_dimension_step_policy(ktr_data, contracts, STEP_TYPE_ALIASES, [])
+    results = apply_dimension_contracts(ktr_data, contracts, STEP_TYPE_ALIASES, [])
 
     step_cfg = ktr_data["steps"][0]["config"]
-    assert step_cfg["update"] == "N"  # NO forzado a Y — no se demostró que sea el loader
+    assert step_cfg["update"] == "Y"  # forzado a loader — único candidato, D16
     assert any(
-        r["tipo"] == "error" and "loader faltante" in r["mensaje"] and r["campo"] == "dim_producto"
+        r["tipo"] == "warning" and "sin verificar" in r["mensaje"].lower() and r["campo"] == "dim_producto"
         for r in results
     )
 

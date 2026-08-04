@@ -33,7 +33,7 @@ from app.services.ktr_builder.contracts import STEP_CONTRACTS, TABLE_BEARING_STE
 from app.services.ktr_builder.step_emitters import STEP_BUILDERS
 from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 
-PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system_etl.txt"
+PROMPT_PATH = Path(__file__).resolve().parent.parent.parent / "prompts" / "system_etl.txt"
 
 _HEADER_MARKER = "NOMBRES DE PLUGIN PDI"
 _TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")

@@ -23,7 +23,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-APP_DIR = Path(__file__).resolve().parent.parent / "app"
+APP_DIR = Path(__file__).resolve().parent.parent.parent / "app"
 
 # Módulos (dotted path relativo a backend/app/, sin el prefijo "app.") cuyo
 # contenido es hoy puramente dominio: sin imports de infraestructura, sin

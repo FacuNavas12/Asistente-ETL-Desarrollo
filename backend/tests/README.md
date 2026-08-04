@@ -1,5 +1,9 @@
 # Tests — Asistente ETL Backend
 
+Índice. Cada subcarpeta agrupa tests por la capa/módulo que valida y tiene su
+propio `README.md` con la tabla archivo → qué valida. Esta reorganización es
+de 2026-08-04 — antes todos los `test_*.py` vivían sueltos en `tests/`.
+
 ## Requisitos previos
 
 ```bash
@@ -8,42 +12,51 @@ venv\Scripts\activate          # activar el entorno virtual
 pip install -r requirements.txt
 ```
 
-## Tipos de test
+## Estructura
 
-| Archivo | Tipo | Requiere servidor |
+| Carpeta | Qué cubre | Costo real (LLM/API) |
 |---|---|---|
-| `test_api.py` | Integración HTTP | Sí — backend en `localhost:8000` |
-| `test_connections_api.py` | Integración (SQLite en memoria) | No |
-| `test_connection_schemas.py` | Unitarios (Pydantic) | No |
-| `test_db_connector.py` | Unitarios (mocks) | No |
+| [`api/`](api/README.md) | HTTP end-to-end contra servidor vivo | **Sí** — requiere `uvicorn` corriendo y llama al LLM real |
+| [`ktr_builder/build/`](ktr_builder/build/README.md) | Emisión de steps/XML del `.ktr` | No |
+| [`ktr_builder/validators/`](ktr_builder/validators/README.md) | Passes de validación pre-emisión | No |
+| [`ktr_builder/connections/`](ktr_builder/connections/README.md) | Resolución de conexiones, XML de conexión | No |
+| [`dimension_scd/`](dimension_scd/README.md) | `domain/scd.py` + `dimension_step_policy` | No |
+| [`fragmentation/`](fragmentation/README.md) | Corte N-KTR, lineage, wiring | No |
+| [`schema_adapters/`](schema_adapters/README.md) | `CanonicalSchema`, adapters DDL/CSV/DB, dialect, profiler | No |
+| [`etl_generator/`](etl_generator/README.md) | Orquestación, prompt, contratos, progreso async | Parcial — ver su README (`test_structured_outputs.py` tiene tests marcados `integration`) |
+| [`superset/`](superset/README.md) | Export a Superset | No |
+| [`architecture/`](architecture/README.md) | Checks estáticos cross-cutting | No |
 
-Para `test_api.py`, levantá el backend antes de correr:
+`fixtures/` no se movió — sigue en `tests/fixtures/`, referenciada por
+`ktr_builder/connections/test_ktr_connection_golden.py` y
+`ktr_builder/validators/test_error_catalog_checks.py`.
 
-```bash
-uvicorn app.main:app --reload
-```
-
-## Comandos básicos
-
-Correr todos los tests (desde `backend/`):
-
-```bash
-pytest tests/ -v
-```
-
-Correr todos los tests de una carpeta:
+## Correr todo (con costo)
 
 ```bash
 pytest tests/ -v
 ```
 
-Correr todos los tests de un archivo:
+Esto incluye `api/` (necesita `uvicorn app.main:app --reload` corriendo y
+`.env` con credenciales reales de LLM) y los tests marcados `integration`
+(llamadas reales a la API del LLM, sin servidor).
+
+## Correr solo lo gratis (recomendado para el día a día)
+
+Sin servidor vivo, sin llamadas reales a ningún LLM — todo mockeado o con
+SQLite en memoria:
 
 ```bash
-pytest tests/test_connection_schemas.py -v
-pytest tests/test_db_connector.py -v
-pytest tests/test_connections_api.py -v
-pytest tests/test_api.py -v
+pytest tests/ --ignore=tests/api -m "not integration" -v
+```
+
+Este es el comando que corre CI / que corrés antes de un commit.
+
+## Correr una carpeta puntual
+
+```bash
+pytest tests/schema_adapters/ -v
+pytest tests/ktr_builder/ -v
 ```
 
 ## Correr un test específico
@@ -51,61 +64,33 @@ pytest tests/test_api.py -v
 Por nombre de función:
 
 ```bash
-pytest tests/test_api.py::test_health_check -v
-pytest tests/test_connections_api.py::test_create_returns_masked_password -v
+pytest tests/dimension_scd/test_scd_policy.py::test_no_key_forces_scd1 -v
 ```
 
-Por nombre de clase y método (tests en clases):
+Por nombre de clase y método:
 
 ```bash
-pytest tests/test_connection_schemas.py::TestPostgresConnectionCreate::test_ssl_mode_invalid -v
-pytest tests/test_db_connector.py::TestBuildUrl::test_build_url_mssql_with_trust_server_certificate -v
+pytest tests/schema_adapters/test_connection_schemas.py::TestPostgresConnectionCreate::test_ssl_mode_invalid -v
 ```
 
 Filtrar por palabra clave en el nombre (`-k`):
 
 ```bash
 pytest tests/ -k "password" -v
-pytest tests/ -k "fallo" -v
-pytest tests/ -k "ssl" -v
 ```
 
 ## Correr solo los tests que fallaron
 
-Repetir únicamente los tests que fallaron en la última ejecución:
-
 ```bash
-pytest tests/ --lf -v
-```
-
-Correr primero los que fallaron y luego el resto:
-
-```bash
-pytest tests/ --ff -v
+pytest tests/ --lf -v      # repetir últimos fallos
+pytest tests/ --ff -v      # fallos primero, luego el resto
 ```
 
 ## Opciones útiles
 
-Detener al primer fallo:
-
 ```bash
-pytest tests/ -x -v
-```
-
-Detener luego de N fallos:
-
-```bash
-pytest tests/ --maxfail=3 -v
-```
-
-Ver el output de `print()` dentro de los tests:
-
-```bash
-pytest tests/ -s -v
-```
-
-Ver un resumen al final con los tests lentos:
-
-```bash
-pytest tests/ -v --durations=10
+pytest tests/ -x -v                 # detener al primer fallo
+pytest tests/ --maxfail=3 -v        # detener luego de N fallos
+pytest tests/ -s -v                 # ver output de print()
+pytest tests/ -v --durations=10     # resumen de tests más lentos
 ```

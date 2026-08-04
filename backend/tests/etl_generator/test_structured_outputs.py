@@ -27,7 +27,7 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _load_env(env_path: Path = Path(__file__).parent.parent / ".env") -> None:
+def _load_env(env_path: Path = Path(__file__).parent.parent.parent / ".env") -> None:
     if env_path.exists():
         for line in env_path.read_text(encoding="utf-8").splitlines():
             line = line.strip()

@@ -21,7 +21,7 @@ from app.services.ktr_builder.error_catalog_checks import (
     v13_lookup_key_incompleta,
 )
 
-GOLDEN_DIR = Path(__file__).parent / "fixtures" / "golden_run_base_01"
+GOLDEN_DIR = Path(__file__).parent.parent.parent / "fixtures" / "golden_run_base_01"
 
 # Columnas reales que los dos .ktr referencian para dim_producto/dim_categoria/
 # fact_inventario (V5/V6) -- no hay DDL completo adjunto a este golden run,

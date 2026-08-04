@@ -1,15 +1,17 @@
 """
 Unit test — E-20 (docs/refactor/errores.md), dedupe en _split_integrity_warnings.
 
-PRE_EMIT_PASSES corre dos veces sobre el mismo step: una vez en
-_recover_table_keys() (etl_generator.py) sobre ktr_data completo antes de
-compute_cut(), otra vez dentro de build_ktr() (build.py:187) sobre el
-sub-dict ya partido. Un finding insensible al corte (ej.
+Los passes de verificación (VERIFY_PASSES, ver validators/__init__.py) corren
+dos veces sobre el mismo step: una vez en _verify_emitted_ktr() (etl_generator.py,
+O3 — docs/refactor/30-decision-python-llm.md) sobre ktr_data completo, ya
+sintetizado por apply_dimension_contracts(), antes de compute_cut(); otra vez
+dentro de build_ktr() (build.py:187, TODO PRE_EMIT_PASSES) como red de
+seguridad, sobre el sub-dict ya partido. Un finding insensible al corte (ej.
 check_dimension_lookup_fields) llega al merge de warnings dos veces, byte
 a byte — confirmado con el corpus real de E-01 (D64, 02-decisiones.md):
 6 findings de vocabulario cruzado aparecían 12 veces. _split_integrity_warnings
-es el punto donde las listas de ambas pasadas convergen (líneas 1099 y 1237),
-así que ahí se descarta el duplicado exacto.
+es el punto donde las listas de ambas pasadas convergen, así que ahí se
+descarta el duplicado exacto.
 """
 from __future__ import annotations
 
