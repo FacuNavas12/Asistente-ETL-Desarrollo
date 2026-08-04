@@ -15,10 +15,16 @@
 | `base.py` | `ValidationContext`, `Finding`, protocolo `KtrPass`. |
 | `table_key_recovery.py` | H29 — recupera `table` cuando el LLM usó una clave no aliaseada, por coincidencia de contenido contra `known_tables`. |
 | `dead_computed_fields.py` | H40 — avisa (no repara) cuando un `Calculator` agrega un campo que ningún step aguas abajo consume ni mapea a tabla destino. Solo warning, nunca mutación. |
-| `__init__.py` | `PRE_EMIT_PASSES` (tupla) + `run_passes(ctx)`. |
+| `__init__.py` | `PRE_EMIT_PASSES` (tupla completa) + `run_passes(ctx, passes=...)`. |
 
 ## Dónde se llama
-**Temprano, no solo dentro de `build_ktr()`.** `enforce_dimension_step_policy` y `fragmentation.build_rw_matrix` (vía `split_ktr_by_cut`) corren en `etl_generator.py` ANTES de `build_ktr()` — si un pass de este paquete solo corriera dentro de `build.py`, ese trabajo ya pasó sin ver la recuperación. `run_passes()` se invoca en `etl_generator.py` junto a `normalize_step_configs()` (mismo punto temprano del pipeline), y opcionalmente de nuevo dentro de `build.py` como red de seguridad para callers que invocan `build_ktr()` directo (tests, `build_etl_from_raw`).
+**Temprano, no solo dentro de `build_ktr()`.** O3 (docs/refactor/30-decision-python-llm.md) partió `PRE_EMIT_PASSES` en dos sub-tuplas, porque `apply_dimension_contracts` tiene que quedar SANDWICHEADA entre ellas:
+
+1. **`TABLE_RECOVERY_PASSES`** (`recover_table_key`, solo) — corre en `etl_generator._recover_table_keys()`, ANTES de `apply_dimension_contracts` y de `fragmentation.build_rw_matrix` (vía `split_ktr_by_cut`): ambos necesitan ver `table` ya recuperado.
+2. `apply_dimension_contracts` sintetiza el config de cada step de dimensión desde el contrato.
+3. **`VERIFY_PASSES`** (el resto — `check_dimension_lookup_fields`, `check_narration_crosscheck`, etc.) — corre en `etl_generator._verify_emitted_ktr()`, DESPUÉS. Antes de O3 estos passes corrían junto con `recover_table_key`, inspeccionando el config que el MODELO había escrito — un finding sobre un valor a punto de ser pisado por la síntesis es una señal falsa, no ruido inocuo.
+
+`PRE_EMIT_PASSES` se preserva como la concatenación de ambas — `build.py` sigue corriendo la tupla completa como red de seguridad para callers que invocan `build_ktr()` directo sin pasar por `apply_dimension_contracts` (tests, `build_etl_from_raw` con `dim_contracts` vacío).
 
 ## Reglas que aplican
 D5/D15 — un pass puede mutar `ktr_data`, pero toda mutación va acompañada de un `Finding` con `repaired=True`. Nunca un `if not table: continue` sin reportar (R12, `docs/auditoria/00b-fallos-silenciosos.md`).

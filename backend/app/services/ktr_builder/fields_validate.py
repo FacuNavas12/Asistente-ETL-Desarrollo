@@ -273,11 +273,10 @@ def upstream_fields_for_step(
     predecesor, o algún ancestro de producción desconocida) — mismo
     criterio "no validar" que el resto del módulo (ver docstring de arriba).
 
-    Usado por dimension_step_policy.py: gate del repair de campos de
-    DimensionLookup (¿el stream_field propuesto existe de verdad?) y por
-    _synthesize_dimension_lookup_config (no asumir stream_field==table_field
-    cuando se puede verificar contra el stream real — ver hallazgo en
-    01-hallazgos.md)."""
+    Usado por dimension_step_policy.py: insumo de build_dimension_lookup_config
+    (O3, docs/refactor/30-decision-python-llm.md) para no asumir
+    stream_field==table_field cuando se puede verificar contra el stream
+    real — ver hallazgo en 01-hallazgos.md."""
     steps = ktr_data.get("steps", [])
     hops = ktr_data.get("hops", [])
     step_by_name = {s.get("name"): s for s in steps}

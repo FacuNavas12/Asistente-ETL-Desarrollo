@@ -31,11 +31,8 @@ from app.services.adapters.ddl_adapter import parse_ddl
 from app.services.adapters.sql_table_resolver import resolve_sql_tables
 from app.services.ddl_validation import synthesize_missing_seed_rows, validate_and_correct_ddl
 from app.services.ktr_builder import (
+    apply_dimension_contracts,
     build_ktr,
-    derive_attribute_update_mode,
-    derive_dimension_loader_step,
-    derive_fact_lookup_step,
-    enforce_dimension_step_policy,
     normalize_step_configs,
     repair_integrity_gaps,
     repair_ktr_steps,
@@ -46,13 +43,13 @@ from app.services.ktr_builder import (
     run_passes,
     PRE_EMIT_ERROR_PREFIX,
     split_findings_by_severity,
+    TABLE_RECOVERY_PASSES,
+    VERIFY_PASSES,
 )
 from app.services.ktr_builder.build import _sanitize
 from app.services.ktr_builder.contract_validate import CONTRACT_PREFIX, validate_ktr_contracts
-from app.services.ktr_builder.contracts import normalize_config, parse_cfg
 from app.services.ktr_builder.error_catalog_checks import ERROR_CATALOG_PREFIX, MONEY_FIELD_HINTS
-from app.services.ktr_builder.fields_validate import FIELD_INTEGRITY_PREFIX, upstream_fields_for_step
-from app.services.ktr_builder.repair import repair_step_config
+from app.services.ktr_builder.fields_validate import FIELD_INTEGRITY_PREFIX
 from app.services.lineage_builder import stitch_lineage_many
 from app.services.job_progress import ProgressSink, active_sink, current_sink
 
@@ -322,12 +319,20 @@ def _recover_table_keys(
     narracion_modelo: list[dict] | None = None,
     dwh_numeric_scale: dict[str, tuple[int, int]] | None = None,
 ) -> list[str]:
-    """Corre TODO PRE_EMIT_PASSES (H29 recover_table_key + el resto, ver
+    """Corre TABLE_RECOVERY_PASSES (H29 recover_table_key — ver
     validators/__init__.py) y devuelve los findings ya formateados como
-    warnings — llamar SIEMPRE junto a normalize_step_configs(), antes de
-    enforce_dimension_step_policy() y de split_ktr_by_cut() (build_rw_matrix):
-    ambos corren antes de build_ktr() y necesitan ver 'table' ya recuperado
-    (ver validators/README.md).
+    warnings — llamar SIEMPRE junto a normalize_step_configs(), ANTES de
+    apply_dimension_contracts() y de split_ktr_by_cut() (build_rw_matrix):
+    ambos necesitan ver 'table' ya recuperado (ver validators/README.md).
+
+    O3 (docs/refactor/30-decision-python-llm.md): antes corría TODO
+    PRE_EMIT_PASSES acá — incluidos los passes de VERIFICACIÓN
+    (check_dimension_lookup_fields, check_narration_crosscheck...), que
+    inspeccionaban el config que el MODELO había escrito. Ahora ese config
+    está por ser reescrito por apply_dimension_contracts(): un finding sobre
+    un valor a punto de pisarse es una señal falsa, no ruido inocuo. Los
+    passes de verificación se movieron a _verify_emitted_ktr(), que corre
+    DESPUÉS — ver el call site en cada flujo.
 
     dwh_constraints (Fase 2-ter, docs/refactor/03c-investigacion-vocabulario-
     dimension-kettle.md): {} si el caller no tiene DDL DWH disponible en este
@@ -335,62 +340,70 @@ def _recover_table_keys(
     filter_rows no-opea sin esto, mismo criterio best-effort que el resto del
     módulo.
 
-    Fase 0 (D50): findings severity=="error" (tabla no recuperable, sin match
-    o ambigua; CHECK de rango sin FilterRows; FilterRows de negocio en
-    staging) llevan PRE_EMIT_ERROR_PREFIX — _split_integrity_warnings los
-    promueve a Validacion tipo=error en vez de perderse entre
-    advertencias_buenas_practicas."""
+    Fase 0 (D50): findings severity=="error" llevan PRE_EMIT_ERROR_PREFIX —
+    _split_integrity_warnings los promueve a Validacion tipo=error en vez de
+    perderse entre advertencias_buenas_practicas."""
     findings = run_passes(ValidationContext(
         ktr_data, STEP_TYPE_ALIASES, known_tables, dwh_constraints or {},
         _narracion_modelo(narracion_modelo), dwh_numeric_scale or {},
-    ))
+    ), passes=TABLE_RECOVERY_PASSES)
+    return split_findings_by_severity(findings)
+
+
+def _verify_emitted_ktr(
+    ktr_data: dict,
+    known_tables: frozenset[str],
+    dwh_constraints: dict[str, dict[str, dict]] | None = None,
+    narracion_modelo: list[dict] | None = None,
+    dwh_numeric_scale: dict[str, tuple[int, int]] | None = None,
+) -> list[str]:
+    """O3 (docs/refactor/30-decision-python-llm.md): corre VERIFY_PASSES —
+    la mitad de PRE_EMIT_PASSES que INSPECCIONA config en vez de recuperar
+    'table'. Llamar SIEMPRE después de apply_dimension_contracts(), sobre el
+    ktr_data ya sintetizado — es la estación 3 de la cadena corta de O3
+    ("Python verifica"), y tiene destinatario real incluso para dimensiones:
+    una regresión en la propia síntesis de Python, o un DimensionLookup
+    sobre una tabla fuera de dim_contracts (donde no se sintetizó nada, el
+    config sigue siendo 100% del modelo)."""
+    findings = run_passes(ValidationContext(
+        ktr_data, STEP_TYPE_ALIASES, known_tables, dwh_constraints or {},
+        _narracion_modelo(narracion_modelo), dwh_numeric_scale or {},
+    ), passes=VERIFY_PASSES)
     return split_findings_by_severity(findings)
 
 
 def _format_dim_contracts(dim_contracts: list) -> str:
-    """Texto embebido en el prompt STG→DWH: nombres EXACTOS que Dimension
-    lookup/update debe usar por dimensión — fuente de verdad que reemplaza la
-    deducción por parseo del DDL (bug original: columna deducida mal o
-    inexistente, step apunta a algo que no existe y PDI falla en runtime,
-    no al guardar el .ktr)."""
+    """Texto embebido en el prompt STG→DWH — qué columnas mapear y contra
+    qué nombre físico, nada de CÓMO configurarlas.
+
+    O3 (docs/refactor/30-decision-python-llm.md): antes esta línea traía 11
+    tokens (step_requerido, step_lookup_fk, scd_type, modo_por_atributo,
+    version_field, date_from, unknown_key_value...) porque el modelo escribía
+    el config COMPLETO del step de dimensión, y esos tokens eran la fuente de
+    verdad para que lo escribiera bien. Ya no lo escribe —
+    apply_dimension_contracts (dimension_step_policy.py) construye
+    update/return_field/date_from/date_to/version_field/fields[].type
+    SIEMPRE desde el DimContract, ignorando lo que el modelo haya puesto.
+    Cada token que quedaba acá describiendo esa configuración era una
+    invitación a que el modelo la reescribiera y la contradijera — se fueron
+    todos menos los cuatro que el modelo sigue necesitando para lo que SÍ es
+    su trabajo: decidir topología y mapear nombres de columna cuando no
+    coinciden con el stream (ver system_etl.txt, bloque "STEP DE
+    DIMENSIONES")."""
     if not dim_contracts:
         return (
             "(vacío — modelo normalizado sin dimensiones, o el contrato no llegó. "
-            "Si dwh_model SÍ declara tablas dim_*, NO derives technical_key/version_field/"
-            "date_from/date_to por convención de nombres: reportá un `warning` en "
+            "Si dwh_model SÍ declara tablas dim_*, configurá el DimensionLookup completo "
+            "(ver el primer ejemplo del catálogo de steps) y reportá un `warning` en "
             "`validaciones` señalando que falta el contrato para esa dimensión.)"
         )
     lines = []
     for c in dim_contracts:
-        # step_requerido (Parte 4, bloque A): el step ya está decidido acá —
-        # deriva determinísticamente de scd_type, no es un juicio del modelo.
-        # Un override (volumen alto, matching difuso, full refresh) es válido
-        # pero tiene que registrarse en `validaciones` con el prefijo
-        # OVERRIDE_STEP_PREFIX y campo=<tabla> — ver system_etl.txt.
-        # D44/D51: loader y lookup de FK son AMBOS 'DimensionLookup' para todo
-        # scd_type (incluido 0/1, R-K2/R-K7) — difieren solo en update=Y|N,
-        # que resuelve el LLM al configurar el step (ver system_etl.txt "STEP
-        # DE DIMENSIONES" / "LOOKUP DE FK DEL LADO DEL HECHO").
-        step_requerido = derive_dimension_loader_step(c.scd_type)
-        step_lookup_fk = derive_fact_lookup_step(c.scd_type)
-        # D37: attributes_scd1/attributes_scd2 se le exigen al LLM de inferencia
-        # y llegan al validador de DDL (ddl_validation.py), pero hasta acá la
-        # fase de generación de steps nunca los veía — el juicio de "qué
-        # atributos versionan" se calculaba y se tiraba.
-        # D44/D51/S-8: el modo (Insert/Update) se resuelve por atributo, no
-        # por dimensión — se le entrega al LLM ya resuelto, mismo criterio que
-        # step_requerido (la decisión no es suya).
-        modos = ", ".join(
-            f"{attr}={derive_attribute_update_mode(attr, c.attributes_scd1, c.attributes_scd2)}"
-            for attr in (*c.attributes_scd1, *c.attributes_scd2)
-        ) or "(sin atributos no-clave)"
+        columnas_destino = list(c.attributes_scd1) + list(c.attributes_scd2)
         line = (
-            f"- {c.table}: step_requerido={step_requerido}, step_lookup_fk={step_lookup_fk}, "
-            f"technical_key={c.technical_key}, version_field={c.version_field}, "
-            f"date_from={c.date_from}, date_to={c.date_to}, "
-            f"natural_keys={list(c.natural_keys)}, unknown_key_value={c.unknown_key_value}, "
-            f"scd_type={c.scd_type}, attributes_scd1={list(c.attributes_scd1)}, "
-            f"attributes_scd2={list(c.attributes_scd2)}, modo_por_atributo=[{modos}]"
+            f"- {c.table}: columnas_destino={columnas_destino}, "
+            f"natural_keys={list(c.natural_keys)}, "
+            f"campo_sk_en_stream={c.technical_key}, columna_vigencia={c.date_to}"
         )
         lines.append(line)
     return "\n".join(lines)
@@ -528,8 +541,8 @@ def _format_inferred_member_dims(dims: list[dict]) -> str:
     lines = [
         "\n## DIMENSIONES CON MIEMBRO INFERIDO OBLIGATORIO (D21)",
         "Las siguientes dimensiones son referenciadas por una FK NOT NULL desde una tabla de "
-        "hechos — ese lookup NUNCA puede devolver NULL. El step que carga cada una (el "
-        "step_requerido de '## CONTRATOS DE DIMENSION' arriba) tiene que recibir, además del "
+        "hechos — ese lookup NUNCA puede devolver NULL. El step loader de cada una tiene que "
+        "recibir, además del "
         "stream real de origen, las claves naturales de la tabla de hechos que todavía no están "
         "en la dimensión (anti-join previo, ej. TableInput/ExecSQL con NOT EXISTS) con atributos "
         "default e `inferred_member='Y'`, unidas (Union) al stream real — AMBOS alimentando el "
@@ -612,246 +625,6 @@ def _monetary_scd2_guard(dim_contracts: list) -> list[str]:
     return findings
 
 
-def _dimension_repair_context(contract, upstream_fields: set[str], missing: list[str]) -> str:
-    """Contexto ACOTADO para repair_step_config() (hallazgo, 01-hallazgos.md)
-    — a propósito, NO el DDL completo de staging+DWH: el modo de falla que
-    origina este repair fue el modelo mezclando vocabulario de OTRA tabla
-    (fact_inventario) al armar 'Cargar dim_producto' — pasarle el DDL entero
-    reproduce la misma condición que causó el error. Solo dos listas
-    cerradas: las columnas válidas de ESTA dimensión, y los campos reales
-    disponibles en el stream que llega a este step (upstream_fields_for_step)
-    — con eso el mapeo correcto (ej. 'categoria' -> 'nombre_categoria') es
-    derivable en un intento, sin que el modelo tenga que adivinar ni mirar
-    columnas de otras tablas."""
-    valid_columns = sorted({*contract.attributes_scd1, *contract.attributes_scd2})
-    return (
-        f"Columnas válidas de la dimensión '{contract.table}' (ÚNICAS que pueden aparecer como "
-        f"table_field en 'fields' — cualquier otro nombre, aunque exista en otra tabla del modelo, "
-        f"está fuera de alcance acá): {', '.join(valid_columns)}.\n\n"
-        f"Atributos que faltan mapear (están en el contrato de la dimensión pero 'fields' no los "
-        f"trae, o los trae con un table_field que no es ninguno de los de arriba): {', '.join(sorted(missing))}.\n\n"
-        f"Campos REALMENTE disponibles en el stream que llega a este step (los únicos valores "
-        f"válidos para stream_field — no inventar ninguno fuera de esta lista): "
-        f"{', '.join(sorted(upstream_fields))}."
-    )
-
-
-_DESCRIPTIVE_PREFIX = "nombre_"
-
-
-def _deterministic_field_mapping(missing: list[str], upstream_fields: set[str]) -> dict[str, str] | None:
-    """Intento barato, SIN LLM, para el caso más común de este repair: el
-    atributo que falta en 'fields' ya está en el stream, exacto o como su
-    versión sin el prefijo descriptivo 'nombre_' — ej. falta 'nombre_categoria',
-    el stream trae 'categoria' (corpus real que motivó esto: cuota del LLM de
-    repair agotada, el gate determinístico no depende de ningún proveedor).
-    La comparación es SIEMPRE exacta contra el nombre despojado (nunca al
-    revés, no se despoja el campo del stream) — así 'fk_categoria' no
-    colisiona con la búsqueda de 'categoria': son strings distintos, punto,
-    sin necesidad de una lista de prefijos técnicos a excluir a mano.
-    Devuelve el mapeo completo solo si CADA atributo faltante resuelve a
-    EXACTAMENTE un campo del stream; cualquier ambigüedad o miss => None,
-    cae al repair vía LLM tal cual antes — no degrada el piso de hoy."""
-    upstream_exact = {u.strip().lower(): u for u in upstream_fields}
-    mapping: dict[str, str] = {}
-    for attr in missing:
-        attr_lower = attr.strip().lower()
-        if attr_lower in upstream_exact:
-            mapping[attr_lower] = upstream_exact[attr_lower]
-            continue
-        if attr_lower.startswith(_DESCRIPTIVE_PREFIX):
-            base = attr_lower[len(_DESCRIPTIVE_PREFIX):]
-            if base in upstream_exact:
-                mapping[attr_lower] = upstream_exact[base]
-                continue
-        return None
-    return mapping
-
-
-async def _repair_dimension_loader_fields(
-    ktr_data: dict,
-    dim_contracts: list,
-    step_policy_results: list[dict],
-    validaciones_modelo: list,
-    llm: BaseLLM | None,
-    max_retries: int = 2,
-) -> list[dict]:
-    """Hallazgo (01-hallazgos.md) — repair dirigido para el caso 'step único
-    candidato de una dimensión, con fields incompleto/con nombres ajenos'
-    (finding 'repairable' de enforce_dimension_step_policy, discriminador
-    D58). Antes de esto, ese caso quedaba en 'reporta y no construye' —
-    D-1/D5 siguen intactos: si el repair no cierra el hueco, el step queda
-    tal cual y build_ktr() aborta más abajo, exactamente como hoy.
-
-    Alcance de autoridad del repair (acordado con el usuario): SOLO el
-    mapeo table_field->stream_field de 'fields'. Lo demás que el modelo
-    devuelva en el cfg reparado (keys, connection, table, date_from...) se
-    descarta sin aviso — no es una mejora, es superficie nueva en un
-    componente que ya demostró que alucina nombres (fk_categoria/
-    precio_lista/stock en el corpus real que motivó este chequeo).
-
-    Doble gate antes de aplicar cualquier propuesta, ambos baratos (sets en
-    memoria, upstream_fields ya calculado una vez por step):
-    (a) el mapeo cubre TODOS los atributos que el pase 1 marcó 'missing';
-    (b) cada stream_field propuesto existe de verdad en upstream_fields.
-    Revalidado UNA VEZ MÁS dentro de _synthesize_dimension_lookup_config —
-    duplicación intencional, el repair es una llamada a un LLM y puede
-    alucinar igual que el generador original; no se confía a ciegas.
-
-    Si pasa: Parte B — placeholder de 'fields' (solo table_field, TODOS los
-    atributos del contrato, para que el discriminador del pase 2 vea
-    cobertura completa y libere el rol a 'loader') + update='N' forzado
-    (señal de ruteo interna, no el valor final — _synthesize_dimension_
-    lookup_config, llamado desde el pase 2, decide 'update' real y
-    construye 'fields' real con el mapeo). Corre un SEGUNDO pase completo de
-    enforce_dimension_step_policy() y hace merge: se descartan del pase 1
-    los findings de las tablas reparadas (quedaron obsoletos), se agregan
-    los del pase 2 SOLO para esas tablas — evita perder los findings de
-    OTROS steps de dimensión que el pase 2 no re-emite por diseño (ya
-    quedaron bien desde el pase 1; ver hallazgo en 01-hallazgos.md sobre por
-    qué un merge ingenuo pierde señal)."""
-    if llm is None:
-        _log.info("_repair_dimension_loader_fields: llm=None, no se intenta nada.")
-        return step_policy_results
-
-    candidates = [r for r in step_policy_results if r.get("repairable")]
-    if not candidates:
-        return step_policy_results
-
-    _log.info(
-        "_repair_dimension_loader_fields: %d candidato(s) repairable: %s",
-        len(candidates), [c.get("campo") for c in candidates],
-    )
-
-    steps_by_name = {s.get("name"): s for s in ktr_data.get("steps", [])}
-    contracts_by_table = {c.table.strip().lower(): c for c in dim_contracts}
-    repaired_mappings: dict[str, dict[str, str]] = {}
-    repaired_tables: set[str] = set()
-
-    for cand in candidates:
-        step_name = cand.get("step_name", "")
-        table = cand.get("campo", "")
-        step = steps_by_name.get(step_name)
-        contract = contracts_by_table.get(table.strip().lower())
-        if step is None or contract is None:
-            _log.warning(
-                "_repair_dimension_loader_fields: '%s' (tabla '%s') sin step u contrato resuelto "
-                "(step_found=%s, contract_found=%s) — no se intenta.",
-                step_name, table, step is not None, contract is not None,
-            )
-            continue
-
-        upstream = upstream_fields_for_step(ktr_data, STEP_TYPE_ALIASES, step_name)
-        if not upstream:
-            # Sin stream resoluble no hay nada contra qué verificar una
-            # propuesta del repair — mismo piso que hoy, no se intenta.
-            _log.warning(
-                "_repair_dimension_loader_fields: '%s' (tabla '%s') — upstream_fields_for_step "
-                "devolvió None/vacío (grafo no resoluble desde este step) — no se intenta el repair.",
-                step_name, table,
-            )
-            continue
-        upstream_lower = {u.strip().lower() for u in upstream}
-        _log.info(
-            "_repair_dimension_loader_fields: '%s' (tabla '%s') — missing=%s, upstream=%s",
-            step_name, table, cand.get("missing"), sorted(upstream),
-        )
-
-        missing = cand.get("missing", [])
-        missing_lower = {m.strip().lower() for m in missing}
-        cfg = normalize_config("DimensionLookup", parse_cfg(step.get("config", {})))
-        context_text = _dimension_repair_context(contract, upstream, missing)
-
-        # El paso 2 (más abajo) pisa 'fields' entero con placeholders — sin
-        # esto se pierde cualquier mapeo table_field->stream_field que el
-        # step YA traía bien (ej. 'bk_producto_calculado'->'bk_producto',
-        # corpus real: el LLM original lo resolvió correcto, distinto del
-        # 'sobra' que motivó este repair). Solo se preservan los que NO son
-        # 'missing' (esos los resuelve el repair de abajo) y cuyo stream_field
-        # existe de verdad en upstream (mismo gate que todo lo demás acá —
-        # no se confía en el cfg original a ciegas tampoco).
-        original_mapping: dict[str, str] = {}
-        for f in (cfg.get("fields") or []):
-            if not isinstance(f, dict):
-                continue
-            dest = str(f.get("table_field") or f.get("lookup") or "").strip().lower()
-            src = str(f.get("stream_field") or f.get("stream") or "").strip()
-            if dest and src and dest not in missing_lower and src.lower() in upstream_lower:
-                original_mapping[dest] = src
-
-        mapping: dict[str, str] = {}
-        det_mapping = _deterministic_field_mapping(missing, upstream)
-        if det_mapping is not None:
-            mapping = det_mapping
-            _log.info(
-                "_repair_dimension_loader_fields: '%s' (tabla '%s') — mapeo determinístico "
-                "(sin LLM, sinónimo con/sin prefijo) resolvió missing=%s -> %s.",
-                step_name, table, sorted(missing_lower), mapping,
-            )
-        else:
-            for attempt in range(max_retries):
-                repaired_cfg = await repair_step_config(
-                    step_name, "DimensionLookup", cfg,
-                    [("fields", f"faltan mapear al stream de entrada: {', '.join(sorted(missing))}")],
-                    context_text, llm,
-                )
-                if not isinstance(repaired_cfg, dict):
-                    _log.warning(
-                        "_repair_dimension_loader_fields: '%s' intento %d/%d — repair_step_config "
-                        "no devolvió dict.", step_name, attempt + 1, max_retries,
-                    )
-                    continue
-                raw_mapping: dict[str, str] = {}
-                for f in (repaired_cfg.get("fields") or []):
-                    if not isinstance(f, dict):
-                        continue
-                    dest = str(f.get("table_field") or f.get("lookup") or "").strip().lower()
-                    src = str(f.get("stream_field") or f.get("stream") or "").strip()
-                    if dest and src:
-                        raw_mapping[dest] = src
-                covered = {a for a in missing_lower if raw_mapping.get(a) and raw_mapping[a].lower() in upstream_lower}
-                _log.info(
-                    "_repair_dimension_loader_fields: '%s' intento %d/%d — mapeo propuesto=%s, "
-                    "cubre=%s de missing=%s", step_name, attempt + 1, max_retries,
-                    raw_mapping, sorted(covered), sorted(missing_lower),
-                )
-                if missing_lower <= covered:
-                    mapping = raw_mapping
-                    break
-
-        covered_final = {a for a in mapping if mapping.get(a) and mapping[a].lower() in upstream_lower}
-        if not (missing_lower <= covered_final):
-            _log.warning(
-                "_repair_dimension_loader_fields: '%s' (tabla '%s') — gate no pasó tras %d intento(s), "
-                "step queda intacto (piso de hoy).", step_name, table, max_retries,
-            )
-            continue  # repair no cerró el hueco tras los reintentos — step intacto, piso de hoy
-
-        mapping = {**original_mapping, **mapping}
-        step["config"] = dict(cfg)
-        step["config"]["fields"] = [
-            {"table_field": attr} for attr in (*contract.attributes_scd1, *contract.attributes_scd2)
-        ]
-        step["config"]["update"] = "N"
-        repaired_mappings[step_name] = mapping
-        repaired_tables.add(table)
-        _log.info(
-            "_repair_dimension_loader_fields: '%s' (tabla '%s') — repair aplicado, mapeo=%s",
-            step_name, table, mapping,
-        )
-
-    if not repaired_tables:
-        _log.info("_repair_dimension_loader_fields: ningún candidato se pudo reparar.")
-        return step_policy_results
-
-    pass2_results = enforce_dimension_step_policy(
-        ktr_data, dim_contracts, STEP_TYPE_ALIASES, validaciones_modelo,
-        repaired_mappings=repaired_mappings,
-    )
-    return (
-        [r for r in step_policy_results if r.get("campo") not in repaired_tables]
-        + [r for r in pass2_results if r.get("campo") in repaired_tables]
-    )
 
 
 def _build_ktr_stage(
@@ -1378,21 +1151,13 @@ async def build_etl_from_raw(
     dim_contracts (opcional): a diferencia de repair_*, este camino NO corre
     validate_and_correct_ddl() (audita el DDL contra el contrato — llama al
     modelo, y el punto de "reutilizar respuesta" es evitar esa llamada) pero
-    SÍ corre enforce_dimension_step_policy() si dim_contracts llega — es
-    determinístico, no llama al modelo. Sin dim_contracts (llamadas viejas, o
-    datos guardados antes de este parámetro) se omite sin error —
+    SÍ corre apply_dimension_contracts() si dim_contracts llega — es
+    determinístico, no llama al modelo (O3: la síntesis del step de
+    dimensión nunca necesitó LLM, la única llamada que este camino evitaba
+    era la del repair de mapeo de campos, y esa estación ya no existe — ver
+    docs/refactor/30-decision-python-llm.md). Sin dim_contracts (llamadas
+    viejas, o datos guardados antes de este parámetro) se omite sin error —
     comportamiento histórico preservado.
-
-    _repair_dimension_loader_fields() (hallazgo H53, 01-hallazgos.md) corre
-    justo después de enforce_dimension_step_policy(), con llm si llegó — no
-    necesita DDL (a diferencia de repair_ktr_steps/repair_integrity_gaps):
-    arma su propio contexto acotado desde dim_contracts + el grafo de campos
-    de raw_llm_data mismo. Antes, este endpoint pasaba llm=None siempre desde
-    el router (ai.py) — desconectado a propósito, con una discusión pendiente
-    sobre si "reutilizar respuesta" debía poder llamar al modelo. Decisión
-    2026-08-02: sí — las llamadas de repair son acotadas a un step por vez,
-    no una regeneración, así que no contradicen el punto de este endpoint
-    (evitar las 2 llamadas grandes de generación).
 
     real_connections/connection_warnings (opcional): mismo shape que arma
     resolve_real_connections() (ver ktr_builder/connection.py) — antes este
@@ -1440,20 +1205,21 @@ async def build_etl_from_raw(
         if not dim_contracts:
             _log.warning(
                 "build_etl_from_raw: dim_contracts vacío/ausente en el request — "
-                "enforce_dimension_step_policy y el repair de campos de dimensión NO corren."
+                "apply_dimension_contracts NO corre."
             )
         if dim_contracts:
-            step_policy_results = enforce_dimension_step_policy(
+            step_policy_results = apply_dimension_contracts(
                 raw_llm_data["ktr_2"]["ktr"], dim_contracts, STEP_TYPE_ALIASES,
                 raw_llm_data["ktr_2"].get("validaciones", []),
             )
-            step_policy_results = await _repair_dimension_loader_fields(
-                raw_llm_data["ktr_2"]["ktr"], dim_contracts, step_policy_results,
-                raw_llm_data["ktr_2"].get("validaciones", []), llm,
+            verify_warnings_2 = _verify_emitted_ktr(
+                raw_llm_data["ktr_2"]["ktr"], known_tables,
+                narracion_modelo=raw_llm_data["ktr_2"].get("validaciones", []),
             )
             raw_llm_data["ktr_2"].setdefault("validaciones", []).extend(step_policy_results)
             extra_warnings = [
                 *extra_warnings,
+                *verify_warnings_2,
                 *_scd_consequence_findings(dim_contracts),
                 *_monetary_scd2_guard(dim_contracts),
             ]
@@ -1482,20 +1248,21 @@ async def build_etl_from_raw(
         if not dim_contracts:
             _log.warning(
                 "build_etl_from_raw: dim_contracts vacío/ausente en el request — "
-                "enforce_dimension_step_policy y el repair de campos de dimensión NO corren."
+                "apply_dimension_contracts NO corre."
             )
         if dim_contracts:
-            step_policy_results = enforce_dimension_step_policy(
+            step_policy_results = apply_dimension_contracts(
                 raw_llm_data["ktr"], dim_contracts, STEP_TYPE_ALIASES,
                 raw_llm_data.get("validaciones", []),
             )
-            step_policy_results = await _repair_dimension_loader_fields(
-                raw_llm_data["ktr"], dim_contracts, step_policy_results,
-                raw_llm_data.get("validaciones", []), llm,
+            verify_warnings = _verify_emitted_ktr(
+                raw_llm_data["ktr"], known_tables,
+                narracion_modelo=raw_llm_data.get("validaciones", []),
             )
             raw_llm_data.setdefault("validaciones", []).extend(step_policy_results)
             extra_warnings = [
                 *extra_warnings,
+                *verify_warnings,
                 *_scd_consequence_findings(dim_contracts),
                 *_monetary_scd2_guard(dim_contracts),
             ]
@@ -1690,7 +1457,7 @@ async def generate_etl_from_inference(
 
     data_1["ktr"], cfg_warnings_1 = normalize_step_configs(data_1["ktr"])
     data_2["ktr"], cfg_warnings_2 = normalize_step_configs(data_2["ktr"])
-    # H29 — corre ANTES de enforce_dimension_step_policy (más abajo) y del
+    # H29 — corre ANTES de apply_dimension_contracts (más abajo) y del
     # split_ktr_by_cut interno de _build_response_from_two_ktr_data: ambos
     # necesitan 'table' ya recuperado (ver validators/README.md).
     known_tables = _known_table_names(req.stg_definition, dwh_ddl)
@@ -1732,8 +1499,12 @@ async def generate_etl_from_inference(
         _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
     )
     ddl_change_warnings = [f"DDL (Parte 3): {c}" for c in ddl_result.cambios_aplicados]
-    step_policy_results = enforce_dimension_step_policy(
+    step_policy_results = apply_dimension_contracts(
         data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
+    )
+    verify_warnings = _verify_emitted_ktr(
+        data_2["ktr"], known_tables, dwh_constraints,
+        narracion_modelo=data_2.get("validaciones", []), dwh_numeric_scale=dwh_numeric_scale,
     )
     return _build_response_from_two_ktr_data(
         data_1, data_2, metadata,
@@ -1742,7 +1513,7 @@ async def generate_etl_from_inference(
             *cfg_warnings_1, *cfg_warnings_2, *table_warnings_1, *table_warnings_2,
             *repair_warnings_1, *repair_warnings_2, *integrity_warnings_1, *integrity_warnings_2,
             *type_warnings, *contract_warnings, *dim_contract_warnings, *scd_zero_warnings,
-            *scd_consequence_findings, *monetary_scd2_warnings,
+            *scd_consequence_findings, *monetary_scd2_warnings, *verify_warnings,
             *inferred_member_warnings, *ddl_change_warnings, *seed_warnings,
         ],
         extra_validaciones=[*ddl_result.conflictos, *[Validacion(**r) for r in step_policy_results]],
@@ -1803,7 +1574,7 @@ async def _stage_pipeline(
 
     data["ktr"], cfg_warnings = normalize_step_configs(data["ktr"])
     # H29 — antes de repair/integrity está bien (esos no tocan 'table'), pero
-    # tiene que estar antes de enforce_dimension_step_policy/split_ktr_by_cut,
+    # tiene que estar antes de apply_dimension_contracts/split_ktr_by_cut,
     # que corren después de que esta función retorna (ver validators/README.md).
     table_warnings = _recover_table_keys(
         data["ktr"], known_tables, dwh_constraints, narracion_modelo=data.get("validaciones", []),
@@ -2091,23 +1862,17 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                 _dims_with_inferred_member(dwh_ddl, req.dim_contracts)
             )
             ddl_change_warnings = [f"DDL (Parte 3): {c}" for c in ddl_result.cambios_aplicados]
-            # Muta data_2["ktr"] in-place cuando corrige un downgrade seguro — tiene
-            # que correr ANTES de persistir raw_data_2, si no _try_build() reconstruye
-            # el .ktr contra el step viejo (sin corregir). Nota: esto corre DESPUÉS
-            # del checkpoint 2 de abajo — raw_data_2 en el commit final puede diferir
-            # del que se ve en un /status intermedio, a propósito (ver D30).
-            step_policy_results = enforce_dimension_step_policy(
+            # Muta data_2["ktr"] in-place — tiene que correr ANTES de persistir
+            # raw_data_2, si no _try_build() reconstruye el .ktr contra el step
+            # sin sintetizar. Nota: esto corre DESPUÉS del checkpoint 2 de abajo
+            # — raw_data_2 en el commit final puede diferir del que se ve en un
+            # /status intermedio, a propósito (ver D30).
+            step_policy_results = apply_dimension_contracts(
                 data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
             )
-            # Hallazgo (01-hallazgos.md): repair dirigido para los findings
-            # 'repairable' del pase de arriba — ver docstring de la función
-            # para el doble gate y el alcance de autoridad del repair (solo
-            # el mapeo de campos, nada más). No reemplaza el piso de hoy: si
-            # no cierra el hueco, el step queda como estaba y build_ktr()
-            # aborta más abajo, igual que antes de este cambio.
-            step_policy_results = await _repair_dimension_loader_fields(
-                data_2["ktr"], req.dim_contracts, step_policy_results,
-                data_2.get("validaciones", []), llm,
+            verify_warnings = _verify_emitted_ktr(
+                data_2["ktr"], known_tables, dwh_constraints,
+                narracion_modelo=data_2.get("validaciones", []), dwh_numeric_scale=dwh_numeric_scale,
             )
 
             reuse_tokens_note = (
@@ -2128,13 +1893,13 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
                 "repair_warnings": [
                     *stage_warnings_1, *stage_warnings_2,
                     *type_warnings, *contract_warnings, *dim_contract_warnings, *scd_zero_warnings,
-                    *scd_consequence_findings, *monetary_scd2_warnings,
+                    *scd_consequence_findings, *monetary_scd2_warnings, *verify_warnings,
                     *inferred_member_warnings, *ddl_change_warnings, *seed_warnings, *reuse_tokens_note,
                 ],
                 # Persistido para que _try_build() (que corre después, cuando el
                 # usuario confirma las conexiones) pueda incluirlos en la
                 # respuesta final sin volver a llamar a validate_and_correct_ddl /
-                # enforce_dimension_step_policy.
+                # apply_dimension_contracts.
                 "ddl_conflictos": [c.model_dump() for c in ddl_result.conflictos],
                 "step_policy_conflictos": step_policy_results,
                 "stages": {**prev_stages, "stg_dwh": {"status": "done"}},

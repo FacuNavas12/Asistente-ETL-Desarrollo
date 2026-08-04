@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Cada H se escribe una vez y no se reescribe — una actualización nueva se agrega como párrafo nuevo dentro de la misma entrada, con fecha. El índice al tope sí se edita en el momento en que el estado de un hallazgo cambia.
 
-**Última actualización:** 2026-08-02 (H53 cerrado en la misma sesión — `_synthesize_dimension_lookup_config` asumía `stream_field==table_field` sin verificar, mapeos incorrectos en silencio, confirmado contra corpus real)
+**Última actualización:** 2026-08-04 (H51 cerrado por construcción — D68, O3: `apply_dimension_contracts` escribe `update` del loader siempre, sin comparar contra lo que el step traía)
 
 Cada entrada: qué se encontró, evidencia (`archivo:línea`), de qué sesión salió, y estado. Estado se evalúa contra [`02-decisiones.md`](02-decisiones.md) — si una decisión ya cerró el hallazgo, dice cuál.
 
@@ -66,7 +66,7 @@ El cuerpo de cada H es evidencia, no repite estado por fuera de lo ya escrito en
 | H48 | `InsertUpdate` nunca emitía `<update_bypassed>` — ausencia equivale a `"N"` en Kettle; con todos los `<value>` en `update="N"`, `prepareUpdate()` arma un `UPDATE ... SET` vacío y falla en runtime. Lateral a la investigación R-K7 (Postura B, `InsertUpdate` evaluado como loader SCD0) | Cerrado — D51 | bloqueante-runtime | F4 |
 | H49 | Centinelas de rango del calendario pre-poblado (DDL-2): sin checker posible (backend no ve filas reales) — cerrado solo con texto de advertencia más preciso en K18, el error puede seguir repitiéndose si el usuario no lo lee/sigue. Camino no explorado: generar el script `generate_series` como artefacto propio con centinelas hardcodeados (mismo patrón que D47) | Abierto, sin dueño de track | G-step | F4 |
 | H50 | D45 punto 5 (hops que cruzan grupos) es inalcanzable por el caso real con el algoritmo de corte actual — un grupo es siempre unión de componentes completos, solo dispara hoy por hop-colgante | Abierto, sin dueño de track — D48 lo vuelve alcanzable | S | F3 |
-| H51 | Loader de dimensión con `update="N"` (equivale a solo-lectura, nunca inserta/actualiza) pasa sin detectar — ni `enforce_dimension_step_policy` ni `check_dimension_lookup_fields` verifican el flag para rol loader | Abierto, sin dueño de track — visto en corrida real Fase 4 (sonnet-01) | validación | F4 |
+| H51 | Loader de dimensión con `update="N"` (equivale a solo-lectura, nunca inserta/actualiza) pasa sin detectar — ni `enforce_dimension_step_policy` ni `check_dimension_lookup_fields` verifican el flag para rol loader | Cerrado por construcción — D68 (O3, 2026-08-04) | validación | F4 |
 | H52 | `Connection.db_type`/`InlineConnection.db_type` acepta `sqlserver`, pero el DDL del DWH que el LLM genera es Postgres-only sin excepción — nada en el pipeline pasa el motor real al prompt que arma `dwh_ddl` | Abierto, sin dueño de track — preexistente, no introducido por el plan D55 | contenido-LLM / borde-entrada | — |
 | H53 | `_synthesize_dimension_lookup_config` asumía `stream_field==table_field` sin verificar contra el stream real — mapeos incorrectos en silencio (`.ktr` abre, no escribe), confirmado contra corpus real | Cerrado 2026-08-02, misma sesión que lo encontró | contenido-LLM / D-integridad | F4 |
 
@@ -915,6 +915,8 @@ Demuestra la taxonomía S/G/D/Env que pide el punto 3 del pedido del usuario (20
 **Sesión de origen:** análisis de la corrida real de Fase 4, 2026-07-31 (fecha de export del JSON: 2026-07-30/31 según reloj de la sesión que la generó).
 
 **Estado: abierto, sin dueño de track.** No bloquea el cierre de lo ya ejecutado (D44-D53) — es un gap de cobertura nuevo, encontrado por evidencia real, no una regresión de esas decisiones. Candidato natural: extender `enforce_dimension_step_policy` para que el rol `loader` también verifique `update="Y"` (mismo patrón que ya usa para `fact_lookup` con `update="N"`), o agregar el chequeo a `check_dimension_lookup_fields`.
+
+**Actualización 2026-08-04 (D68, O3) — cerrado por construcción, no por el checker candidato.** `enforce_dimension_step_policy` (el `if canonical == expected: continue` de `:300` que este hallazgo señala) ya no existe. `apply_dimension_contracts()` la reemplaza: para rol `loader` escribe `update="Y"` siempre, sin comparar contra lo que el step traía — no hay rama que un `update="N"` pueda atravesar sin tocar, porque no hay comparación, hay reescritura incondicional. El caso que este hallazgo describe (loader con tipo correcto pero `update` incorrecto) es hoy imposible por construcción, para toda tabla con contrato.
 
 ---
 

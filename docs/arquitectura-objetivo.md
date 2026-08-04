@@ -87,7 +87,7 @@ Este mapa es una fotografía de intención, no un compromiso de fecha: dice a d�
 
 | Hoy | Capa objetivo | Nota |
 |---|---|---|
-| `routers/` | `api/` | Directo. |
+| `routers/` | `api/` | Directo. Excepción ya corregida: `routers/schema.py::infer_schema` manejaba el tempfile del upload él mismo (R2) — **Ejecutado (O2-d)**, el borde pasó a `services/file_schema.py::infer_schema_from_upload`. `test_architecture_layers.py` no mide R2 (solo R1/R3/R4 en su recorte, ver su docstring) — por eso esto no vivía en ningún `FROZEN_*`; era un hueco del radar, no deuda registrada. `routers/ai.py` y `routers/connections.py` siguen con violaciones de R2 más amplias que R4 solo (`db.commit()`/`db.rollback()` directo en el router) — esas sí están cubiertas por `FROZEN_R4` en su parte de ORM, pero R2 en general sigue sin test. |
 | `schemas/` (excepto `llm_output_schemas/`) | `schemas/` | Contrato HTTP. Directo — con la excepción nombrada de `canonical.py` reexportando `domain/canonical_types.py` (ver fila siguiente, ejecutado). |
 | `schemas/llm_output_schemas/` | `infrastructure/llm/` | Es el contrato de una fuente externa, no de la API. |
 | `domain/canonical_types.py` (`CanonicalType`, `FieldFormat`, `ColumnRole`) | `domain/` | **Ejecutado** (cierre de la sesión de arquitectura, split de `registry.py`): primer archivo físico de `domain/`. Movidos desde `schemas/canonical.py`, que los reexporta con excepción nombrada por símbolo (motivo: value objects puros de stdlib — `str, Enum`/`Literal`, cero Pydantic). |

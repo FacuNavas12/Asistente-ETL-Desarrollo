@@ -285,9 +285,10 @@ class BuildFromRawRequest(BaseModel):
     dim_contracts: el contrato de la inferencia (ver DimContract) no viaja
     dentro de raw_llm_data — es un campo del request de generación (ETLFromInferenceRequest),
     no de la salida del modelo que arma el KTR. Sin pasarlo acá aparte, este
-    endpoint no tiene forma de correr enforce_dimension_step_policy() sobre el
+    endpoint no tiene forma de correr apply_dimension_contracts() sobre el
     KTR reconstruido. Opcional (default vacío) por compatibilidad con datos
-    guardados antes de este campo — en ese caso no se corre el enforcement.
+    guardados antes de este campo — en ese caso no se sintetiza el config de
+    los steps de dimensión.
 
     connections_map: mismo shape que usa el flujo async (POST /{job_id}/connections)
     — antes este endpoint no tenía forma de recibir conexiones y siempre entregaba

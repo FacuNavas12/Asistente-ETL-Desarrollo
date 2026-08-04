@@ -154,15 +154,14 @@ async def build_from_raw(
 
     Repair SÍ llama al LLM acá (decisión tomada, 2026-08-02 — antes desconectado
     a propósito, ver git blame de esta línea): repair_ktr_steps() (config
-    incompleto, por step) y _repair_dimension_loader_fields() (hallazgo H53,
-    docs/refactor/01-hallazgos.md — mapeo table_field->stream_field de un
-    DimensionLookup, doble gate) corren igual que en el flujo de generación
-    normal. Llamadas acotadas a un step por vez, no una regeneración completa
-    — el punto de "reutilizar respuesta" (evitar 2 llamadas grandes al modelo)
-    se preserva; lo que se habilita son reparaciones puntuales y baratas.
-    repair_integrity_gaps() y enforce_dimension_step_policy() ya corrían acá
-    sin depender de esto (el primero por fallback determinístico, el segundo
-    porque nunca llama al modelo) — ver build_etl_from_raw().
+    incompleto, por step) corre igual que en el flujo de generación normal.
+    Llamadas acotadas a un step por vez, no una regeneración completa — el
+    punto de "reutilizar respuesta" (evitar 2 llamadas grandes al modelo) se
+    preserva; lo que se habilita son reparaciones puntuales y baratas.
+    repair_integrity_gaps() y apply_dimension_contracts() ya corrían acá sin
+    depender de esto (el primero por fallback determinístico, el segundo
+    porque nunca llama al modelo — O3, docs/refactor/30-decision-python-llm.md)
+    — ver build_etl_from_raw().
 
     connections_map (opcional): antes este endpoint no tenía forma de recibir
     conexiones y "Reutilizar respuesta" siempre entregaba el .ktr con

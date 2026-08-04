@@ -125,7 +125,7 @@ def build_ktr(
     known_tables: nombres de tabla física reales del ETL (staging + DWH,
     lowercase, sin schema) — insumo de validators.recover_table_key (H29).
     Red de seguridad: etl_generator.py ya corre ese pass ANTES de acá (tiene
-    que correr antes de enforce_dimension_step_policy/split_ktr_by_cut, que
+    que correr antes de apply_dimension_contracts/split_ktr_by_cut, que
     ejecutan antes de build_ktr — ver validators/README.md), así que acá es
     best-effort para callers que invocan build_ktr() directo (tests,
     build_etl_from_raw). None sin required_columns_by_table -> set vacío
@@ -175,7 +175,7 @@ def build_ktr(
             )
 
     # Red de seguridad (H29): ya corrió antes en etl_generator.py para los
-    # steps que enforce_dimension_step_policy/build_rw_matrix necesitan ver
+    # steps que apply_dimension_contracts/build_rw_matrix necesitan ver
     # a tiempo — acá es best-effort para callers que no pasaron por ese
     # pipeline. Idempotente: si ya se resolvió, no encuentra nada que hacer.
     table_ctx = ValidationContext(

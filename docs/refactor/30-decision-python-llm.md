@@ -66,27 +66,27 @@ Sin las tres, O3 discute de memoria — y este proyecto ya tiene un caso registr
 
 ## Decisiones que O3 tiene que tomar explícitamente
 
-Ninguna está decidida. Se listan para que no aparezcan a mitad de camino.
+Caso testigo (decisión 1) resuelto e implementado end-to-end (sesión O3, 2026-08-04) — falta la D-N en `02-decisiones.md` (redactada por el usuario, contenido preparado por la sesión que cerró esto). Decisiones 2, 4 y 5 quedan resueltas como consecuencia directa de la 1. Decisión 3 sigue tal cual estaba — no se tocó.
 
 | # | Decisión | Nota |
 |---|---|---|
-| 1 | ¿El step loader de dimensión se sintetiza completo, o se pide y se corrige? | Es el caso testigo. Si se sintetiza, desaparecen las estaciones 3-6 para ese step |
-| 2 | ¿Qué entra en el prompt si el paso 1 sale "se sintetiza"? | La sección de dimensiones de `system_etl.txt` deja de tener destinatario. Es la revisión de prompts, que es consecuencia de esto, no un plan aparte |
-| 3 | ¿Se ramifica por `scd_type` en la emisión? | **Cuidado: D44 ya decidió que no** — vocabulario uniforme por rol, `DimensionLookup` para todo `scd_type`, decidido leyendo fuente de Kettle. Reabrirlo necesita una D-N que la supersede explícitamente. No se puede empezar como si estuviera abierto |
-| 4 | ¿Qué pasa cuando la síntesis no es posible por datos faltantes? | Hoy la respuesta es "reparar con otra llamada al modelo". La alternativa es notificar y entregar, coherente con O1 |
-| 5 | ¿La verificación posterior sigue existiendo si lo determinista ya no se pregunta? | Probablemente sí, más chica: verifica lo que el modelo aportó, no lo que Python sintetizó |
+| 1 | ¿El step loader de dimensión se sintetiza completo, o se pide y se corrige? | **Resuelto: se sintetiza completo.** El modelo aporta topología (dónde va el step, sus hops) + `config.table` + `keys[].stream_field`/`fields[].stream_field` (el mapeo que no es derivable). Python sintetiza SIEMPRE, incondicional — no solo al detectar discrepancia — `update`/`return_field`/`date_from`/`date_to`/`version_field`/`fields[].type`, vía `build_dimension_lookup_config()` (`dimension_step_policy.py`), llamado desde `apply_dimension_contracts()` (reemplaza `enforce_dimension_step_policy`). Las estaciones 3-6 originales colapsan: no hay "el modelo puede contradecir" cuando no se le pide escribir eso, y no hay estación de reparación (`_repair_dimension_loader_fields` borrada) |
+| 2 | ¿Qué entra en el prompt si el paso 1 sale "se sintetiza"? | **Resuelto.** `system_etl.txt` § "STEP DE DIMENSIONES" reescrito: pide 4 cosas (name+hops, table, keys, fields — sin `type`) y dice explícitamente qué NO poner. `_format_dim_contracts()` (`etl_generator.py`) pasó de 11 tokens por dimensión a 4 (`columnas_destino`, `natural_keys`, `campo_sk_en_stream`, `columna_vigencia`) |
+| 3 | ¿Se ramifica por `scd_type` en la emisión? | **Sin tocar — D44 sigue vigente.** Vocabulario uniforme por rol, `DimensionLookup` para todo `scd_type`. La síntesis nueva no introduce ninguna rama por tipo |
+| 4 | ¿Qué pasa cuando la síntesis no es posible por datos faltantes? | **Resuelto: notifica y entrega, nunca aborta.** Atributo sin homónimo en el stream → se omite de `fields` + finding `tipo=error`; grafo no resoluble → identidad sin verificar + finding `tipo=warning` cuando el rol además se forzó (D58). Coherente con D60 |
+| 5 | ¿La verificación posterior sigue existiendo si lo determinista ya no se pregunta? | **Resuelto: sí, más chica.** `VERIFY_PASSES` (`validators/__init__.py`, subconjunto de `PRE_EMIT_PASSES`) corre en `_verify_emitted_ktr()` DESPUÉS de `apply_dimension_contracts()` — verifica lo que Python sintetizó (regresiones propias) y lo que el modelo aportó en tablas sin contrato, no compara contra un config que el modelo ya no escribe |
 
 ---
 
 ## Criterio de terminado
 
-1. La línea escrita como D-N: qué se sintetiza, qué se pregunta, qué se verifica.
-2. Al menos el caso testigo (decisión 1) implementado end-to-end.
-3. Las estaciones que dejaron de tener sentido, borradas — no desactivadas ni marcadas como deprecated.
-4. `system_etl.txt` sin la sección que dejó de tener destinatario.
-5. Una corrida real que muestre la cadena corta funcionando.
+1. La línea escrita como D-N: qué se sintetiza, qué se pregunta, qué se verifica. **Hecho** — [D68](02-decisiones.md#d68).
+2. Al menos el caso testigo (decisión 1) implementado end-to-end. **Hecho.** `build_dimension_lookup_config()`/`apply_dimension_contracts()` (`dimension_step_policy.py`), 4 call sites de `etl_generator.py` actualizados, `_repair_dimension_loader_fields`/`_dimension_repair_context`/`_deterministic_field_mapping` borradas (con ellas, E-21/E-23 se cierran por construcción, no por fix). Verificado contra el corpus real (`etl-llm-raw-test-01_sonnet_fase4.json`) que el caso `nombre_categoria`→`categoria` (prefijo) y el descarte de `fk_categoria`/`precio_lista`/`stock` (vocabulario cruzado) resuelven en la pasada principal, sin llamada extra al LLM.
+3. Las estaciones que dejaron de tener sentido, borradas — no desactivadas ni marcadas como deprecated. **Hecho** — ver punto 2, más el discriminador D58 por contenido de `fields` (reemplazado por regla de conteo) y el finding `repairable`.
+4. `system_etl.txt` sin la sección que dejó de tener destinatario. **Hecho** — § "STEP DE DIMENSIONES" reescrita (4 tokens que el modelo sigue necesitando, en vez de 11), checklist ítems 19/19b/23/24 acotados o borrados.
+5. Una corrida real que muestre la cadena corta funcionando. **Parcial** — verificado con el corpus E-01 corrido en aislamiento contra `apply_dimension_contracts()` directo (no a través de `/generate-async`). Falta la corrida end-to-end (`/generate-async`→`/connections`→`/status`) con LLM real y cuota — `backend/.env` vacío a propósito en este entorno, queda para cuando el usuario la corra.
 
-**El indicador:** si después de O3 sigue habiendo una estación de reparación para el mismo dato que Python ya podía derivar, la línea se trazó mal.
+**El indicador:** si después de O3 sigue habiendo una estación de reparación para el mismo dato que Python ya podía derivar, la línea se trazó mal. **No la hay** — la única estación de reparación que existía para esto (`_repair_dimension_loader_fields`) está borrada.
 
 ---
 

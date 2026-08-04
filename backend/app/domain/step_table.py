@@ -3,7 +3,7 @@ una sola función que resuelve "qué tabla toca este step", devolviendo un
 mensaje de notificación en vez de tragar el caso vacío en silencio (R12,
 docs/arquitectura-objetivo.md). Reemplaza el `if not table: continue`
 reimplementado por separado en fragmentation.build_rw_matrix,
-dimension_step_policy.enforce_dimension_step_policy y
+dimension_step_policy.apply_dimension_contracts y
 fields_validate.validate_dimension_lookup_races — los tres normalizaban
 (`.strip()`, a veces `.lower()`) y descartaban el caso vacío cada uno a su
 manera, sin dejar rastro.

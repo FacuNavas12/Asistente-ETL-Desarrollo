@@ -20,7 +20,7 @@ Depende del archivo: `ETLGenerateResponse`/`JobPlan` para los casos de uso; fila
 | `etl_service.py`, `job_service.py` | `services/` | CRUD de `Etl`/`Job`. Importan `fastapi.HTTPException` directo (R3, congelado). |
 | `structure_inferrer.py` | `services/` | Inferencia automática de DDL STG/DWH desde 3 campos de usuario. |
 | `type_mappings.py` | `infrastructure/db_inspection/` | Mapeo tipos SQL crudos → `CanonicalType`. Traduce vocabulario de un vendor concreto (Postgres/SQL Server) — importa `domain/canonical_types.py` directo, consumido solo por `db_adapter.py` (otro adaptador). Reclasificado de `domain/` a infra en la sesión de arquitectura, ver `docs/arquitectura-objetivo.md`, criterio "vocabulario PDI es dominio" en `CLAUDE.md`. |
-| `file_schema.py` | `infrastructure/schema_sources/` | Inferencia de esquema desde CSV/Excel vía Frictionless. |
+| `file_schema.py` | `infrastructure/schema_sources/` | Inferencia de esquema desde CSV/Excel vía Frictionless. Dueño del borde de upload (O2-d): `infer_schema_from_upload(filename, chunks)` valida extensión/tamaño, spoolea a tempfile y limpia — `routers/schema.py` ya no toca disco. |
 | `ddl_validation.py` | `services/` | Audita/corrige DDL DWH contra `dim_contracts` vía LLM. |
 | `ktr_xml_validator.py`, `kjb_xml_validator.py` | `infrastructure/pentaho/` | Lint post-generación de `.ktr`/`.kjb` — última barrera antes de entregar el XML. |
 | `masker.py` | `infrastructure/db_inspection/` | Enmascarado format-preserving de valores de muestra. |

@@ -2,7 +2,7 @@
 
 **Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-08-03 (D64, O1: Alcance punto 3 de `10-estabilizar-emision.md` verificado en corrida real — sin cambios de código)
+**Última actualización:** 2026-08-04 (D68, O3 caso testigo — step de dimensión se sintetiza siempre, no se pide y corrige)
 
 Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
 
@@ -71,13 +71,17 @@ El cuerpo de cada D es evidencia append-only (regla 2, `CLAUDE.md`) — no se ed
 | D55 | Plan de reparación del generador ETL (8 ítems): vocabulario `<field><update>` por modo sin condición de vacío (cierra H51), `ConcatFields` al formato real, suite que genera en vez de consumir el golden, semilla `tk=0` sintetizada en el DDL (alineada con D47, no lo reabre), contra-chequeo narración↔XML, `check_constraint_filter_rows`/`guard_staging_layer` completados, escala `BigNumber` desde el DDL | Planificado (2026-08-01), no ejecutado — ítem 1, rótulo interno "D-1" (`KtrBuilderError` obligatorio en `lookups.py`/`build.py`), **superseded en parte por D60** |
 | D56 | Ítem 5 de D55 (contra-chequeo narración↔XML): implementado con limitación conocida (falso negativo si el regex no matchea) | Ejecutado, limitación registrada |
 | D57 | Reclasificación a fact_lookup en `enforce_dimension_step_policy`: se limpia `fields`, no se conserva vocabulario Y-mode cruzado | Ejecutado |
-| D58 | `role_of_dimension_step`: BFS solo desambigua con 2+ candidatos; `already_readonly` valida vocabulario antes de dejar pasar | Ejecutado |
+| D58 | `role_of_dimension_step`: BFS solo desambigua con 2+ candidatos; `already_readonly` valida vocabulario antes de dejar pasar | Ejecutado — discriminador por contenido de `fields` y rama `already_readonly` **superseded por D68** (O3: la síntesis reconstruye el config siempre, ya no hay "ya venía bien" ni evidencia en `fields` del modelo); BFS de rol y regla de conteo con 1 candidato, vigentes |
 | D59 | O1, lote E-04…E-08: StringOperations/Unique/ExcelInput/JsonInput/TextFileOutput corregidos contra `readData()` real de Kettle, evidencia citada por clase+línea | Ejecutado (2026-08-03) |
 | D60 | O1-b: `VALUE_META_TYPE_NAMES` verificada y corregida (E-02); criterio de degradación legítima escrito; política de los 4 sitios de aborto por contenido — supersede la parte de D55 (rótulo interno "D-1") que exige `KtrBuilderError` en esos 4 sitios | Decidido (2026-08-03); criterio y `VALUE_META_TYPE_NAMES` ejecutados, conversión de los 4 sitios pendiente (Alcance punto 2 de `10-estabilizar-emision.md`) |
 | D61 | O2-a: `common.py` partido — `_yn`/`KtrBuilderError` quedan (dominio puro), `_sub` se muda a `xml_helpers.py` nuevo (infra) | Ejecutado (2026-08-03) |
 | D62 | O2-b (T1): `resolve_step_table()` nueva en `domain/step_table.py` — unifica el `if not table: continue` mudo de `fragmentation.py`/`dimension_step_policy.py`/`fields_validate.py`, devuelve mensaje en vez de tragarlo | Ejecutado (2026-08-03) |
 | D63 | O1-b: dedupe de vocabulario cruzado en `DimensionLookup` — canal único `check_dimension_lookup_fields`, registro retroactivo de D60 | Ejecutado (2026-08-03) |
 | D64 | O1: Alcance punto 3 de `10-estabilizar-emision.md` (findings de `enforce_dimension_step_policy` llegan al usuario) — verificado en corrida real contra el corpus de E-01, canal ya existía, sin cambio de código. Encontrado E-20 (duplicación de `PRE_EMIT_PASSES`) | Verificado (2026-08-03); E-20 abierto, no bloquea |
+| D65 | O1-b cierra vía corrida real async (`/generate-async`→`/status`) + fix de Bloque 3 (`_build_response_from_two_ktr_data` ya no descarta la etapa origen→STG cuando STG→DWH falla estructuralmente). Con esto, O1 completo | Ejecutado (2026-08-03), commit `80a1e3b` |
+| D66 | O2-c: `lineage_builder.py` partido — `build_lineage`/`stitch_lineage_many`/`stitch_lineage` a `domain/lineage.py` (`LineageGraphData`, dataclass stdlib); `_parse_ktr_xml` queda de infra en `services/lineage_builder.py`. Registro retroactivo — código y mapa ya decían "Ejecutado" sin D-N propia | Ejecutado (2026-08-03) |
+| D67 | O2 verificado completo al pedir "empezar O2": O2-a/b/c ya ejecutadas (D61/D62/D66), `test_architecture_layers.py` verde, `FROZEN_R1` vacío. Nada nuevo que ejecutar — corrección de `docs/README.md` (línea O2-c apuntaba a D63, que ya era de otro tema) | Verificado (2026-08-03), sin cambio de código |
+| D68 | O3 caso testigo: el step de dimensión se sintetiza siempre (`apply_dimension_contracts`/`build_dimension_lookup_config`), no se pide y corrige. Estación de reparación borrada (cierra E-21/E-23 por construcción); `PRE_EMIT_PASSES` partida en `TABLE_RECOVERY_PASSES`/`VERIFY_PASSES`; prompt y `_format_dim_contracts` recortados. Supersede parcialmente D58 | Ejecutado (2026-08-04) — falta criterio 5 de `30-decision-python-llm.md` (corrida real end-to-end) |
 
 ---
 
@@ -1763,6 +1767,90 @@ más 6 findings `[Dimension lookup/update]` (canal b) nombrando cada atributo (`
 **Encontrado, no buscado — E-20 (`errores.md`):** los 6 findings de canal (b) aparecen **duplicados** (12, no 6) en `result.validaciones`. Causa confirmada con stack trace: `_recover_table_keys()` (H29, `etl_generator.py:305-334`) corre `run_passes()` — el tuple `PRE_EMIT_PASSES` COMPLETO, no solo `recover_table_key` — sobre el `ktr_data` completo ANTES del corte; `build_ktr()` (vía `_build_ktr_stage`) corre el mismo `run_passes()` completo otra vez sobre el sub-dict ya partido. `check_dimension_lookup_fields` (y cualquier otro pass de `PRE_EMIT_PASSES` insensible a si `table` ya se recuperó) no tiene forma de saber que ya corrió — el mismo finding sale dos veces, byte a byte. No es específico de este corpus: aplica a toda corrida con dimensiones (sync, async, `build_etl_from_raw`), desde que `_recover_table_keys` se cableó (H29). No bloquea el criterio de aceptación (el finding SÍ llega, con toda la info) pero es ruido real para el usuario — el mismo error se ve dos veces sin explicación. Abierto, `Origen=E-01` (encontrado verificando su cierre), no se corrige en esta sesión (regla de escritura: descubrir es libre, actuar necesita ruta — y esto no estaba en el alcance del prompt que originó esta sesión).
 
 **Verificación runtime:** ninguna (sin cambio de código, no aplica correr la suite). La corrida real de arriba se hizo con un script ad-hoc (`repro_dim_producto.py`, scratchpad), no un test nuevo — no se agrega a `backend/tests/` porque no hay código nuevo que cubrir; si E-20 se corrige en una sesión futura, ESE cambio sí necesita test.
+
+<a id="d65"></a>
+## D65 — O1-b cierra; con eso, O1 queda completo
+
+**Fecha:** 2026-08-03
+**Commit:** `80a1e3b`
+
+**Qué se decidió**
+O1-b se da por cerrada. O1-a y O1-c ya estaban cerradas, así que O1 queda completo.
+
+**Evidencia**
+
+- Test `test_e01_corpus_through_real_async_pipeline_reaches_built` (`backend/tests/test_ktr_build_job_api.py`): corre el corpus real de E-01 por el camino asíncrono completo — `/generate-async` → `/connections` → `/status` —, ruta nunca antes ejercitada (D64 solo había corrido `build_etl_from_raw()` directo). Resultado: `model_status == "done"`, `build_status == "built"`, y el finding de vocabulario cruzado llega a `result.validaciones` nombrando los 3 campos inventados (`fk_categoria`, `precio_lista`, `stock`).
+- Sin Spoon en esta máquina (verificado: no hay Pentaho Data Integration instalado). En su lugar se hizo cross-check de los `<type>` XML emitidos contra `investigacion-tags-validos-por-step.md`: 13 tipos de step del corpus, todos con plugin id real verificado, ninguno cae en la trampa de E-11.
+- Fix de Bloque 3: `_build_response_from_two_ktr_data` (`backend/app/services/etl_generator.py`) ya no descarta la etapa origen→STG cuando la etapa STG→DWH falla estructuralmente. Ahora entrega esa etapa sola más un `Validacion(tipo="error")` con el motivo del fallo de la otra. Test: `test_stg_dwh_structural_failure_still_delivers_the_origen_stg_stage_built` (`backend/tests/test_etl_generate_response_shape.py`).
+- Suite completa: 733 passed / 30 failed. Baseline previo a esta sesión: 730 passed / 31 failed. Cero regresión, 3 tests nuevos en verde.
+
+**Qué supersede**
+La baja a "parcial" de los criterios 3 y 4 que hizo la sesión de auditoría anterior. Ambos vuelven a "Hecho", ahora respaldados por corrida real y no solo por lectura de código.
+
+**Efectos colaterales registrados, NO arreglados**
+Quedan abiertos en `errores.md`; no bloquean el cierre.
+
+- **E-23** — impacto de E-21 confirmado empíricamente: con LLM disponible, el repair determinístico resuelve el caso sin llegar a llamar al modelo.
+- **E-24** — nuevo: los findings de "vocabulario modo N" sobreviven en `validaciones` después de que el repair H51 reclasifica el step a modo Y con vocabulario correcto. El archivo final queda bien, pero el finding que ve el usuario describe un estado ya superado.
+
+
+<a id="d66"></a>
+### D66 — O2-c: `lineage_builder.py` partido en dominio (`domain/lineage.py`) e infraestructura, registro retroactivo `[O2]`
+
+Estado: decidido y ejecutado en la sesión que cerró O2-c (misma sesión que cerró O2-a/O2-b, 2026-08-03); esta entrada es el registro faltante — la fila del mapa (`arquitectura-objetivo.md`) y `docs/README.md` ya decían "cerrada"/"Ejecutado (O2-c)" sin que existiera una D-N propia. `docs/README.md` había anotado "D63 pendiente de redactar" como placeholder; D63 se usó después para un tema distinto (dedupe E-20, O1-b) y la referencia quedó apuntando a un número equivocado — corregida en la sesión que escribe esta entrada (ver D67).
+
+**Problema:** `lineage_builder.py` era la última fila **partido** barata del mapa capa-objetivo. `build_lineage`, `stitch_lineage_many` y `stitch_lineage` son funciones puras sobre el dict KTR (armar el grafo de linaje origen→staging→DWH); `_parse_ktr_xml` lee XML ya serializado — infraestructura.
+
+**Decisión:** las tres funciones puras se mueven a `domain/lineage.py`, devolviendo `LineageGraphData` — dataclass propia de stdlib, no `schemas.lineage.Lineage` (`BaseModel` de Pydantic, prohibido en `domain/` por `domain/README.md` § "Qué NO va acá", motivo no explícito en la fila original del mapa hasta esta ejecución). `services/lineage_builder.py` queda como borde: convierte `LineageGraphData` → `Lineage` para la API y conserva `_parse_ktr_xml` (infra). Firmas públicas sin cambios: `build_lineage`, `stitch_lineage_many`, `stitch_lineage`, `build_lineage_from_xml`, `stitch_lineage_from_xml` siguen expuestas desde `services/lineage_builder.py` — `routers/ai.py` y `etl_generator.py` (congelado, `90-congelado.md` T8, no tocado) no necesitaron ningún cambio.
+
+`domain.lineage` agregado a `DOMAIN_MODULES` en `test_architecture_layers.py`. `FROZEN_R1` sigue vacío — el import a `schemas.lineage` que tenía el módulo original ya no existe del lado `domain`, sin excepción nueva que registrar. Mapa (`arquitectura-objetivo.md`, fila `services/lineage_builder.py`) marcado "Ejecutado (O2-c)".
+
+**Verificación:** suite completa 697 passed / 54 failed, igual a la cifra de O1-c — cero regresión. `test_architecture_layers.py` verde.
+
+<a id="d67"></a>
+### D67 — O2 verificado completo al pedir "empezar O2"; nada ejecutado, solo verificación y corrección de docs `[O2]`
+
+Estado: verificado, mismo turno. **Ningún archivo de código se modificó en esta sesión** — solo trazado contra código/git, `docs/README.md` y esta documentación.
+
+**Contexto:** el pedido de sesión fue "Leé `docs/README.md` y `docs/refactor/10-estabilizar-emision.md`. Comienza O2." Antes de escribir código, se verificó el estado real de O2-a/O2-b/O2-c contra el código (Regla A de `docs/README.md`: ningún documento de estado es autoridad sobre si algo está hecho).
+
+**Hallazgo:** las tres sesiones de O2 (`20-arquitectura.md`) ya estaban ejecutadas:
+
+- `domain/common.py` + `services/ktr_builder/xml_helpers.py` existen (O2-a, D61).
+- `domain/step_table.py` existe, con `resolve_step_table()` consumida por los tres call sites (O2-b, D62).
+- `domain/lineage.py` existe, 11 KB (O2-c) — sin D-N propia hasta esta sesión, ver D66.
+- `backend/tests/test_architecture_layers.py`: 4 passed, `FROZEN_R1` vacío.
+- Mapa capa-objetivo (`arquitectura-objetivo.md`) marca las tres filas correspondientes "Ejecutado".
+
+**Discrepancia encontrada y corregida en el mismo turno (Regla 8 de `docs/README.md`):** `docs/README.md`, tabla de sesiones, fila O2-c decía "D63 pendiente de redactar". D63 ya estaba escrita — para un tema distinto (dedupe de vocabulario cruzado, O1-b). La referencia quedó de un placeholder anterior a que D63 se asignara a otra decisión. Corregida para no apuntar a un número equivocado; la D-N real de O2-c es D66 (arriba).
+
+**Decisión:** no hay nada que ejecutar para O2 — los criterios de terminado de `20-arquitectura.md` (O2-a/b/c con su D-N, suite verde, `FROZEN_*` no creció, filas del mapa marcadas) se cumplen. O2 queda cerrado. Próximo paso natural: O3 (`30-decision-python-llm.md`), que según `docs/README.md` necesita O1 cerrado (D65) + `referencia/` escrita (sesión REF, cerrada 2026-08-03) — ambas precondiciones ya cumplidas.
+
+**Verificación:** `test_architecture_layers.py` corrido esta sesión, 4 passed. Sin cambio de código, no aplica correr la suite completa.
+
+---
+
+<a id="d68"></a>
+### D68 — O3 caso testigo: el step de dimensión se sintetiza siempre, no se pide y corrige `[O3]`
+
+**Contexto:** O3 (`30-decision-python-llm.md`) identificó una cadena de 6 estaciones para una sola decisión — cómo se configura el step que carga una dimensión: Python deriva `scd_type` → se lo cuenta al modelo → el modelo devuelve el step completo (puede contradecir el contrato) → Python detecta la contradicción (`enforce_dimension_step_policy`) → Python repara con otra llamada al LLM (`_repair_dimension_loader_fields`) → si no alcanza, degrada. Cada estación nueva, agregada históricamente para atrapar al modelo contradiciendo un contrato que ya conocía de antemano, es un lugar más donde la semántica puede divergir de las otras cinco — el motor de "arreglo un error y aparece otro" (`errores.md`: E-16, E-21, E-23, E-24, los cuatro alrededor de esta misma cadena).
+
+**Decisión — la línea entre lo que pregunta y lo que deriva:**
+
+1. El modelo aporta topología (steps + hops) + `config.table` + `keys[].stream_field`/`fields[].stream_field` — lo único no derivable de un contrato: qué campo del stream alimenta cada columna cuando los nombres no coinciden.
+2. Python sintetiza SIEMPRE (no solo al detectar discrepancia) `update`/`return_field`/`date_from`/`date_to`/`version_field`/`fields[].type` desde `DimContract`, vía `build_dimension_lookup_config()` (`ktr_builder/dimension_step_policy.py`), llamado desde `apply_dimension_contracts()` — reemplaza `enforce_dimension_step_policy` (que comparaba lo que el modelo escribía contra el contrato y corregía si difería; ya no hay nada de eso que comparar, porque no se le pide escribirlo).
+3. El rol (loader vs. fact_lookup) sigue derivándose de la topología que el modelo dibujó (`role_of_dimension_step`, D16 intacto). Con un solo candidato sobre una tabla se fuerza a loader sin excepción — **supersede parcialmente D58:** el discriminador que inspeccionaba si `fields` del modelo ya traía el contrato completo (evidencia de intención) se retira, porque `fields` del modelo dejó de ser prueba de intención — es apenas una pista de mapeo que la síntesis valida contra el stream real. La rama `already_readonly` ("ya venía bien, no se toca") también se retira: la síntesis reconstruye el config siempre.
+4. Se borra la estación de reparación completa: `_repair_dimension_loader_fields`, `_dimension_repair_context`, `_deterministic_field_mapping` (`etl_generator.py`). Su lógica determinista (resolver `nombre_categoria`→`categoria` despojando el prefijo `nombre_`) pasa a ser el paso 3 de una escalera de 4 dentro de `build_dimension_lookup_config` (mapeo propuesto por el modelo → identidad → prefijo → omitir + finding error), en el camino principal, sin LLM. Cierra E-21/E-23 por construcción: el `if llm is None: return` que dejaba ese intento determinista inalcanzable sin proveedor deja de existir junto con la función que lo contenía.
+5. `PRE_EMIT_PASSES` (`validators/__init__.py`) se parte en `TABLE_RECOVERY_PASSES` (antes de sintetizar — recupera `table`) y `VERIFY_PASSES` (después — inspecciona el config ya sintetizado). Antes, los passes de verificación (`check_dimension_lookup_fields`, `check_narration_crosscheck`) corrían junto con la recuperación de tabla, sobre el config que el MODELO había escrito y que estaba a punto de ser pisado por la síntesis — un finding ahí describía un valor que no iba a llegar al usuario, señal falsa, no ruido inocuo.
+6. `system_etl.txt` § "STEP DE DIMENSIONES" y `_format_dim_contracts()` (`etl_generator.py`) recortados: el modelo ya no recibe ni escribe `step_requerido`/`step_lookup_fk`/`scd_type`/`modo_por_atributo`/`version_field`/`date_from`/`unknown_key_value` (11 tokens por dimensión → 4: `columnas_destino`, `natural_keys`, `campo_sk_en_stream`, `columna_vigencia`).
+
+**Riesgo nombrado, no cerrado del todo:** con un solo candidato sobre una tabla y grafo no resoluble (`upstream_fields_for_step` devuelve `None` — step sin predecesor), la síntesis cae al mismo fallback de identidad-sin-verificar que ya usaba un loader legítimo en esa situación — pero acá, a diferencia de un loader legítimo, no hay ninguna otra señal de que el step sea de verdad el loader (podría ser un lookup huérfano real, con el loader faltante en otro lado). Se agregó un finding `tipo=warning` explícito para esa intersección exacta (rol forzado de fact_lookup a loader + grafo no resoluble) — D60 exige reportar, nunca fabricar en silencio. El finding hace el riesgo visible, no lo cierra: confirmar contra corrida real antes de dar por saldado el criterio 5 de abajo.
+
+**Verificación:** `apply_dimension_contracts()` corrido en aislamiento (no vía pytest) contra el corpus real `etl-llm-raw-test-01_sonnet_fase4.json` (el mismo de E-01/D64) — el step 'Cargar dim_producto' resuelve `nombre_categoria`→`categoria` (paso 3, prefijo) y `bk_producto`→`bk_producto_calculado` (paso 1, mapeo propuesto por el modelo), e ignora `fk_categoria`/`precio_lista`/`stock` (vocabulario cruzado de `fact_inventario`, finding `info`) — sin ninguna llamada a LLM. No corrido contra la suite completa (la corre el usuario) ni contra `/generate-async`→`/status` end-to-end — criterio 5 de `30-decision-python-llm.md`, pendiente.
+
+**Estado:** ejecutado, esta sesión (2026-08-04). Decisiones 2, 4 y 5 de la tabla de `30-decision-python-llm.md` quedan resueltas como consecuencia directa de esta; decisión 3 (ramificar por `scd_type` en la emisión) sin tocar — D44 vigente sin cambios.
+
+---
 
 <a id="deliberadamente-no-decidido"></a>
 ## Deliberadamente no decidido

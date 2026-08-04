@@ -260,8 +260,21 @@ Ejemplo correcto:
 ```json
 {"fields": [{"name": "stg_fecha_carga", "info_type": "system date (fixed)"}]}
 ```
-**DimensionLookup** — lookup/update SCD para dimensiones (genera o devuelve surrogate key). Loader
-(`update="Y"`, `type` de cada atributo = `modo_por_atributo` de `dim_contracts`):
+**DimensionLookup** — lookup/update SCD para dimensiones (genera o devuelve surrogate key).
+
+*Con contrato* — cuando la tabla tiene línea en `## CONTRATOS DE DIMENSION (dim_contracts...)`
+(caso normal): config MÍNIMO, ver "STEP DE DIMENSIONES" más abajo — solo `connection`/`table`/
+`keys`/`fields` (sin `type` en `fields[]`). El build completa `update`/`returnfield`/`date_from`/
+`date_to`/`version_field` desde el contrato.
+```json
+{"connection": "conn_dwh", "table": "dim_cliente",
+ "keys":   [{"stream_field": "cliente_id", "table_field": "bk_cliente"}],
+ "fields": [{"stream_field": "rut",         "table_field": "rut"},
+            {"stream_field": "razon_social", "table_field": "razon_social"},
+            {"stream_field": "segmento",     "table_field": "categoria"}]}
+```
+*Sin contrato* — solo si la tabla NO aparece en `## CONTRATOS DE DIMENSION` (dimensión sin
+contrato, caso degradado): configurá el step completo vos mismo, incluido `type` por atributo:
 ```json
 {"connection": "conn_dwh", "table": "dim_cliente", "returnfield": "sk_cliente", "update": "Y",
  "keys":   [{"stream_field": "cliente_id", "table_field": "bk_cliente"}],
@@ -270,15 +283,6 @@ Ejemplo correcto:
             {"stream_field": "categoria",     "table_field": "categoria",    "type": "Insert"}],
  "date_from": "fecha_inicio", "date_to": "fecha_fin", "version_field": "version"}
 ```
-Lookup de FK del lado del hecho (`update="N"`, solo lectura — ver "LOOKUP DE FK DEL LADO DEL
-HECHO"), mismo `table`/`keys`/`date_from`/`date_to`/`version_field` que el loader, sin `fields`:
-```json
-{"connection": "conn_dwh", "table": "dim_cliente", "returnfield": "sk_cliente", "update": "N",
- "keys": [{"stream_field": "cliente_id", "table_field": "bk_cliente"}],
- "date_from": "fecha_inicio", "date_to": "fecha_fin", "version_field": "version"}
-```
-**REGLA CRÍTICA — `return_field` es el nombre de COLUMNA FÍSICA, no el alias de stream [B10]:** el campo `returnfield`/`return_field` del `DimensionLookup` debe contener el nombre exacto de la columna de surrogate key tal como existe en la tabla física de la dimensión (ej. `sk_cliente`). Kettle usa ese nombre para armar el SQL interno (INSERT de fila "unknown", lookup, UPDATE). El nombre que ese valor toma en el stream hacia los steps siguientes se controla con `rename` (dentro del bloque `<return>` del XML). Si el step consumidor (ej. `TableOutput` de la tabla de hechos) espera el campo bajo un alias distinto (ej. `fk_cliente`), el mapeo se hace vía `rename` — NUNCA poniendo el alias como `return_field`, porque eso hace que Kettle ejecute `SELECT ... WHERE sk_cliente_alias = 0` contra la tabla real y falle con "no existe la columna". Cuando se usa `DimensionLookup` para buscar la FK de una dimensión ya existente (rama de carga de hechos), verificá siempre que `returnfield` coincida con la columna real de la tabla dimensión en el DDL provisto.
-**REGLA CRÍTICA — NO confundas la clave `"version"` con `"version_field"` [B15]:** Kettle exige SIEMPRE una columna `version` entera además del rango de fechas (`date_from`/`date_to`) — no son mecanismos alternativos, van juntos, y `version_field` (D44/D51) es la clave de `config` que declara el nombre real de esa columna en el DDL (ej. `"version"`, tomado literal de `dim_contracts`). Lo que NUNCA debe aparecer es una clave `"version"` SUELTA (a secas, sin el sufijo `_field`) ni un campo en `fields[]` con `table_field`/`column_name` apuntando a esa columna — el emisor no lee ninguna de las dos, así que agregar alguna es indistinguible de un typo de `version_field`. Las claves válidas del `config` de `DimensionLookup` son las documentadas en los ejemplos de arriba (`connection`, `table`, `returnfield`/`return_field`, `keys`, `fields`, `date_from`, `date_to`, `version_field`, `update`) — cualquier otra clave no documentada es inválida y debe eliminarse.
 **CombinationLookup** — surrogate key para dimensiones degeneradas o junk:
 ```json
 {"connection": "conn_dwh", "table": "dim_tipo_pago", "return_field": "sk_tipo_pago",
@@ -440,84 +444,87 @@ Ejemplo correcto: `{"field_name": "es_incobrable", "formula": "IF(AND([estado]=\
 ```json
 {}
 ```
-## STEP DE DIMENSIONES: DECIDIDO POR EL CONTRATO, NO POR VOS [CRÍTICO — D44/D51]
-Cuando el prompt incluye una sección `## CONTRATOS DE DIMENSION (dim_contracts...)`, cada línea
-trae `step_requerido` — el step que carga ESA dimensión ya está decidido: `Dimension lookup/update`
-para TODO `scd_type` (0, 1 o 2 — vocabulario uniforme por rol, no hay rama por tipo). No lo vuelvas
-a evaluar ni a decidir de nuevo: usá exactamente el `step_requerido` de esa línea, configurado con
-`update="Y"`. `scd_type=0` no tiene modo propio en Kettle (ningún modo de atributo significa "no
-tocar si ya existe") — colapsa a la misma configuración que `scd_type=1`, decisión ya tomada aguas
-arriba; no la reviertas ni tomes un step distinto por esa razón.
+## STEP DE DIMENSIONES: VOS PONÉS TOPOLOGÍA Y MAPEO, EL BUILD PONE LA CONFIGURACIÓN SCD [CRÍTICO — D44/D51]
+Cuando el prompt incluye una sección `## CONTRATOS DE DIMENSION (dim_contracts...)`, cada tabla
+listada ahí tiene su configuración SCD ya decidida y el build la escribe él mismo — no la vuelvas
+a evaluar. Para esas tablas emitís un `DimensionLookup` con EXACTAMENTE cuatro cosas, y nada más:
 
-La misma línea trae `step_lookup_fk` — el step que consulta la FK de esa dimensión del lado del
-hecho (ver "LOOKUP DE FK DEL LADO DEL HECHO" más abajo), y `modo_por_atributo` — el modo EXACTO
-(`Insert`/`Update`) que corresponde a cada atributo no-clave, ya resuelto: `attributes_scd2` →
-`Insert` (nueva versión), todo el resto → `Update` (sobrescribe la vigente). Usalo literal, campo
-`type` de cada entrada en `fields[]` — **nunca** un default propio ni un sinónimo (`"SCD1"`,
-`"overwrite"`, `"sobrescribir"`): Kettle solo reconoce `Insert`, `Update`, `Punch through`,
-`DateInsertedOrUpdated`, `DateInserted`, `DateUpdated`, `LastVersion` — cualquier otro valor cae
-SILENCIOSAMENTE en `Insert` (versiona, semántica SCD2) sin error visible en Spoon. `type` es
-OBLIGATORIO en cada entrada de `fields[]`; omitirlo es indistinguible del bug que este párrafo
-existe para cerrar.
+1. `name` y su lugar en el grafo (los `hops` de entrada y de salida).
+2. `config.connection` y `config.table` — el nombre exacto de la tabla, tal cual la línea de
+   `dim_contracts`.
+3. `config.keys` — una entrada por cada nombre de `natural_keys`:
+   `{"stream_field": "<campo que trae ese valor en el stream que llega al step>", "table_field":
+   "<nombre de natural_keys>"}`. El lado `table_field` sale del contrato; el lado `stream_field`
+   NO es derivable — sos vos quien sabe qué campo del stream lleva ese valor.
+4. `config.fields` — una entrada por cada nombre de `columnas_destino`:
+   `{"stream_field": "<campo del stream>", "table_field": "<nombre de columnas_destino>"}`. Igual
+   que arriba: el destino sale del contrato, el origen lo sabés vos. **Sin `type`.**
 
-`dim_contracts` también es la fuente de verdad para los nombres de columna — nunca derives
-`technical_key`/`version_field`/`date_from`/`date_to`/`natural_keys` parseando el DDL por
-convención de nombres.
+NO pongas, en el config de esos steps: `update`, `fields[].type`, `date_from`, `date_to`,
+`version_field`, `returnfield`/`return_field`, `min_year`/`max_year`. El build los escribe desde
+el contrato y pisa lo que venga — ponerlos no cambia el resultado y solo agrega superficie donde
+tu respuesta puede contradecir al contrato.
 
-**Override [excepcional — no es el caso normal]:** si un factor que `scd_type` no captura —
+Si un atributo de `columnas_destino` no tiene ningún campo que lo alimente en el stream que llega
+al step, el build lo omite y lo reporta — no inventes un nombre para llenar el hueco.
+
+**El rol (cargar vs. solo consultar) lo deriva el build de TU grafo, no lo declarás vos [D16].** Si
+un step busca la FK de una dimensión que otro step de esta misma transformación carga, el build lo
+pone en solo lectura solo por cómo lo conectaste (ver "LOOKUP DE FK DEL LADO DEL HECHO" más abajo).
+Lo que sí es tuyo y el build no puede adivinar: **una dimensión se carga desde UN solo step.** Nunca
+dos `DimensionLookup`/`CombinationLookup`/`InsertUpdate`/`TableOutput` escribiendo la misma tabla —
+si dos ramas necesitan alimentarla, unilas con `Union rows` antes del único loader (ver "PATRÓN
+MIEMBRO INFERIDO" más abajo).
+
+**Cómo llega la surrogate key al hecho:** el step deja en el stream un campo con el nombre de
+`campo_sk_en_stream` de la línea de `dim_contracts` (ej. `sk_cliente`). Usá ESE nombre en el mapeo
+del `InsertUpdate`/`TableOutput` del hecho — no un alias propio.
+
+**Override [excepcional — no es el caso normal]:** si un factor que el contrato no captura —
 volumen muy alto cuya cache no entra en memoria, matching por reglas complejas o difusas (ahí
 corresponde `StreamLookup` + `Merge rows` + `TableOutput`), o dimensión de recarga full refresh
-(truncate + insert) — exige un step distinto al `step_requerido`, podés usarlo, pero es
-OBLIGATORIO registrarlo: agregá una entrada en `validaciones` con `tipo: "info"`, `campo`: el
-nombre EXACTO de la tabla, y `mensaje` empezando con el prefijo literal `[Override de step] `
-seguido del step que usaste y el motivo. Un cambio de step sin ese registro es indistinguible del
-bug que esta regla existe para cerrar — el build lo corrige (degradándolo al `step_requerido`) o
-lo reporta como error igual, así que registrarlo es la única forma de que se respete tu elección.
-**Nunca** `DimensionLookup`/`CombinationLookup` sobre una tabla de hechos ni sobre staging — eso
-no admite override.
+(truncate + insert) — exige un step distinto a `DimensionLookup`, podés usarlo, pero es OBLIGATORIO
+registrarlo: agregá una entrada en `validaciones` con `tipo: "info"`, `campo`: el nombre EXACTO de
+la tabla, y `mensaje` empezando con el prefijo literal `[Override de step] ` seguido del step que
+usaste y el motivo. Un cambio de step sin ese registro es indistinguible del bug que esta regla
+existe para cerrar — el build lo respeta si está registrado, o lo reporta como error si no.
+**Nunca** `DimensionLookup`/`CombinationLookup` sobre una tabla de hechos ni sobre staging — eso no
+admite override.
 
-**Obligación de mapeo:** configurá cada `DimensionLookup`/`CombinationLookup` con los nombres
-EXACTOS del elemento de `dim_contracts` correspondiente a esa tabla: `technical_key` →
-`returnfield`/`return_field`, `version_field`, `date_from`, `date_to`, `natural_keys` → `keys`. No
-renombres ni inventes campos.
+**Dimensión SIN línea en `## CONTRATOS DE DIMENSION`:** ahí no hay contrato del cual sintetizar —
+configurá el `DimensionLookup` completo (segundo ejemplo del catálogo de steps, con `update`,
+`fields[].type`, `date_from`, `date_to`, `version_field`) y reportá un `warning` en `validaciones`
+señalando que a esa dimensión le falta el contrato.
 
-**Verificación antes de emitir:** para cada columna que un step de dimensión referencia
-(`returnfield`/`return_field`, `keys[].table_field`, `date_from`, `date_to`), confirmá que existe
-como columna física en el `## MODELO DWH` provisto. Un step que apunta a una columna inexistente
-no falla al guardar el .ktr — falla en runtime. Esto no debería pasar si el DDL ya fue auditado
-contra el contrato antes de esta llamada — si igual falta una columna, reportalo en `validaciones`
-con `tipo: "error"` citando la tabla y la columna faltante; no inventes el nombre ni cambies el
-tipo de step para evitar el problema.
+**Verificación antes de emitir:** confirmá que cada `keys[].table_field` y cada `fields[].table_field`
+existe como columna física de esa tabla en el `## MODELO DWH`, y que cada `keys[].stream_field` y
+cada `fields[].stream_field` existe de verdad en el stream que llega al step (el `SELECT` del
+`TableInput` más cercano aguas arriba, más lo que agreguen los steps intermedios). Un nombre
+inventado en cualquiera de los dos lados no falla al guardar el .ktr — falla en runtime.
 
 Dos detalles operativos que suelen morder:
 - La vigencia de un registro de dimensión se evalúa como `fecha_fin IS NULL OR fecha_fin >=
-  '2199-01-01'` — el step escribe la fecha tope configurada, no necesariamente `NULL`. No asumas
-  `fecha_fin IS NULL` como único criterio de vigencia en ningún SQL o step downstream que la
-  consulte.
+  '2199-01-01'` (o la columna de `columna_vigencia` de la línea de `dim_contracts`, si el nombre
+  real difiere) — el step escribe la fecha tope configurada, no necesariamente `NULL`. No asumas
+  `IS NULL` como único criterio de vigencia en ningún SQL o step downstream que la consulte.
 - La columna `es_vigente`, si existe en el DDL, NO la mantiene `DimensionLookup`. Si el proceso la
   incluye, agregá un step posterior que la actualice tras la carga de la dimensión y reportalo en
   `validaciones` si no lo hacés — sin ese UPDATE, la columna miente.
 
 **LOOKUP DE FK DEL LADO DEL HECHO — CUÁNDO ESTE STEP NO PUEDE VOLVER A ESCRIBIR [D16/D44/D51]:**
 cuando un step busca la FK de una dimensión que YA fue cargada por otro step de este mismo proceso
-(no la está cargando él mismo), ese step de búsqueda tiene que quedar de solo lectura — nunca
-repitas `DimensionLookup`/`CombinationLookup` con escritura habilitada sobre una tabla que otro
-step ya carga (doble escritor + carrera, el motivo original de este refactor). Una sola regla para
-TODO `scd_type` (0, 1 o 2 — `step_lookup_fk` de `dim_contracts` ya te lo da resuelto): `Dimension
-lookup/update` con el flag de actualización en `N` (solo lectura) — necesita el rango de fechas
-para resolver la versión vigente, y `DimensionLookup` es el único step de este catálogo que sabe
-matchear por rango de fechas. El rango `[date_from, date_to)` resuelve bien incluso en una
-dimensión sin historial real (Kettle nunca deja `date_to` NULL: escribe la fecha tope configurada,
-por defecto `2199-12-31 23:59:59.999`, así que el rango queda degenerado pero cerrado). No uses
-`CombinationLookup` para este rol (no tiene modo de solo lectura — siempre inserta si no matchea)
-ni `DBLookup` (falla contra el pooler de Supabase, ver "PREFERENCIA DE ENTORNO" arriba) — ninguna
-excepción por `scd_type` sin versionar, a diferencia de una versión anterior de esta regla.
+(no la está cargando él mismo), conectalo de forma que el build pueda ver que no es el único
+escritor — el build lo pone en solo lectura automáticamente por topología, vos no declarás el modo.
+Lo que sí es tuyo: la elección de STEP. Usá `DimensionLookup` (mismo `table`/`keys` que el loader,
+sin `fields`) o `StreamLookup` contra la salida del loader — nunca `CombinationLookup` (no tiene
+modo de solo lectura, siempre inserta si no matchea) ni `DBLookup` (falla contra el pooler de
+Supabase, ver "PREFERENCIA DE ENTORNO" arriba).
 
 **PATRÓN MIEMBRO INFERIDO [D21 — solo si el prompt trae la sección "## DIMENSIONES CON MIEMBRO
 INFERIDO OBLIGATORIO"]:** esa sección lista dimensiones referenciadas por una FK `NOT NULL` desde
 una tabla de hechos — el lookup de esa FK del lado del hecho NUNCA puede devolver sin match
 (el INSERT del hecho rompe el `NOT NULL`). Para cada dimensión listada ahí, el step loader (el
-`step_requerido` de "## CONTRATOS DE DIMENSION") tiene que recibir DOS streams unidos con `Union`,
+único `DimensionLookup` que escribe esa tabla) tiene que recibir DOS streams unidos con `Union`,
 nunca dos writers separados sobre la misma tabla:
 1. El stream real de origen para esa dimensión (igual que siempre).
 2. Un **anti-join previo** contra la MISMA dimensión: `TableInput`/`ExecSQL` con SQL que devuelva
@@ -553,7 +560,7 @@ K6. El `type` en `connections` SIEMPRE es `"GENERIC"`. El usuario selecciona el 
 K7. Crear una conexión por capa: `conn_origen` para la fuente, `conn_staging` para staging, `conn_dwh` para el DWH. Si origen y staging comparten base de datos, usar una sola conexión. Si el prompt declara un "ALCANCE DE ESTA LLAMADA" (llamada acotada a un tramo, no las 3 capas completas), declará ÚNICAMENTE las conexiones de ese tramo — dos, no tres. No declares ni referencies la conexión de la capa fuera de alcance.
 K8. No uses tildes, ñ ni caracteres especiales en los valores de `steps[].name` — solo letras, números, espacios simples y guiones bajos. Los nombres de campos en `config` pueden mantener las convenciones del esquema original.
 K9. Para cada tabla de staging que se cargue, incluir un `TableOutput` con `truncate: true` (carga full) o un `InsertUpdate` (carga incremental según reglas de negocio).
-K10. Para cada dimensión del DWH, usá el `step_requerido` que trae `dim_contracts` (ver "## STEP DE DIMENSIONES: DECIDIDO POR EL CONTRATO, NO POR VOS" — `Dimension lookup/update` para todo `scd_type`, D44/D51; no es una decisión tuya salvo override registrado). Para la tabla de hechos, usar `InsertUpdate` con la clave natural más los surrogate keys obtenidos de las dimensiones.
+K10. Para cada dimensión del DWH listada en `dim_contracts`, un `DimensionLookup` con `table` + `keys` + `fields` de mapeo (ver "## STEP DE DIMENSIONES") — la configuración SCD (`update`/`date_from`/`date_to`/`version_field`/`fields[].type`) la completa el build, no es una decisión tuya salvo override registrado. Para la tabla de hechos, usar `InsertUpdate` con la clave natural más los surrogate keys obtenidos de las dimensiones.
 K11. **SQL explícito en TableInput [CRÍTICO]:** El campo `sql` de cada `TableInput` DEBE listar las columnas del origen por nombre, tal como aparecen en el `## ESQUEMA DE ORIGEN` provisto. `SELECT 1` y `SELECT *` están prohibidos: el primero rompe el flujo de datos aguas abajo (no hay columnas que procesar), el segundo oculta el esquema en Spoon. Si no podés determinar el SQL correcto porque falta información del esquema, reportá un `error` en `validaciones` indicando qué tabla necesita especificación, y generá un paso `Dummy` como placeholder — nunca un `TableInput` con SQL de placeholder.
 K12. **Nombres de tabla y configs obligatorios [CRÍTICO]:** (a) En los steps `TableOutput`, `InsertUpdate`, `DimensionLookup`, `CombinationLookup` y `DBLookup`, el campo `table` dentro de `config` NUNCA puede ser string vacío o `null` — usar el nombre exacto de la tabla del modelo DWH o staging provisto en `## ESQUEMA DE STAGING` y `## MODELO DE DWH`. (b) En los steps `Calculator`, `ValueMapper`, `NumberRange`, `IfNull` y `SelectValues`, el campo `config` NUNCA puede ser `{}` — debe contener al menos los campos mínimos documentados en las configuraciones válidas de este prompt. Si no tenés la información para poblar un config, reportá un `warning` en `validaciones` — no generes un cascarón con nombre correcto pero sin configuración. (c) En `DBLookup`, `keys` Y `return_fields` son AMBOS obligatorios y no vacíos — un `DBLookup` que solo trae `connection`+`table` no busca nada ni aporta ningún campo, y todo lo que dependa de su resultado aguas abajo rompe. Lo mismo aplica a `keys`+`values` en `StreamLookup` y a `keys` en `DimensionLookup`/`CombinationLookup`.
 K13. **Una fuente por TableInput [CRÍTICO]:** Cada `TableInput` debe leer de exactamente UNA tabla — JOINs en el SQL están prohibidos. Para combinar dos fuentes, usar dos `TableInput` separados conectados a un `MergeJoin` (con sus respectivos `SortRows` — ver K3). Esto garantiza que el linaje de datos sea trazable y que cada tabla origen aparezca como nodo independiente.
@@ -626,13 +633,12 @@ Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es N
 16. ¿Algún campo usado como `keys`/`stream_field` en un `DimensionLookup`/`DBLookup`/`CombinationLookup` tiene un tipo declarado distinto entre staging y DWH (ej. string vs INTEGER) sin un `SelectValues.cast` explícito antes? → Si SÍ: agregá el cast (ver regla (e)).
 17. ¿Algún `Constant` tiene `config: {}` o `config.fields: []` mientras su `description` (o el diseño del grafo) indica que agrega campos de auditoría/derivados, y algún `TableOutput`/`InsertUpdate`/`DimensionLookup` aguas abajo espera esos campos? → Si SÍ: completá `config.fields` de ese `Constant` con `name`/`type`/`value` explícitos para cada campo (ver regla 4 de integridad del grafo) — un `Constant` con config vacío que "debería" producir algo es un error crítico, no una omisión menor.
 18. ¿Algún step `Formula` declara `"type": "Boolean"` en algún campo? [B12 CRÍTICO] → Si SÍ: cambiar `"type"` a `"Integer"` y envolver la fórmula en `IF(condición; 1; 0)`. Nunca hay excepción a esta regla.
-19. ¿Algún `DimensionLookup`/`CombinationLookup`/`DBLookup`/`InsertUpdate`/`TableOutput` referencia, en `returnfield`, `keys[].table_field`/`lookup_field`, `fields[].table_field`, `column_name`, `date_from` o `date_to`, un nombre que NO existe como columna física en el DDL provisto de esa tabla (staging o DWH)? [B10] → Si SÍ: corregir al nombre real de la columna física (ej. `sk_cliente`, no `fk_cliente` ni `sk_cliente_dwh`).
-19b. ¿Algún `DimensionLookup` tiene una clave `"version"` suelta (en vez de `"version_field"`, u otra clave fuera de `connection`/`table`/`returnfield`/`keys`/`fields`/`date_from`/`date_to`/`version_field`/`update`)? [B15] → Si SÍ: eliminala o renombrala a `version_field` — `version_field` SÍ es una clave válida y obligatoria desde D44/D51 (el nombre de la columna `version` del contrato, ver `dim_contracts`); la que no existe es una clave `"version"` a secas, que el emisor ignora en silencio.
+19. ¿Algún `CombinationLookup`/`DBLookup`/`InsertUpdate`/`TableOutput` referencia, en `returnfield`, `keys[].table_field`/`lookup_field`, `fields[].table_field`, `column_name`, `date_from` o `date_to`, un nombre que NO existe como columna física en el DDL provisto de esa tabla (staging o DWH)? [B10] → Si SÍ: corregir al nombre real de la columna física (ej. `sk_cliente`, no `fk_cliente` ni `sk_cliente_dwh`). Para `DimensionLookup` sobre una tabla de `dim_contracts`, la verificación es la de "## STEP DE DIMENSIONES" — `returnfield`/`date_from`/`date_to`/`version_field` los completa el build, no vienen de vos.
 20. ¿Algún `TableInput` de la capa staging→DWH lee columnas nullable que se mapean a columnas NOT NULL en el destino sin envolver en `COALESCE`? [B14] → Si SÍ: agregar `COALESCE(columna, default_literal) AS columna` en el SELECT.
 21. ¿Algún `InsertUpdate` carga una dimensión por clave natural (no una tabla de hechos) y esa clave natural aparece en `keys` pero NO en `fields`? [B16] → Si SÍ: agregala también a `fields` con `"update": false` (ver ejemplo de la regla B16) — si no, el INSERT la omite y viola su propio NOT NULL.
 22. ¿Emitiste alguna construcción SQL dialecto-dependiente (`DISTINCT ON`, `generate_series`, u otra específica de Postgres) sin declarar `tipo: "info"` en `validaciones`? [K19] → Si SÍ: agregá la entrada de `validaciones` faltante.
-23. Si el prompt trae "## DIMENSIONES CON MIEMBRO INFERIDO OBLIGATORIO" (D21): ¿cada dimensión listada tiene EXACTAMENTE un step que la escribe (anti-join + Union hacia el ÚNICO loader), y el/los lookup(s) de su FK del lado del hecho son de solo lectura (`StreamLookup`, o `DimensionLookup`/`CombinationLookup` sin escritura)? → Si NO: corregí — un segundo writer sobre esa tabla es exactamente el doble-escritor que este proyecto existe para eliminar (ver "PATRÓN MIEMBRO INFERIDO").
-24. ¿Algún step busca la FK de una dimensión (cualquier `scd_type`, según `dim_contracts`) usando `CombinationLookup`, `DBLookup`, o `DimensionLookup` con `update` distinto de `"N"`? [D16/D44/D51] → Si SÍ: reemplazá por `DimensionLookup` con `update="N"` (solo lectura) — ver "LOOKUP DE FK DEL LADO DEL HECHO". Ya no hay excepción por `scd_type` sin versionar: el rango `[date_from, date_to)` resuelve bien incluso en una dimensión sin historial real (R-K2).
+23. Si el prompt trae "## DIMENSIONES CON MIEMBRO INFERIDO OBLIGATORIO" (D21): ¿cada dimensión listada tiene EXACTAMENTE un step que la escribe (anti-join + Union hacia el ÚNICO loader)? → Si NO: corregí — un segundo writer sobre esa tabla es exactamente el doble-escritor que este proyecto existe para eliminar (ver "PATRÓN MIEMBRO INFERIDO"). El modo de lectura/escritura del lookup de FK del lado del hecho lo pone el build por topología, no hace falta chequearlo acá.
+24. ¿Algún step busca la FK de una dimensión de `dim_contracts` usando `CombinationLookup` o `DBLookup`? [D16/D44/D51] → Si SÍ: reemplazá por `DimensionLookup` (mismo `table`/`keys`, sin `fields`) — ver "LOOKUP DE FK DEL LADO DEL HECHO". El modo (`update`) lo pone el build por topología, no lo declares vos.
 25. ¿Algún campo con nombre de pinta monetaria/contable (importe, precio, monto, total, subtotal, valor, costo, impuesto, iva, descuento, saldo, comisión, recargo, tipo de cambio, arancel, cuota) queda declarado `"type"`/`"value_type": "Number"` en vez de `"BigNumber"`, en cualquier step que lo declare (`Calculator`, `Formula`, `SelectValues` meta, `ScriptValueMod`, `GetVariable`, `RowGenerator`, `CsvInput`/`TextFileInput`/`ExcelInput`/`JsonInput`/`TextFileOutput`/`ExcelOutput`)? [B17] → Si SÍ: cambiá a `BigNumber` y verificá que los operandos de entrada (`field_a`/`field_b`/campos referenciados en `formula`) también lo sean — no alcanza con tipar solo el resultado.
 
 ## CAMPO dwh_sample — OBLIGATORIO

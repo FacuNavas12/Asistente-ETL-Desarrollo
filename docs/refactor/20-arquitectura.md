@@ -66,6 +66,20 @@ Bajo R12, una sola `resolve_step_table(step) -> (tabla | None, Notification | No
 
 **Cerrado — 2026-08-03.** `build_lineage`/`stitch_lineage_many`/`stitch_lineage` movidas a `domain/lineage.py`, devolviendo `LineageGraphData` (dataclass propia, stdlib) en vez de `schemas.lineage.Lineage` — un `BaseModel` de Pydantic no puede vivir en `domain/` (`domain/README.md`, sección "Qué NO va acá"), eso no estaba explícito en la fila del mapa. `services/lineage_builder.py` queda como borde: convierte `LineageGraphData` → `Lineage` para la API y conserva `_parse_ktr_xml` (infra). Firmas públicas y nombres sin cambios (`build_lineage`, `stitch_lineage_many`, `stitch_lineage`, `build_lineage_from_xml`, `stitch_lineage_from_xml` todas siguen en `services/lineage_builder.py`) — `routers/ai.py` y `etl_generator.py` (congelado, no tocado) no necesitaron ningún cambio. `domain.lineage` agregado a `DOMAIN_MODULES` en `test_architecture_layers.py`, `FROZEN_R1` sigue vacío (sin excepción nueva que registrar — el import a `schemas.lineage` que tenía el módulo original ya no existe del lado domain). Suite completa: 697 passed / 54 failed, igual a la cifra de O1-c. Cero regresión. D-N pendiente de redactar en `02-decisiones.md`.
 
+### O2-d — Sacar el borde de upload de `routers/schema.py`
+
+**Por qué se reabre O2** (cerrado 2026-08-03, ver "Criterio de terminado" abajo): una sesión de validación de `routers/`+`repositories/` contra la doctrina encontró que `routers/schema.py::infer_schema` maneja el ciclo de vida completo del upload (tempfile, límite de 50 MB, cleanup) dentro del router — viola R2 ("el router no toca... el disco"). No estaba en `FROZEN_*` porque `test_architecture_layers.py` nunca midió R2, solo R1/R3/R4 (ver su docstring) — no era deuda registrada, era un hueco del radar de verificación. Registrado como E-25 en `errores.md`.
+
+**Qué:** `infer_file_schema(path, source_name)` (`services/file_schema.py`) queda intacta — 7 tests la llaman directo con un path. Se agrega `infer_schema_from_upload(filename, chunks)` en el mismo archivo: dueña de la extensión permitida, el límite de tamaño, el tempfile y su cleanup. El router pasa a ser un traductor puro: arma un `AsyncIterator[bytes]` desde `UploadFile.read()`, llama al service, y mapea `UnsupportedFileType`→422, `FileTooLarge`→413, `ValueError`→422, el resto→500. El import lazy de `frictionless` dentro de un `try/except ImportError`→503 se conserva en el router (si fuera top-level, una instalación sin frictionless rompería el arranque de toda la app en vez de fallar solo este endpoint).
+
+**Por qué NO se copia el patrón de `job_analyzer.py`:** ese service recibe `fastapi.UploadFile` directo — es una violación de R3 ya congelada (`FROZEN_R3`). Copiarla acá haría fallar `test_services_do_not_import_fastapi`, porque `file_schema.py` no está congelado. `infer_schema_from_upload` recibe `filename: str | None` + `chunks: AsyncIterator[bytes]`, sin conocer `fastapi`.
+
+**Terminado:** `test_file_schema.py` verde (incluye 2 tests nuevos: 413 por tamaño, `.xlsx` completo por endpoint). `test_architecture_layers.py` verde con `FROZEN_*` **sin cambios** (esto era R2, que el test no mide — ni se achica ni se agranda). Contrato HTTP de `/api/schema/infer` idéntico para el frontend. Fila `routers/schema.py` (upload) agregada al mapa de `arquitectura-objetivo.md`, marcada Ejecutado.
+
+D-N — El borde de un upload vive en infraestructura, no en el router (O2-d).
+routers/schema.py::infer_schema manejaba tempfile/límite/cleanup del upload directo en el router (viola R2). Se movió a services/file_schema.py::infer_schema_from_upload(filename, chunks), que recibe AsyncIterator[bytes] en vez de fastapi.UploadFile — a propósito distinto del patrón de job_analyzer.py (que sí importa UploadFile y está congelado como violación de R3 en FROZEN_R3). Copiar ese patrón acá hubiera hecho fallar test_services_do_not_import_fastapi. Encontrado porque test_architecture_layers.py nunca midió R2 — solo R1/R3/R4 en su recorte —, registrado como E-25 en errores.md. infer_file_schema(path, source_name) no cambió de firma. Contrato HTTP de /api/schema/infer idéntico.
+
+
 ---
 
 ## Lo que O2 NO hace antes de entregar
@@ -103,6 +117,10 @@ Los tres son el mismo meta-defecto: **el principio quedó escrito como documento
 4. Cada fila del mapa que se movió está marcada como ejecutada en `arquitectura-objetivo.md`.
 
 El indicador real lo fija `arquitectura-objetivo.md`: **si escribir el test es fácil, la arquitectura quedó bien.** No el diagrama.
+
+**O2 cerrado — verificado 2026-08-03 (D67, `02-decisiones.md`).** Los 4 criterios cumplen: O2-a/b/c ejecutadas con su D-N (D61/D62/D66), `test_architecture_layers.py` verde (4 passed, `FROZEN_R1` vacío), ningún archivo nuevo nació fuera de capa, las tres filas del mapa (`common.py`, `xml_helpers.py`/`step_types.py`/`step_emitters.py` ya estaban; `lineage_builder.py` nueva) marcadas "Ejecutado". Continuar a O3.
+
+**Reabierto y recerrado — O2-d (ver arriba).** El criterio 2 tenía un hueco: `test_architecture_layers.py` nunca midió R2 (router tocando disco/DB/LLM directo), así que "verde" no cubría esa regla. E-25 (`errores.md`) lo encontró fuera de ciclo. No invalida el cierre original — los 4 criterios seguían cumplidos para lo que el test mide — pero el criterio 2 de esta lista debería leerse "R1/R3/R4 en el recorte del test", no "arquitectura" en general.
 
 ---
 

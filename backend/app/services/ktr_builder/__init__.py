@@ -25,10 +25,10 @@ from app.services.ktr_builder.connection import (
 from app.services.ktr_builder.dimension_step_policy import (
     ATTRIBUTE_UPDATE_TYPE_CODES,
     OVERRIDE_STEP_PREFIX,
+    apply_dimension_contracts,
     derive_attribute_update_mode,
     derive_dimension_loader_step,
     derive_fact_lookup_step,
-    enforce_dimension_step_policy,
 )
 from app.services.ktr_builder.fragmentation import compute_cut, split_ktr_by_cut, validate_stage_contract
 from app.services.ktr_builder.layout import _auto_layout
@@ -39,6 +39,8 @@ from app.services.ktr_builder.validate import _validate_ktr
 from app.services.ktr_builder.validators import (
     PRE_EMIT_ERROR_PREFIX,
     TABLE_KEY_PREFIX,
+    TABLE_RECOVERY_PASSES,
+    VERIFY_PASSES,
     ValidationContext,
     run_passes,
     split_findings_by_severity,
@@ -56,7 +58,7 @@ __all__ = [
     "derive_fact_lookup_step",
     "derive_attribute_update_mode",
     "ATTRIBUTE_UPDATE_TYPE_CODES",
-    "enforce_dimension_step_policy",
+    "apply_dimension_contracts",
     "OVERRIDE_STEP_PREFIX",
     "normalize_step_configs",
     "ConfigParseError",
@@ -68,6 +70,8 @@ __all__ = [
     "run_passes",
     "ValidationContext",
     "TABLE_KEY_PREFIX",
+    "TABLE_RECOVERY_PASSES",
+    "VERIFY_PASSES",
     "PRE_EMIT_ERROR_PREFIX",
     "split_findings_by_severity",
 ]

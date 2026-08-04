@@ -37,10 +37,27 @@ from app.services.ktr_builder.validators.monetary_scale import (
 )
 from app.services.ktr_builder.validators.table_key_recovery import TABLE_KEY_PREFIX, recover_table_key
 
-PRE_EMIT_PASSES: tuple[KtrPass, ...] = (
-    recover_table_key, flag_dead_computed_fields, check_dimension_lookup_fields, check_insert_update_bypass,
+# O3 (docs/refactor/30-decision-python-llm.md): la tupla se parte en dos.
+# TABLE_RECOVERY_PASSES tiene que correr ANTES de apply_dimension_contracts
+# (necesita 'table' ya recuperado — ver table_key_recovery.py). VERIFY_PASSES
+# tiene que correr DESPUÉS: inspeccionan el config final de un step de
+# dimensión (date_from/date_to/fields[].type en check_dimension_lookup_fields,
+# la narración del modelo contra el step real en check_narration_crosscheck),
+# y antes de O3 esos passes corrían sobre el config que el MODELO había
+# escrito, no sobre el que Python termina sintetizando — un finding sobre un
+# valor que estaba por ser pisado es una señal falsa, no ruido inocuo.
+# PRE_EMIT_PASSES se preserva como la concatenación de ambas: build.py sigue
+# corriendo la tupla completa como red de seguridad para callers que no pasan
+# por apply_dimension_contracts (tests, build_etl_from_raw con dim_contracts
+# vacío) — nada cambia ahí.
+TABLE_RECOVERY_PASSES: tuple[KtrPass, ...] = (
+    recover_table_key,
+)
+VERIFY_PASSES: tuple[KtrPass, ...] = (
+    flag_dead_computed_fields, check_dimension_lookup_fields, check_insert_update_bypass,
     check_constraint_filter_rows, guard_staging_layer, check_narration_crosscheck, check_monetary_scale,
 )
+PRE_EMIT_PASSES: tuple[KtrPass, ...] = TABLE_RECOVERY_PASSES + VERIFY_PASSES
 
 
 def run_passes(ctx: ValidationContext, passes: tuple[KtrPass, ...] = PRE_EMIT_PASSES) -> list[Finding]:
@@ -55,6 +72,8 @@ __all__ = [
     "KtrPass",
     "ValidationContext",
     "PRE_EMIT_PASSES",
+    "TABLE_RECOVERY_PASSES",
+    "VERIFY_PASSES",
     "PRE_EMIT_ERROR_PREFIX",
     "run_passes",
     "split_findings_by_severity",

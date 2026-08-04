@@ -13,9 +13,9 @@ El trabajo abierto está separado en tres objetivos y un congelador. **Una sesi�
 | # | Objetivo | Archivo | Estado |
 |---|---|---|---|
 | **O0** | Higiene de repo — que el estado real sea legible desde git | [`refactor/00-higiene-repo.md`](refactor/00-higiene-repo.md) | Precondición de todo |
-| **O1** | Estabilizar la emisión — que siempre se entregue archivo **y que lo entregado no mienta** | [`refactor/10-estabilizar-emision.md`](refactor/10-estabilizar-emision.md) | **Prioridad 1** |
-| **O2** | Arquitectura de capas — dónde vive cada cosa | [`refactor/20-arquitectura.md`](refactor/20-arquitectura.md) | **Prioridad 2** |
-| **O3** | Dónde se decide — qué sintetiza Python y qué le pregunta al modelo | [`refactor/30-decision-python-llm.md`](refactor/30-decision-python-llm.md) | Después de O1 + `referencia/` |
+| **O1** | Estabilizar la emisión — que siempre se entregue archivo **y que lo entregado no mienta** | [`refactor/10-estabilizar-emision.md`](refactor/10-estabilizar-emision.md) | Cerrada, D65 |
+| **O2** | Arquitectura de capas — dónde vive cada cosa | [`refactor/20-arquitectura.md`](refactor/20-arquitectura.md) | Cerrada, D61/D62/D66 |
+| **O3** | Dónde se decide — qué sintetiza Python y qué le pregunta al modelo | [`refactor/30-decision-python-llm.md`](refactor/30-decision-python-llm.md) | **Caso testigo implementado y D68 escrita (2026-08-04) — falta corrida real end-to-end (criterio 5)** |
 | — | Registro de errores encadenados | [`refactor/errores.md`](refactor/errores.md) | Se actualiza siempre |
 | — | Todo lo que queda fuera | [`refactor/90-congelado.md`](refactor/90-congelado.md) | Congelado hasta después de entregar |
 
@@ -37,9 +37,9 @@ El trabajo abierto está separado en tres objetivos y un congelador. **Una sesi�
 | **O1-c** | T estructural (E-09, E-10, E-11) | cerrada, 2026-08-03 |
 | **O2-a** | Partir `common.py` | cerrada 2026-08-03, D61 |
 | **O2-b** | `resolve_step_table()` en `domain/` | cerrada 2026-08-03, D62 |
-| **O2-c** | Partir `lineage_builder.py` | cerrada 2026-08-03, D63 pendiente de redactar |
+| **O2-c** | Partir `lineage_builder.py` | cerrada 2026-08-03, D66 |
 | **REF** | Escribir `referencia/` | cerrada 2026-08-03 — `contrato-ddl.md`, `scd.md`, `kettle-comportamiento.md` escritos y verificados contra código. `docs/SCD/` (3 archivos) queda intacto en disco, consolidado en `scd.md`, no borrado — decisión pendiente del usuario |
-| **O3** | La línea Python/modelo | — |
+| **O3** | La línea Python/modelo | caso testigo cerrado, D68 (2026-08-04) — falta criterio 5 (corrida real) |
 
 **Dependencias, y son todas las que hay:**
 
