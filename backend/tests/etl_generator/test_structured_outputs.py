@@ -455,7 +455,8 @@ class TestDdlValidationIntegration:
             "  CONSTRAINT uq_dim_cliente_natural UNIQUE (id_cliente_origen, fecha_fin)\n"
             ");\n"
             "INSERT INTO dim_cliente (sk_cliente, id_cliente_origen, nombre, version, fecha_inicio, fecha_fin) "
-            "VALUES (0, -1, 'DESCONOCIDO', 1, TIMESTAMP '1900-01-01', NULL);"
+            "VALUES (0, -1, 'DESCONOCIDO', 1, TIMESTAMP '1900-01-01 00:00:00', "
+            "TIMESTAMP '2199-12-31 23:59:59.999');"
         )
 
     def test_complete_scd2_ddl_returns_unchanged(self):
