@@ -105,7 +105,7 @@ describe("buildZipEntries", () => {
     expect(entries.every(e => !e.path.includes("/"))).toBe(true);
   });
 
-  it("caso (b) solo origen_stg partida -> sus N .ktr en carpeta, su .kjb en la raíz", () => {
+  it("caso (b) solo origen_stg partida -> sus N .ktr y su .kjb, co-ubicados en la carpeta", () => {
     const art = readEtlArtifacts({
       etapas: [
         etapaKjb("origen_stg", "origen_stg_sub.kjb", ["a.ktr", "b.ktr"]),
@@ -117,13 +117,13 @@ describe("buildZipEntries", () => {
     expect(entries.map(e => e.path)).toEqual([
       "origen_stg/a.ktr",
       "origen_stg/b.ktr",
-      "origen_stg_sub.kjb",
+      "origen_stg/origen_stg_sub.kjb",
       "ktr2.ktr",
       "proceso.kjb",
     ]);
   });
 
-  it("caso (a) ambas partidas -> dos carpetas, 3 .kjb en la raíz", () => {
+  it("caso (a) ambas partidas -> dos carpetas, cada .kjb orquestador junto a sus .ktr, maestro en la raíz", () => {
     const art = readEtlArtifacts({
       etapas: [
         etapaKjb("origen_stg", "origen_stg_sub.kjb", ["a.ktr", "b.ktr"]),
@@ -134,12 +134,12 @@ describe("buildZipEntries", () => {
     const entries = buildZipEntries(art);
     const paths = entries.map(e => e.path);
     expect(paths).toEqual([
-      "origen_stg/a.ktr", "origen_stg/b.ktr", "origen_stg_sub.kjb",
-      "stg_dwh/c.ktr", "stg_dwh/d.ktr", "stg_dwh_sub.kjb",
+      "origen_stg/a.ktr", "origen_stg/b.ktr", "origen_stg/origen_stg_sub.kjb",
+      "stg_dwh/c.ktr", "stg_dwh/d.ktr", "stg_dwh/stg_dwh_sub.kjb",
       "proceso.kjb",
     ]);
     const kjbAtRoot = paths.filter(p => p.endsWith(".kjb") && !p.includes("/"));
-    expect(kjbAtRoot).toHaveLength(3);
+    expect(kjbAtRoot).toHaveLength(1); // solo el maestro
   });
 
   it("sin paths duplicados y cada content mapea a su xml", () => {

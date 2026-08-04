@@ -11,13 +11,24 @@ sub-dict correcto, no la validación interna de build_ktr() (ya cubierta en
 otro lado — un fixture Kettle-válido completo es ruido para este contrato)."""
 from __future__ import annotations
 
+import re
 from xml.etree.ElementTree import fromstring
 
 from app.services import etl_generator
 from app.services.kjb_xml_validator import validate_kjb_xml
 from app.services.ktr_builder.fragmentation import split_ktr_by_cut
+from app.services.ktr_builder.naming import kjb_filename, ktr_filename
 from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
 from app.services.lineage_builder import stitch_lineage, stitch_lineage_many
+
+
+def _same_except_time(actual: str, expected: str) -> bool:
+    """Compara ignorando los segundos del timestamp — llamar ktr_filename()/
+    kjb_filename() de nuevo en el test para armar el 'expected' puede cruzar
+    un borde de segundo respecto a la llamada real dentro de _build_ktr_stage()
+    (dos datetime.now() distintos); la fecha (día) sí debe coincidir siempre."""
+    strip_seconds = lambda s: re.sub(r"_\d{6}(?=\.\w+$)", "", s)
+    return strip_seconds(actual) == strip_seconds(expected)
 
 
 def _err1_like_ktr():
@@ -83,7 +94,7 @@ def test_build_ktr_stage_calls_build_ktr_once_per_group(monkeypatch):
         return f"<xml name='{name}'/>", f"{name}.ktr", []
 
     monkeypatch.setattr(etl_generator, "build_ktr", _fake_build_ktr)
-    built, warnings = etl_generator._build_ktr_stage(_err1_like_ktr(), "stg_dwh")
+    built, warnings = etl_generator._build_ktr_stage(_err1_like_ktr(), "stg_dwh", etapa_label="stg_dwh")
 
     assert len(built) == 2
     # D45 punto 1: 'stg_producto'/'stg_venta' ahora se resuelven por SQL real
@@ -100,9 +111,11 @@ def test_build_ktr_stage_calls_build_ktr_once_per_group(monkeypatch):
     assert [c[0] for c in calls] == ["stg_dwh_1", "stg_dwh_2"]
     assert calls[0][1] == ["Leer Staging Productos", "Cargar Dim Producto"]
     assert calls[1][1] == ["Leer Staging Ventas", "Lookup Dim Producto", "Cargar Fact Venta"]
-    # (ktr_data_del_grupo, xml, filename) en el mismo orden que las llamadas.
-    assert built[0][2] == "stg_dwh_1.ktr"
-    assert built[1][2] == "stg_dwh_2.ktr"
+    # (ktr_data_del_grupo, xml, filename) en el mismo orden que las llamadas —
+    # filename ya no es el que devuelve el fake build_ktr, lo recalcula
+    # _build_ktr_stage() vía naming.ktr_filename(process_name, etapa_label, index).
+    assert _same_except_time(built[0][2], ktr_filename("stg_dwh", "stg_dwh", index=1))
+    assert _same_except_time(built[1][2], ktr_filename("stg_dwh", "stg_dwh", index=2))
 
 
 def test_build_ktr_stage_single_group_keeps_base_name(monkeypatch):
@@ -114,7 +127,7 @@ def test_build_ktr_stage_single_group_keeps_base_name(monkeypatch):
 
     monkeypatch.setattr(etl_generator, "build_ktr", _fake_build_ktr)
     ktr = {"steps": [{"name": "A", "type": "TableInput", "config": {}}], "hops": []}
-    built, _ = etl_generator._build_ktr_stage(ktr, "origen_stg")
+    built, _ = etl_generator._build_ktr_stage(ktr, "origen_stg", etapa_label="origen_stg")
 
     assert calls == ["origen_stg"]  # sin sufijo _1 cuando hay 1 solo grupo
     assert len(built) == 1
@@ -129,7 +142,7 @@ def test_build_ktr_stage_forwards_kwargs_to_build_ktr(monkeypatch):
 
     monkeypatch.setattr(etl_generator, "build_ktr", _fake_build_ktr)
     ktr = {"steps": [{"name": "A", "type": "TableInput", "config": {}}], "hops": []}
-    etl_generator._build_ktr_stage(ktr, "origen_stg", pass_source_connection="conn_origen")
+    etl_generator._build_ktr_stage(ktr, "origen_stg", etapa_label="origen_stg", pass_source_connection="conn_origen")
 
     assert received["pass_source_connection"] == "conn_origen"
 
@@ -165,7 +178,7 @@ def test_build_job_plan_multi_file_stage_builds_inner_kjb_and_job_entry():
 
     assert len(sub_kjbs) == 1
     inner_xml, inner_filename = sub_kjbs[0]
-    assert inner_filename.endswith("_job_stg_dwh.kjb")
+    assert _same_except_time(inner_filename, kjb_filename("Proceso", "stg_dwh"))
     validate_kjb_xml(inner_xml)  # el .kjb intermedio también es válido standalone
     root = fromstring(inner_xml)
     inner_files = {e.findtext("filename") for e in root.findall("./entries/entry") if e.findtext("type") == "TRANS"}
@@ -177,7 +190,10 @@ def test_build_job_plan_multi_file_stage_builds_inner_kjb_and_job_entry():
     assert entries[0].entry_type == "trans"
     assert entries[0].filename == "ktr1.ktr"
     assert entries[1].entry_type == "job"
-    assert entries[1].filename == inner_filename
+    # Co-ubicado con sus N .ktr en la carpeta de la etapa (fix del bug de
+    # ruta encontrado en esta sesión) — el maestro está en la raíz del ZIP,
+    # necesita el prefijo "stg_dwh/" para encontrar el .kjb orquestador.
+    assert entries[1].filename == f"stg_dwh/{inner_filename}"
 
     from app.services.job_analyzer import build_kjb_xml
     validate_kjb_xml(build_kjb_xml(job_plan))  # el job maestro también es válido

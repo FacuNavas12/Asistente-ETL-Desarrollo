@@ -9,8 +9,6 @@ No AI calls — pure Python data transformation.
 from __future__ import annotations
 
 import logging
-import re
-from datetime import datetime
 from xml.dom import minidom
 from xml.etree.ElementTree import Element, SubElement, tostring
 
@@ -42,6 +40,7 @@ from app.services.ktr_builder.fields_validate import (
     validate_row_sources,
 )
 from app.services.ktr_builder.layout import _auto_layout
+from app.services.ktr_builder.naming import ktr_filename
 from app.services.ktr_builder.step_emitters import STEP_BUILDERS, unmapped_config_keys
 from app.services.ktr_builder.step_types import _CRITICAL_FIELDS, STEP_TYPE_ALIASES
 from app.services.ktr_builder.validate import _validate_ktr
@@ -70,10 +69,6 @@ _XML_TYPE_OVERRIDES: dict[str, str] = {
     # evita que ese <type> llegue mal formado al XML.
     "SplitFieldToRows": "SplitFieldToRows3",
 }
-
-
-def _sanitize(name: str) -> str:
-    return re.sub(r"[^a-zA-Z0-9_\-]", "_", name).strip("_") or "Transformacion_ETL"
 
 
 def _build_order(trans: Element, hops: list) -> None:
@@ -460,8 +455,7 @@ def build_ktr(
     lines.insert(1, _SECURITY_NOTE)
     ktr_xml = "\n".join(lines)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename  = f"{_sanitize(name)}_{timestamp}.ktr"
+    filename = ktr_filename(name)
 
     # Última barrera: si algo se escapó de las correcciones anteriores (conexión
     # GENERIC sin driver, step con configuración obligatoria vacía, hop

@@ -10,6 +10,8 @@
  * reject incompatible formats without silently loading garbage.
  */
 
+import { deriveKeyword, timestamp as namingTimestamp } from "./llmRawNaming";
+
 const EXPORT_VERSION = "1.0";
 
 function triggerDownload(content, filename) {
@@ -103,8 +105,17 @@ export function downloadEtlFull(etl) {
  * Lets the user keep the (expensive) model output and retry .ktr construction
  * later via buildFromRaw() without calling the LLM again.
  *
- * @param {object} rawLlmData — the raw `data` dict from the model (proceso_etl, ktr, etc.)
- * @param {string} name       — display name for the ETL
+ * Nombre de archivo (`raw-steps-<keyword>-<fecha_hora>.json`): misma palabra
+ * identificadora y mismo formato de timestamp que usa el backend para los
+ * .ktr/.kjb del mismo proceso (ver naming.py / llmRawNaming.js) — así el raw
+ * dump queda rastreable junto a esos archivos. `rawLlmData.ktr_1/ktr_2` traen
+ * proceso_etl.nombre porque son la respuesta cruda del LLM (mismo texto que
+ * el backend usa como process_name) — se prioriza sobre `name` (el campo
+ * "Nombre del ETL" del formulario, que puede no coincidir con lo que el LLM
+ * eligió llamar a su propio proceso).
+ *
+ * @param {object} rawLlmData — { ktr_1, ktr_2 }, cada uno con proceso_etl/ktr crudos del modelo
+ * @param {string} name       — display name para el ETL (fallback si el LLM no trae proceso_etl.nombre)
  */
 export function downloadLlmRaw(rawLlmData, name) {
   const payload = {
@@ -115,9 +126,14 @@ export function downloadLlmRaw(rawLlmData, name) {
     raw_llm_data: rawLlmData,
   };
 
+  const processName =
+    rawLlmData?.ktr_1?.proceso_etl?.nombre ||
+    rawLlmData?.ktr_2?.proceso_etl?.nombre ||
+    payload.name;
+
   triggerDownload(
     serialize(payload),
-    `etl-llm-raw-${safeFilename(payload.name)}.json`,
+    `raw-steps-${deriveKeyword(processName)}-${namingTimestamp()}.json`,
   );
 }
 

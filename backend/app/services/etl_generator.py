@@ -54,7 +54,10 @@ from app.services.ktr_builder import (
     TABLE_RECOVERY_PASSES,
     VERIFY_PASSES,
 )
-from app.services.ktr_builder.build import _sanitize
+from app.services.ktr_builder.naming import (
+    kjb_filename as build_kjb_filename,
+    ktr_filename as build_ktr_filename,
+)
 from app.services.ktr_builder.contract_validate import CONTRACT_PREFIX, validate_ktr_contracts
 from app.services.ktr_builder.error_catalog_checks import ERROR_CATALOG_PREFIX, MONEY_FIELD_HINTS
 from app.services.ktr_builder.fields_validate import FIELD_INTEGRITY_PREFIX
@@ -326,6 +329,9 @@ def _monetary_scd2_guard(dim_contracts: list) -> list[str]:
 def _build_ktr_stage(
     ktr_data: dict,
     base_name: str,
+    *,
+    etapa_label: str,
+    process_name: str = "",
     **build_kwargs,
 ) -> tuple[list[tuple[dict, str, str]], list[str]]:
     """F3 punto 1 (03-plan.md, H20): entre repair_integrity_gaps y build_ktr(),
@@ -337,7 +343,15 @@ def _build_ktr_stage(
     Devuelve ([(ktr_data_del_grupo, xml, filename), ...], warnings) — warnings
     incluye las notificaciones D15 del corte (V2/ciclo patológico) más las de
     cada build_ktr(). 1 solo grupo (caso universal hoy, D6-bis) -> 1 sola
-    llamada a build_ktr(), mismo nombre/xml/filename que antes de este punto.
+    llamada a build_ktr().
+
+    `filename` NO es el que devuelve build_ktr() (ese sigue existiendo, pero
+    solo como default para callers directos/tests que no pasan etapa_label) —
+    acá se recalcula con naming.ktr_filename(process_name, etapa_label, index),
+    la única fuente de la convención de nombre de archivo real. `base_name`
+    (con sufijo de etapa ya concatenado en los 2 call sites del flujo de 2 KTR)
+    sigue alimentando el <name> interno de la transformación vía build_ktr() —
+    ese sí queda intacto, no se toca.
 
     D20 (02-decisiones.md): conectada de verdad en _build_response_from_data /
     _build_response_from_two_ktr_data — el flujo HTTP en vivo ahora parte
@@ -365,16 +379,18 @@ def _build_ktr_stage(
     for i, sub in enumerate(sub_dicts):
         name = base_name if len(sub_dicts) == 1 else f"{base_name}_{i + 1}"
         # build_ktr() prioriza ktr_data["name"] por sobre el nombre que se le
-        # pasa (build.py:188, `ktr_data.get("name") or process_name`) — el
-        # KTR que el modelo devuelve siempre trae "name" (ETL_OUTPUT_SCHEMA lo
-        # exige), así que sin este override los N sub-dicts de un corte real
-        # comparten el mismo "name" heredado de split_ktr_by_cut() y build_ktr
-        # los emite con el mismo <name>/filename (timestamp aparte). Solo se
-        # pisa cuando hay más de 1 grupo — con 1 solo grupo `sub` es el mismo
-        # ktr_data de siempre (D19: cero cambio de comportamiento).
+        # pasa (`ktr_data.get("name") or process_name`, build.py) — el KTR que
+        # el modelo devuelve siempre trae "name" (ETL_OUTPUT_SCHEMA lo exige),
+        # así que sin este override los N sub-dicts de un corte real comparten
+        # el mismo "name" heredado de split_ktr_by_cut() y build_ktr los emite
+        # con el mismo <name> interno. Solo se pisa cuando hay más de 1 grupo —
+        # con 1 solo grupo `sub` es el mismo ktr_data de siempre (D19: cero
+        # cambio de comportamiento en el <name> interno).
         if len(sub_dicts) > 1:
             sub = {**sub, "name": name}
-        xml, filename, w = build_ktr(sub, name, **build_kwargs)
+        xml, _, w = build_ktr(sub, name, **build_kwargs)
+        index = (i + 1) if len(sub_dicts) > 1 else None
+        filename = build_ktr_filename(process_name or base_name, etapa_label, index=index)
         built.append((sub, xml, filename))
         warnings.extend(w)
     return built, warnings
@@ -463,10 +479,15 @@ def _build_job_plan(
             ),
             execution_order=inner_entries,
         )
-        inner_kjb_filename = f"{_sanitize(name)}_job_{label}.kjb"
+        inner_kjb_filename = build_kjb_filename(name, etapa_label=label)
         sub_kjbs.append((build_kjb_xml(inner_plan), inner_kjb_filename))
+        # El kjb orquestador va co-ubicado con sus N .ktr en la misma carpeta
+        # de la etapa (frontend: etlArtifacts.js buildZipEntries, folder =
+        # safeSlug(etapa.nombre) = label acá). El maestro queda en la raíz del
+        # ZIP, así que su referencia a este orquestador necesita el prefijo de
+        # carpeta — sin esto, Spoon busca el .kjb en la raíz y no está.
         master_entries.append(JobEntry(
-            order=order, transformation_name=f"JOB_{label}", filename=inner_kjb_filename,
+            order=order, transformation_name=f"JOB_{label}", filename=f"{label}/{inner_kjb_filename}",
             rationale=f"Orquesta las {len(files)} sub-transformaciones de {label}.",
             entry_type="job",
         ))
@@ -561,6 +582,7 @@ def _build_response_from_data(
     try:
         built, ktr_warnings = _build_ktr_stage(
             ktr_data, process_name,
+            etapa_label="proceso", process_name=process_name,
             real_connections=real_connections,
             required_columns_by_table=required_columns_by_table,
             strict_connections=strict_connections,
@@ -655,6 +677,7 @@ def _build_response_from_two_ktr_data(
     try:
         built_1, warnings_1 = _build_ktr_stage(
             ktr_data_1, f"{process_name}_origen_stg" if process_name else "KTR_1_origen_stg",
+            etapa_label="origen_stg", process_name=process_name,
             real_connections=real_connections,
             required_columns_by_table=required_columns_by_table,
             pass_source_connection="conn_origen",
@@ -669,6 +692,7 @@ def _build_response_from_two_ktr_data(
     try:
         built_2, warnings_2 = _build_ktr_stage(
             ktr_data_2, f"{process_name}_stg_dwh" if process_name else "KTR_2_stg_dwh",
+            etapa_label="stg_dwh", process_name=process_name,
             real_connections=real_connections,
             required_columns_by_table=required_columns_by_table,
             pass_source_connection="conn_staging",
@@ -688,7 +712,7 @@ def _build_response_from_two_ktr_data(
         job_plan_1, sub_kjbs_1 = _build_job_plan([("origen_stg", built_1)], process_name)
         kjb_master_1 = ArchivoKtr(
             xml=build_kjb_xml(job_plan_1),
-            filename=f"{_sanitize(process_name or 'Proceso_ETL')}_job.kjb",
+            filename=build_kjb_filename(process_name or "Proceso_ETL"),
         )
         etapa_1_only = _etapa_output(built_1, sub_kjbs_1[0] if sub_kjbs_1 else None, nombre="origen_stg")
         advertencias_1, integridad_validaciones_1 = _split_integrity_warnings([
@@ -742,7 +766,7 @@ def _build_response_from_two_ktr_data(
     )
     kjb_master = ArchivoKtr(
         xml=build_kjb_xml(job_plan),
-        filename=f"{_sanitize(process_name or 'Proceso_ETL')}_job.kjb",
+        filename=build_kjb_filename(process_name or "Proceso_ETL"),
     )
 
     sub_kjb_iter = iter(sub_kjbs)

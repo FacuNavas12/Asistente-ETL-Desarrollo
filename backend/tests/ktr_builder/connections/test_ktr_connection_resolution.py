@@ -310,7 +310,7 @@ def test_build_ktr_injects_real_connection_metadata_password_stays_variable(db):
     assert "<username>myuser</username>" in xml
     assert "<password>${DWH_DB_PASSWORD}</password>" in xml
     assert "DWH_DB_PASSWORD" in xml  # declarado en <parameters>
-    assert filename.startswith("test_proc_")
+    assert filename.startswith("ktr-test-")
     # avisos siempre presentes: completar password + no compartir el archivo
     assert any("password" in w.lower() for w in warnings)
     assert any("no lo subas" in w.lower() or "no compartas" in w.lower() or "fuera del equipo" in w.lower() for w in warnings)

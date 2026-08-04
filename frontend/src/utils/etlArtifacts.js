@@ -77,9 +77,10 @@ export function readEtlArtifacts(result) {
 /**
  * Aplana un resultado "ok" a entradas de ZIP {path, content} — D20-punto4:
  * etapa simple -> archivo suelto en la raíz; etapa partida -> sus N archivos
- * en una carpeta nombrada por la etapa, su .kjb intermedio expuesto en la
- * raíz junto al maestro. Sin ninguna etapa partida, todos los paths quedan
- * sin "/" (ZIP plano, UX idéntica a antes de F3).
+ * MÁS su .kjb intermedio en una carpeta nombrada por la etapa (co-ubicados —
+ * el .kjb referencia sus .ktr con ruta relativa a su propia carpeta, ver
+ * naming.py). El maestro siempre queda en la raíz. Sin ninguna etapa
+ * partida, todos los paths quedan sin "/" (ZIP plano, UX idéntica a antes de F3).
  *
  * @param {ReturnType<typeof readEtlArtifacts>} art
  * @returns {Array<{path:string, content:string}>}
@@ -90,7 +91,10 @@ export function buildZipEntries(art) {
     if (etapa.split) {
       const folder = safeSlug(etapa.nombre);
       for (const f of etapa.files) entries.push({ path: `${folder}/${f.filename}`, content: f.xml });
-      if (etapa.kjb) entries.push({ path: etapa.kjb.filename, content: etapa.kjb.xml });
+      // El .kjb orquestador va co-ubicado con sus N .ktr (mismo folder) — sus
+      // <filename> internos son relativos a su propia carpeta (Spoon resuelve
+      // vía ${Internal.Job.Filename.Directory}), no a la raíz del ZIP.
+      if (etapa.kjb) entries.push({ path: `${folder}/${etapa.kjb.filename}`, content: etapa.kjb.xml });
     } else {
       for (const f of etapa.files) entries.push({ path: f.filename, content: f.xml });
     }
