@@ -65,20 +65,17 @@ class TestEtlGeneratorUnit:
                         "tipo_step_pdi": "TableInput",
                         "nombre": "Extract",
                         "descripcion": "read",
-                        "configuracion": {"sql": "SELECT id FROM origen"},
-                        "justificacion": "reads source",
                     }
                 ],
             },
             "validaciones": [],
-            "documentacion": "doc",
             "advertencias_buenas_practicas": [],
             "dwh_sample": {},
             "ktr": {
                 "name": "ETL_TEST",
                 "description": "desc",
                 "connections": [],
-                "steps": [{"name": "Extract", "type": "TableInput", "config": {"sql": "SELECT id FROM origen"}}],
+                "steps": [{"name": "Extract", "type": "TableInput", "config": json.dumps({"sql": "SELECT id FROM origen"})}],
                 "hops": [],
             },
         }
