@@ -750,19 +750,17 @@ export default function CreateETL() {
               >
                 ← Volver
               </button>
-              {["origen_stg", "stg_dwh"].filter(k => modelStages?.[k]?.data).length > 0 && (
-                <button
-                  className="infer-btn infer-btn--secondary"
-                  onClick={() => setModelResponsesOpen(true)}
-                  disabled={isRefining}
-                  title="Respuestas crudas del modelo guardadas por etapa"
-                >
-                  Respuestas del modelo{" "}
-                  <span className="infer-btn__badge">
-                    {["origen_stg", "stg_dwh"].filter(k => modelStages?.[k]?.data).length}/2
-                  </span>
-                </button>
-              )}
+              <button
+                className="infer-btn infer-btn--secondary"
+                onClick={() => setModelResponsesOpen(true)}
+                disabled={isRefining}
+                title="Respuestas crudas del modelo guardadas por etapa, o importar una respuesta ya descargada"
+              >
+                Respuestas del modelo{" "}
+                <span className="infer-btn__badge">
+                  {["origen_stg", "stg_dwh"].filter(k => modelStages?.[k]?.data).length}/2
+                </span>
+              </button>
               <button
                 className="infer-btn infer-btn--secondary"
                 onClick={handleGuardarFromReview}
