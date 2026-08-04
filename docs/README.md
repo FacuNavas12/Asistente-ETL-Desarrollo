@@ -33,7 +33,7 @@ El trabajo abierto está separado en tres objetivos y un congelador. **Una sesi�
 |---|---|---|
 | **O0** | Higiene de repo | cerrada 2026-08-03 |
 | **O1-a** | Fixes baratos de T (E-04…E-08) | cerrada, D59 |
-| **O1-b** | El crash + criterio de degradación (E-01, E-02, E-03) | abierta — D60/D64 resolvieron 1-2, pero una auditoría 2026-08-03 bajó los criterios 3 y 4 de `10-estabilizar-emision.md` a "parcial" (D64 corrió `build_etl_from_raw()` directo, no el job async real; XML bien formado ≠ abre en Spoon). Ver "Próximos pasos" ahí. E-20 (duplicación) sí cerrado |
+| **O1-b** | El crash + criterio de degradación (E-01, E-02, E-03) | cerrada 2026-08-03 — D60/D64 resolvieron 1-2; sesión de cierre verificó 3/4 contra corrida real (`/generate-async`→`/status`, corpus de E-01) y cerró Bloque 3 (capa job). Ver criterios de terminado en `10-estabilizar-emision.md`. E-20 cerrado; E-21 registrado (no arreglado, a propósito) con impacto confirmado como E-23; E-24 nuevo, registrado, no bloquea |
 | **O1-c** | T estructural (E-09, E-10, E-11) | cerrada, 2026-08-03 |
 | **O2-a** | Partir `common.py` | cerrada 2026-08-03, D61 |
 | **O2-b** | `resolve_step_table()` en `domain/` | cerrada 2026-08-03, D62 |

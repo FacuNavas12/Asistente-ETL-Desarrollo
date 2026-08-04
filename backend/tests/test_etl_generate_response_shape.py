@@ -208,6 +208,41 @@ def test_monolithic_flow_carries_dwh_and_stg_ddl_through():
     assert result.stg_ddl == "CREATE TABLE stg_ventas (id_venta INT);"
 
 
+# ─── Bloque 3 (10-estabilizar-emision.md): etapa 2 falla estructural, etapa 1
+# ya construida no se pierde ─────────────────────────────────────────────────
+
+def test_stg_dwh_structural_failure_still_delivers_the_origen_stg_stage_built(monkeypatch):
+    """Antes de este fix: un fallo estructural (XML mal formado, ktr_data
+    no-dict — los 2 casos que siguen abortando a propósito) en la etapa
+    STG→DWH tiraba KtrBuildError y el caller (_try_build) perdía la etapa
+    origen→STG, ya construida con éxito — 'cero archivos', el síntoma que
+    motivó O1. Ahora entrega esa etapa igual, con el error de la otra
+    etapa como Validacion."""
+    real_build_ktr_stage = etl_generator._build_ktr_stage
+    calls = {"n": 0}
+
+    def _fake_build_ktr_stage(ktr_data, base_name, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise ValueError("XML mal formado (simulado)")
+        return real_build_ktr_stage(ktr_data, base_name, **kwargs)
+
+    monkeypatch.setattr(etl_generator, "_build_ktr_stage", _fake_build_ktr_stage)
+
+    metadata = MetadataResponse(modelo_usado="t", tokens_input=0, tokens_output=0, region_inferencia="t")
+    result = etl_generator._build_response_from_two_ktr_data(
+        _wrap(_origen_stg_ktr(), "d1"), _wrap(_stg_dwh_ktr_with_real_cut(), "d2"), metadata,
+    )
+
+    assert len(result.etapas) == 1
+    assert result.etapas[0].nombre == "origen_stg"
+    assert result.etapas[0].archivo is not None
+    assert any(
+        v.tipo == "error" and "stg_dwh" in v.campo.lower() and "XML mal formado" in v.mensaje
+        for v in result.validaciones
+    )
+
+
 def test_etapa_output_tipo_rejects_unknown_value():
     """El contrato es un Literal["ktr","kjb"] — un valor fuera de eso (ej. un
     consumidor futuro que agregue un tercer tipo sin coordinar) debe fallar

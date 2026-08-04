@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import pathlib
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -487,3 +488,183 @@ def test_attaching_a_foreign_connection_id_to_own_job_falls_back_to_placeholder(
     assert "user-a" not in json.dumps(body)
     etapa = body["result"]["etapas"][0]
     assert "PLACEHOLDER_HOST" in etapa["archivo"]["xml"]  # nunca el host real de user-a
+
+
+# ─── O1-b, criterios de terminado 3 y 4 (10-estabilizar-emision.md) ───────────
+# Corpus real de E-01 (errores.md) a través del camino que el diagnóstico
+# original NUNCA ejercitó: /generate-async -> /connections -> /status, no
+# build_etl_from_raw() directo (eso es lo que D64 corrió, con llm=None). Este
+# test reproduce el 'Cargar dim_producto' con 3 columnas inventadas
+# (fk_categoria/precio_lista/stock, vocabulario de fact_inventario, no de la
+# dimensión) que motivó el crash original.
+
+_E01_ROOT = pathlib.Path(__file__).resolve().parents[2] / "docs" / "refactor" / "fase4_manual" / "sonnet"
+
+
+def _e01_raw_llm_data() -> dict:
+    corpus = json.loads((_E01_ROOT / "etl-llm-raw-test-01_sonnet_fase4.json").read_text(encoding="utf-8"))
+    return corpus["raw_llm_data"]
+
+
+def _e01_ddl() -> tuple[str, str]:
+    # DDL-inferido-test-con-raw.txt: dos líneas `"stg_definition": "..."` /
+    # `"dwh_model": "..."`, con \n escapado DOBLE (double-encoded al exportarse
+    # una vez de más) — de ahí el replace de "\\\\n" (2 backslashes + n), no
+    # "\\n".
+    text = (_E01_ROOT / "DDL-inferido-test-con-raw.txt").read_text(encoding="utf-8")
+
+    def _clean(line: str) -> str:
+        _, val = line.split(":", 1)
+        val = val.strip()
+        if val.endswith(","):
+            val = val[:-1]
+        val = val[1:-1]
+        val = val.replace("\\\\n", "\n")
+        val = val.replace("\\'", "'")
+        return val
+
+    lines = text.split("\n")
+    return _clean(lines[0]), _clean(lines[1])
+
+
+def _e01_dim_contracts() -> list[dict]:
+    # Ambas dimensiones son SCD1 según el DDL real (comentarios COMMENT ON
+    # TABLE ... 'SCD1: sobreescribe sin versionar').
+    return [
+        {
+            "table": "dim_categoria", "scd_type": 1, "technical_key": "sk_categoria",
+            "version_field": "version", "date_from": "fecha_inicio", "date_to": "fecha_fin",
+            "natural_keys": ["id_categoria_origen"], "unknown_key_value": 0,
+            "attributes_scd1": ["nombre_categoria"], "attributes_scd2": [],
+        },
+        {
+            "table": "dim_producto", "scd_type": 1, "technical_key": "sk_producto",
+            "version_field": "version", "date_from": "fecha_inicio", "date_to": "fecha_fin",
+            "natural_keys": ["id_producto_origen"], "unknown_key_value": 0,
+            "attributes_scd1": ["nombre_producto", "nombre_categoria", "precio_unitario", "bk_producto"],
+            "attributes_scd2": [],
+        },
+    ]
+
+
+def _e01_llm(stg_ddl: str, dwh_ddl: str, raw: dict):
+    """3 llamadas reales del flujo (auditoría DDL, etapa origen_stg, etapa
+    stg_dwh) devuelven el corpus tal cual; cualquier llamada de más (los
+    repairs — repair_ktr_steps/repair_integrity_gaps/_repair_dimension_
+    loader_fields) devuelve json_data=None, que cada call site ya trata como
+    intento fallido (no rompe nada — es la misma superficie de 'repair no
+    disponible' que build-from-raw con llm=None, E-21)."""
+    calls = {"n": 0}
+
+    async def _complete(user_message, system, schema=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            data = {"dwh_ddl": dwh_ddl, "sin_cambios": True, "cambios_aplicados": [], "conflictos": []}
+        elif calls["n"] == 2:
+            data = raw["ktr_1"]
+        elif calls["n"] == 3:
+            data = raw["ktr_2"]
+        else:
+            return LLMResponse(content="", json_data=None, model="test", input_tokens=1, output_tokens=1, provider="test")
+        return LLMResponse(content=json.dumps(data), json_data=data, model="test", input_tokens=1, output_tokens=1, provider="test")
+
+    llm = MagicMock(spec=BaseLLM)
+    llm.complete = _complete
+    return llm, calls
+
+
+def test_e01_corpus_through_real_async_pipeline_reaches_built(client):
+    """Reproduce el corpus real de E-01 (cerrado D64, pero D64 llamó a
+    build_etl_from_raw() directo con llm=None — nunca ejercitó este camino).
+    Criterio de terminado 3: build_status pasa a 'built' a través de
+    /generate-async -> /connections -> /status, y el finding de vocabulario
+    cruzado (los 3 campos que no existen en dim_producto: fk_categoria,
+    precio_lista, stock) llega a result['validaciones']."""
+    stg_ddl, dwh_ddl = _e01_ddl()
+    raw = _e01_raw_llm_data()
+    llm, calls = _e01_llm(stg_ddl, dwh_ddl, raw)
+    app.dependency_overrides[get_main_llm] = lambda: llm
+
+    body = {
+        "descripcionObjetivo": "Cargar productos y categorias a un DWH de inventario",
+        "origenTables": [
+            {"tableName": "categorias", "columns": [
+                {"name": "cod_categoria", "dataType": "int"},
+                {"name": "nombre_categoria", "dataType": "varchar"},
+            ]},
+            {"tableName": "productos", "columns": [
+                {"name": "cod_producto", "dataType": "int"},
+                {"name": "nombre_producto", "dataType": "varchar"},
+                {"name": "categoria", "dataType": "varchar"},
+                {"name": "precio_lista", "dataType": "numeric"},
+            ]},
+        ],
+        "stg_definition": stg_ddl,
+        "dwh_model": dwh_ddl,
+        "reglasNegocio": "Se descartan precios negativos. valor_inventario = precio_unitario * stock.",
+        "dim_contracts": _e01_dim_contracts(),
+    }
+
+    resp = client.post("/api/v1/etl/generate-async", json=body)
+    assert resp.status_code == 200, resp.text
+    job_id = resp.json()["job_id"]
+
+    resp = client.post(f"/api/v1/etl/{job_id}/connections", json={
+        "conn_origen": {"db_type": "postgresql", "host": "origen.example", "port": 5432, "database": "origendb", "username": "u"},
+        "conn_staging": {"db_type": "postgresql", "host": "stg.example", "port": 5432, "database": "stgdb", "username": "u"},
+        "conn_dwh": {"db_type": "postgresql", "host": "dwh.example", "port": 5432, "database": "dwhdb", "username": "u"},
+    })
+    assert resp.status_code == 200, resp.text
+    asyncio.run(_drain_pending_tasks())
+
+    resp = client.get(f"/api/v1/etl/{job_id}/status")
+    status = resp.json()
+    assert status["model_status"] == "done"
+    # Criterio 3: no 'failed' — el crash original de E-01 (KtrBuilderError,
+    # cero archivos) ya no puede volver a pasar por este camino.
+    assert status["build_status"] == "built", status.get("error")
+    result = status["result"]
+    assert result is not None
+    assert calls["n"] >= 3  # las 3 llamadas reales (DDL + 2 etapas) sí ocurrieron
+
+    # Las dos etapas entregan archivo — el escenario "cero archivos" (motivo
+    # original de O1) no ocurrió.
+    assert len(result["etapas"]) == 2
+    for etapa in result["etapas"]:
+        assert etapa.get("archivo") or etapa.get("archivos")
+
+    # El finding de vocabulario cruzado llega al usuario, nombrando los 3
+    # campos que no existen en dim_producto (vienen de fact_inventario).
+    validaciones_txt = json.dumps(result["validaciones"], ensure_ascii=False)
+    assert "Cargar dim_producto" in validaciones_txt
+    for campo_inventado in ("fk_categoria", "precio_lista", "stock"):
+        assert campo_inventado in validaciones_txt, f"finding no menciona '{campo_inventado}'"
+
+    # Criterio 4: plugin ids reales de Kettle, no solo XML bien formado
+    # (ElementTree no distingue esto — E-11 es el precedente exacto: pasaba
+    # ElementTree.parse() y Spoon igual marcaba el step "missing"). Sin Spoon
+    # en este entorno (verificado — no hay Data Integration instalado):
+    # cross-check contra investigacion-tags-validos-por-step.md, que ya
+    # verificó clase+línea de pentaho-kettle para los 13 tipos de step de
+    # este corpus. Ninguno necesita _XML_TYPE_OVERRIDES salvo GetSystemInfo
+    # (-> 'SystemInfo', ya cubierto) — ninguno cae en la trampa de E-11
+    # (SplitFieldToRows sin el '3').
+    expected_xml_type = {
+        "GetSystemInfo": "SystemInfo",
+        "TableInput": "TableInput", "Constant": "Constant", "JoinRows": "JoinRows",
+        "SelectValues": "SelectValues", "TableOutput": "TableOutput", "WriteToLog": "WriteToLog",
+        "DimensionLookup": "DimensionLookup", "FilterRows": "FilterRows", "Dummy": "Dummy",
+        "ConcatFields": "ConcatFields", "Calculator": "Calculator", "InsertUpdate": "InsertUpdate",
+    }
+    all_xml = "\n".join(
+        (etapa["archivo"]["xml"] if etapa.get("archivo") else "\n".join(a["xml"] for a in etapa["archivos"]))
+        for etapa in result["etapas"]
+    )
+    for stage_raw in (raw["ktr_1"], raw["ktr_2"]):
+        for step in stage_raw["ktr"]["steps"]:
+            canonical = step["type"]
+            xml_type = expected_xml_type[canonical]
+            assert f"<name>{step['name']}</name>\n    <type>{xml_type}</type>" in all_xml, (
+                f"step '{step['name']}' no emitió <type>{xml_type}</type> — "
+                f"plugin id inválido dejaría el step 'missing' en Spoon (patrón E-11)"
+            )

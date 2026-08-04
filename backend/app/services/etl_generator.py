@@ -1208,8 +1208,42 @@ def _build_response_from_two_ktr_data(
             known_tables=known_tables,
         )
     except Exception as e:
-        _log.error("build_ktr (KTR_2 STG→DWH) failed: %s — conservando raw_data para reintento manual", str(e))
-        raise KtrBuildError({"ktr_1": data_1, "ktr_2": data_2}, e) from e
+        # Bloque 3 (docs/refactor/10-estabilizar-emision.md): etapa 1 ya
+        # construyó archivo real — no lo tiramos por un fallo estructural
+        # (XML mal formado, ktr_data no-dict — D-N, "qué sigue abortando a
+        # propósito") de la etapa 2. Se entrega origen→STG solo, con el
+        # error de la etapa 2 como Validacion, en vez de forzar el
+        # escenario "cero archivos" que motivó O1 desde el principio.
+        _log.error("build_ktr (KTR_2 STG→DWH) failed: %s — entregando solo origen→STG, ya construida", str(e))
+        from app.services.job_analyzer import build_kjb_xml
+        job_plan_1, sub_kjbs_1 = _build_job_plan([("origen_stg", built_1)], process_name)
+        kjb_master_1 = ArchivoKtr(
+            xml=build_kjb_xml(job_plan_1),
+            filename=f"{_sanitize(process_name or 'Proceso_ETL')}_job.kjb",
+        )
+        etapa_1_only = _etapa_output(built_1, sub_kjbs_1[0] if sub_kjbs_1 else None, nombre="origen_stg")
+        advertencias_1, integridad_validaciones_1 = _split_integrity_warnings([
+            *data_1.get("advertencias_buenas_practicas", []),
+            *(connection_warnings or []), *(extra_warnings or []), *warnings_1,
+        ])
+        return ETLGenerateResponse(
+            proceso_etl=data_1.get("proceso_etl", {}),
+            validaciones=[
+                *data_1.get("validaciones", []), *integridad_validaciones_1, *(extra_validaciones or []),
+                Validacion(
+                    tipo="error", campo="stg_dwh",
+                    mensaje=f"Etapa Staging→DWH falló al construir el .ktr: {e}. Solo se entrega "
+                    "Origen→Staging — reintentar la etapa Staging→DWH por separado.",
+                ),
+            ],
+            documentacion=data_1.get("documentacion", ""),
+            advertencias_buenas_practicas=advertencias_1,
+            etapas=[etapa_1_only],
+            kjb_master=kjb_master_1,
+            metadata=metadata,
+            dwh_ddl=dwh_ddl,
+            stg_ddl=stg_ddl,
+        )
 
     # proceso_etl.steps es el resumen legible que consume el frontend (conteo de
     # steps por tipo/orden en ChartPanel) — combinar ambos tramos y renumerar
