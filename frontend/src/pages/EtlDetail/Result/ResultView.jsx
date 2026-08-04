@@ -2,6 +2,7 @@ import { useState } from "react";
 import ChartPanel from "@/components/ui/ChartPanel";
 import CollapsibleSection from "../components/CollapsibleSection";
 import { readEtlArtifacts } from "@/utils/etlArtifacts";
+import { unescapeDdl } from "@/utils/ddl";
 import "../etlDetail-global.css";
 import "@/pages/CreateETL/css/inferenceReview.css";
 import "./ResultView.css";
@@ -37,14 +38,15 @@ function ValidationItem({ v }) {
 
 function DdlSection({ title, ddl, description }) {
   if (!ddl) return null;
+  const text = unescapeDdl(ddl);
   return (
     <CollapsibleSection title={title}>
       <div className="infer-panel">
         <div className="infer-panel__header">
           <p className="etl-section__text" style={{ margin: 0 }}>{description}</p>
-          <CopyButton text={ddl} />
+          <CopyButton text={text} />
         </div>
-        <pre className="infer-panel__ddl">{ddl}</pre>
+        <pre className="infer-panel__ddl">{text}</pre>
       </div>
     </CollapsibleSection>
   );
