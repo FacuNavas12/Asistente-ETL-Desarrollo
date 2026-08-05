@@ -29,6 +29,12 @@ logger = logging.getLogger(__name__)
 _MAX_RETRIES = 4
 _BACKOFF_BASE = 2  # seconds: 2, 4, 8, 16
 
+# Presupuesto de "thinking" (razonamiento interno) del modelo — cuenta contra
+# max_output_tokens. Sin este cap, el modelo decide dinámicamente (thinking_budget=-1)
+# y puede variar mucho de una corrida a otra, comiéndose el budget de output y
+# causando MAX_TOKENS aunque el prompt no haya cambiado.
+_THINKING_BUDGET_MEDIUM = 8192
+
 
 def _is_retryable(exc: APIError) -> bool:
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
@@ -151,6 +157,7 @@ class GeminiLLM(BaseLLM):
             system_instruction=system,
             temperature=self._temperature,
             max_output_tokens=self._max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=_THINKING_BUDGET_MEDIUM),
             # timeout en ms — evita que una respuesta colgada (sin datos, sin
             # error HTTP) bloquee el job indefinidamente (ver AnthropicLLM).
             http_options=types.HttpOptions(timeout=int(self._request_timeout_s * 1000)),
@@ -230,6 +237,7 @@ class GeminiLLM(BaseLLM):
                 system_instruction=fallback_system,
                 temperature=self._temperature,
                 max_output_tokens=self._max_tokens,
+                thinking_config=types.ThinkingConfig(thinking_budget=_THINKING_BUDGET_MEDIUM),
                 response_mime_type="application/json",
                 http_options=types.HttpOptions(timeout=int(self._request_timeout_s * 1000)),
             ),
