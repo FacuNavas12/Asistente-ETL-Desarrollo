@@ -1,8 +1,48 @@
 # Contrato DDL — qué garantiza y quién lo hace cumplir
 
-**Referencia, no investigación.** Destila `docs/refactor/06-contrato-ddl.md` (índice de hallazgos DDL) + los dos prompts que declaran el contrato (`backend/prompts/system_inference.txt`, `backend/prompts/prompt_validacion_src.txt`) + los validadores Python que corren sobre `ktr_data`/DDL en build-time. Objetivo: para cada invariante, decir si algo en código lo hace cumplir de verdad o si depende de que el modelo lo respete — es el insumo que pide `docs/refactor/30-decision-python-llm.md` (O3) para decidir qué sintetiza Python y qué le pregunta al modelo.
+**Referencia, no investigación.** Destila los dos prompts que declaran el contrato (`backend/prompts/system_inference.txt`, `backend/prompts/prompt_validacion_src.txt`) + los validadores Python que corren sobre `ktr_data`/DDL en build-time. Objetivo: para cada invariante, decir si algo en código lo hace cumplir de verdad o si depende de que el modelo lo respete.
 
-Verificado contra código 2026-08-03 (grep + lectura directa de los dos prompts y de todo `ddl_validation.py`/`ktr_builder/validators/`). Cuando este archivo y el código diverjan, gana el código — Regla A, `docs/README.md`.
+Verificado contra código 2026-08-03 (grep + lectura directa de los dos prompts y de todo `ddl_validation.py`/`ktr_builder/validators/`). Cuando este archivo y el código diverjan, gana el código.
+
+## Reglas de diseño exigidas al LLM en la inferencia (`system_inference.txt`)
+
+### Nomenclatura
+- `snake_case`, minúsculas, sin tildes/ñ, un solo idioma, **singular siempre**, sin abreviaturas salvo `id/sk/fk/nro/pct`.
+- Tablas: `stg_<sistema>_<entidad>` | `dim_<entidad>` | `fact_<proceso>` | `dwh_<entidad>`. Prohibido `stg_datos`/`stg_carga`/`stg_tabla1` — el nombre debe identificar sistema origen + entidad.
+- Columnas: `sk_` surrogate | `fk_` FK a dimensión | `id_<entidad>_origen` clave natural | `es_`/`tiene_` booleanos | `<métrica>_<moneda>` importes convertidos | `stg_`/`dwh_` auditoría.
+- Constraints **siempre con nombre explícito**: `pk_<tabla>`, `fk_<origen>_<destino>`, `uq_<tabla>_<cols>`, `ck_<tabla>_<regla>`.
+
+### Documentación obligatoria
+- `COMMENT ON TABLE` en toda tabla: contenido, origen, **GRANO**, modo de carga.
+- `COMMENT ON COLUMN` en: derivadas/calculadas (fórmula), afectadas por regla de negocio (cita la regla), con default sustitutivo, conversiones de moneda/unidad, técnicas (SCD2, auditoría).
+
+### STG — espejo crudo del origen
+| # | Regla |
+|---|---|
+| S1 | Todos los campos del origen, casteados a tipos SQL estándar |
+| S2 | Ninguna columna de origen lleva `NOT NULL`/`CHECK`/`UNIQUE`/`FK` **[I1]** |
+| S3 | Ante duda de tipo, `VARCHAR(255)` — el casteo real va en la transformación |
+| S4 | Auditoría al final, obligatoria, `NOT NULL` (única excepción a S2): `stg_fecha_carga TIMESTAMP NOT NULL DEFAULT NOW()`, `stg_origen VARCHAR(100) NOT NULL`, `stg_estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVO'` |
+
+### DWH — elección de modelo
+- Objetivo analítico/BI/KPI → **ESTRELLA**.
+- Objetivo de replicación/integración/migración/consolidación operacional → **NORMALIZADO** (prefijo `dwh_`, 3FN, PK/FK nombradas, clave natural `UNIQUE`, `dwh_fecha_carga`).
+- Ambiguo → ESTRELLA + declarar en `assumptions`.
+
+### ESTRELLA — dimensiones (D1-D7) y hechos (F1-F9)
+Resumen de las reglas con código propio (texto completo en `system_inference.txt`):
+- D2/F5: SK `SERIAL`/`BIGSERIAL PRIMARY KEY`.
+- D3: clave natural `NOT NULL` + `UNIQUE` nombrado; en SCD2, índice nombrado sobre `(clave_natural, fecha_fin)`, **nunca índice parcial** `WHERE es_vigente`/`WHERE fecha_fin IS NULL`.
+- D6: `dim_tiempo` con `UNIQUE` sobre fecha + columnas derivadas (año/trimestre/mes/día/etc).
+- D7/F2/I8: fila "desconocido" sembrada por `INSERT`, SK = valor que usa el step PDI (0 por defecto); toda `fk_` del fact `NOT NULL DEFAULT <sk desconocido>`.
+- F1: GRANO declarado en `COMMENT ON TABLE` — "la decisión más importante del modelo".
+- F3/I5: métricas `NUMERIC(15,2)`; multi-moneda con `moneda_origen NOT NULL` sin default + `tasa_cambio_aplicada` solo si hay fuente de tasa.
+- F7: un fact **nunca** se carga con `Dimension lookup/update`.
+- F8/I9: clave degenerada del origen al grano, `UNIQUE` nombrado.
+- F9: un índice por cada columna `fk_` (Postgres no indexa FKs solo).
+
+### Precedencia declarada
+1. Invariantes I1-I7. 2. Reglas de negocio explícitas del usuario. 3. Reglas de capa (STG/DWH). 4. Nomenclatura y documentación.
 
 ## Dos llamadas al LLM declaran el mismo contrato
 
@@ -43,16 +83,54 @@ Todos corren en build-time sobre `ktr_data` ya generado — comparan el KTR cont
 
 ## Resueltos — no reabrir
 
-- **DDL-1** (`06-contrato-ddl.md`) — `date_from NOT NULL` sin DEFAULT chocaba con `checkDimZero` de Kettle (inserta la fila "unknown" nombrando solo 2 columnas). Resuelto por D47: sembrado completo embebido en el propio DDL (I8/V5), nunca se relaja el `NOT NULL`. Ejecutado 2026-07-30.
-- **DDL-2** (`06-contrato-ddl.md`) — centinelas de rango en dimensión de calendario pre-poblada externamente. Resuelto por D51 como guía operativa en `K18` (`system_etl.txt`), a propósito **sin** checker — ver Gap 2.
+- **DDL-1** — `date_from NOT NULL` sin DEFAULT chocaba con `checkDimZero` de Kettle (inserta la fila "unknown" nombrando solo 2 columnas). Resuelto por D47: sembrado completo embebido en el propio DDL (I8/V5), nunca se relaja el `NOT NULL`. Ejecutado 2026-07-30.
+- **DDL-2** — centinelas de rango en dimensión de calendario pre-poblada externamente. Resuelto por D51 como guía operativa en `K18` (`system_etl.txt`), a propósito **sin** checker — ver Gap 2.
 
 ## Gaps conocidos — nadie los hace cumplir hoy
 
-1. **Forma del `UNIQUE` de clave natural según `scd_type` (I3).** SCD1/0 exige simple, SCD2 exige compuesto con fecha — pero `prompt_validacion_src.txt` V2 acepta cualquiera de las dos formas sin condicionarla a `scd_type`, y ningún validador Python la cruza contra `dim_contracts[i].scd_type`. Caso real observado: dimensión SCD1 con forma de índice de SCD2, sin aviso. Detalle completo y fix recomendado (`natural_key_unique_shape(scd_type)` en `domain/scd.py`, no aplicado): `docs/SCD/criterios.md` § "El hueco que causó el bug" — no está indexado en `06-contrato-ddl.md` todavía.
+1. **Forma del `UNIQUE` de clave natural según `scd_type` (I3).** SCD1/0 exige simple, SCD2 exige compuesto con fecha — pero `prompt_validacion_src.txt` V2 acepta cualquiera de las dos formas sin condicionarla a `scd_type`, y ningún validador Python la cruza contra `dim_contracts[i].scd_type`. Caso real observado: dimensión SCD1 con forma de índice de SCD2, sin aviso. Fix recomendado, no aplicado: `natural_key_unique_shape(scd_type)` en `domain/scd.py` — ver `referencia/scd.md` § "Gap abierto, sin dueño en código".
 2. **Centinelas de rango en dimensión de calendario pre-poblada externamente (DDL-2).** No verificable en build-time por diseño del proyecto: el backend nunca ve las filas reales de una tabla pre-poblada a mano (solo estructura llega al LLM/backend, nunca datos). Guía operativa en `K18`, sin dueño en código a propósito.
-3. **El contrato asume Postgres sin excepción.** `synthesize_missing_seed_rows` corre con `dialect=None` (sqlglot), y `system_inference.txt:86` fija "PostgreSQL. Sin esquemas..." — pese a que `Connection.db_type` sí admite `sqlserver` (H52, `01-hallazgos.md`). Si algún día se genera DDL para SQL Server, el sembrado de fila necesita una rama nueva (`SET IDENTITY_INSERT ... ON/OFF`).
-4. **I5 (multi-moneda), I7 (orden de `CREATE TABLE`) e I9 (clave degenerada del fact) no tienen ningún dueño en Python — ni siquiera un `V` en la fase de auditoría.** Los tres se declaran como invariantes en `prompt_validacion_src.txt` pero ninguno de los 6 `V` los chequea. Encontrado al escribir este archivo, registrado como E-17 en `errores.md`.
-5. **`system_inference.txt:89` dice "Invariantes I1-I7" en la línea de PRECEDENCIA, pero el propio archivo declara I1-I9** (línea 74-82). Inconsistencia interna del prompt — no se sabe si I8/I9 se pensaron fuera del nivel de máxima precedencia a propósito o es texto que no se actualizó cuando se agregaron. Encontrado al escribir este archivo, registrado como E-18 en `errores.md`.
+3. **El contrato asume Postgres sin excepción.** `synthesize_missing_seed_rows` corre con `dialect=None` (sqlglot), y `system_inference.txt:86` fija "PostgreSQL. Sin esquemas..." — pese a que `Connection.db_type` sí admite `sqlserver`. Si algún día se genera DDL para SQL Server, el sembrado de fila necesita una rama nueva (`SET IDENTITY_INSERT ... ON/OFF`).
+4. **I5 (multi-moneda), I7 (orden de `CREATE TABLE`) e I9 (clave degenerada del fact) no tienen ningún dueño en Python — ni siquiera un `V` en la fase de auditoría.** Los tres se declaran como invariantes en `prompt_validacion_src.txt` pero ninguno de los 6 `V` los chequea.
+5. **`system_inference.txt:89` dice "Invariantes I1-I7" en la línea de PRECEDENCIA, pero el propio archivo declara I1-I9** (línea 74-82). Inconsistencia interna del prompt — no se sabe si I8/I9 se pensaron fuera del nivel de máxima precedencia a propósito o es texto que no se actualizó cuando se agregaron.
+6. **La "key" de una tabla vive en dos canales que nunca se comparan.** `ddl_adapter` deriva `CanonicalSchema.primary_key`/`is_primary_key` del DDL declarado; independientemente, el LLM declara `dim_contracts[i].natural_keys` en su salida estructurada de inferencia (`inference_output.py`), sin pasar por el DDL parseado. `dimension_step_policy.py::enforce_dimension_step_policy` arma su lógica desde `dim_contracts`, nunca desde `schema.primary_key` — así que hoy un desacople entre ambos no se nota en el `.ktr` generado. Sí tiene un consumidor real: `structure_inferrer.py::_key_columns_trusted` (pre-check SCD1/SCD2) usa `primary_key`/`is_primary_key` del schema de **origen** como señal de confianza para `classify_scd_candidates` — si el DDL de origen no declara PK, esa señal da `key_columns=[]` aunque `dim_contracts` sí tenga una natural key coherente. Pregunta de diseño sin decidir: si `dim_contracts[i].natural_keys` debería derivarse de/validarse contra lo que el DDL realmente declara, en vez de vivir como 2 canales paralelos que pueden divergir en silencio.
+
+## Parser DDL — qué reconoce `ddl_adapter.py`
+
+Único parser DDL del sistema — sqlglot AST → `list[CanonicalSchema]`. Usado por el endpoint `/api/schema/from-ddl` (usuario pega DDL) y por ~7 funciones internas de `etl_generator.py` que re-parsean `stg_definition`/`dwh_ddl` ya confirmados para derivar warnings.
+
+### Qué reconoce hoy
+| Elemento SQL | Soporte | Detalle |
+|---|---|---|
+| Tipos de dato | Amplio (`_SQLGLOT_TYPE_MAP`, ~45 tipos) | Integer/Number/String/Boolean/Date/Time/Datetime/Object/Binary/Array → `CanonicalType`. Tipo no mapeado → `UNKNOWN` + `logger.warning` (nunca excepción) |
+| `PRIMARY KEY` (tabla o columna) | Sí, **incluyendo nombrado** (`CONSTRAINT x PRIMARY KEY(...)`) | `_unwrap_table_level_constraint` desenvuelve `exp.Constraint` |
+| `FOREIGN KEY` (tabla) | Sí, incluyendo nombrado | Extrae `fields`/`reference_resource`/`reference_fields` |
+| `NOT NULL` (columna) | Sí | → `FieldConstraints.required` |
+| `DEFAULT` (columna) | Sí | Clasificado vía `sql_defaults.classify_default_expr()` en `literal` vs `function` (regex, sin dialecto — `NOW()`, `CURRENT_TIMESTAMP`, `gen_random_uuid()`, etc.) |
+| `CHECK` — `col OP lit` (`>=`/`<=`/`>`/`<`, cualquier orden) | Sí | → `minimum`/`maximum`. `AND` recursivo (multi-columna, cualquier profundidad) |
+| `CHECK` — `BETWEEN` | Sí | → `minimum`/`maximum` directo |
+| `CHECK` — `IN (...)` | Sí, solo si todos los valores son literales | → `FieldConstraints.enum` |
+| Operadores estrictos `>`/`<` | Solo para `CanonicalType.INTEGER` (ajuste `+1`/`-1`) | Para `NUMBER` se descarta y loggea — falta conocer la escala del tipo (diferido) |
+| Precision/scale/length | Sí | Por familia de tipo (`_PRECISION_SQLGLOT_TYPES`/`_LENGTH_SQLGLOT_TYPES`) |
+| UUID | Sí | `format="uuid"` |
+
+### Qué NO reconoce (descartado y loggeado, nunca excepción)
+- `CHECK` con `OR`, con funciones (`LENGTH(...)`, etc.), columna-vs-columna o con subqueries.
+- Rangos sobre fecha/texto (`CHECK (fecha >= '2020-01-01')`) — diferido, falta info del usuario para diseñar el enfoque.
+- `NUMBER`/`NUMERIC` con operador estricto (`>`/`<`) — sin escala conocida no hay "próximo valor"; ruta trazada pero no implementada: `Decimal(1).scaleb(-scale)`.
+- Todo lo demás que no matchea sqlglot AST esperado (sintaxis inválida) → `ValueError("Error de sintaxis SQL: ...")`, único punto donde `parse_ddl` sí levanta.
+
+**Garantía de diseño:** `parse_ddl()` nunca levanta excepción por un `CREATE TABLE` individual malformado — lo loggea y sigue con el resto (`except Exception: logger.warning(...)`); solo el parseo sintáctico global (`sqlglot.parse`) puede fallar duro.
+
+### Propagación al prompt del LLM
+`minimum`/`maximum`/`enum` extraídos de un `CHECK` llegan al LLM por esta cadena:
+```
+ddl_adapter.parse_ddl()          → CanonicalField.constraints (minimum/maximum/enum)
+  → schema_to_context._field_to_minimal_profile()   → ColumnProfile (nuevos campos)
+    → context_builder.format_model_context_for_prompt()
+      → texto: "rango válido (CHECK del DDL): ..." / "valores válidos (CHECK del DDL): ..."
+```
+`format_model_context_for_prompt()` sigue siendo el único punto de salida al prompt (whitelist de campos, nunca filas de datos crudos).
 
 ## Vocabulario de `dim_contracts`
 

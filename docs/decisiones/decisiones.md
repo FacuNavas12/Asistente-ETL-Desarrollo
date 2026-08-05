@@ -1,12 +1,10 @@
-# Decisiones — Refactor de fragmentación
+# Decisiones — registro histórico
 
-**Cuerpo append-only, índice mutable.** Una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
+**Registro de decisiones de diseño, citado directamente desde comentarios de código (`# D45`, etc.) como respaldo de por qué el código hace algo — no es un plan vigente, es el ledger de razón-de-ser del proyecto.** Cuerpo append-only, índice mutable: una D se escribe una vez; si una decisión cambia, se escribe una D nueva que supersede a la anterior, y el índice marca la vieja `superseded por D<n>` — el cuerpo original no se toca.
 
-**Última actualización:** 2026-08-04 (D68, O3 caso testigo — step de dimensión se sintetiza siempre, no se pide y corrige)
+**Última actualización:** 2026-08-04 (D68 — step de dimensión se sintetiza siempre, no se pide y corrige)
 
-Este archivo es la fuente de verdad del refactor. Manda sobre cualquier análisis, plan o conclusión de sesión que lo contradiga. Cuando un análisis choca con una decisión de acá, gana la decisión y el análisis queda marcado como obsoleto.
-
-Toda sesión que tome una decisión cierra actualizando este archivo.
+Este archivo es la fuente de verdad de las decisiones tomadas. Cuando un análisis o comentario de código choca con una decisión de acá, gana la decisión.
 
 ---
 

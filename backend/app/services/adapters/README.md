@@ -15,7 +15,7 @@
 ## Archivos
 | Archivo | Qué hace |
 |---|---|
-| `ddl_adapter.py` (294) | `parse_ddl()` — AST sqlglot → `list[CanonicalSchema]`. Tablas/FKs que no parsean se loguean y se descartan (censo: `docs/auditoria/00b-fallos-silenciosos.md` sección 3.2). |
+| `ddl_adapter.py` (294) | `parse_ddl()` — AST sqlglot → `list[CanonicalSchema]`. Tablas/FKs que no parsean se loguean y se descartan (nunca excepción — ver `docs/referencia/contrato-ddl.md`). |
 | `frictionless_adapter.py` (100) | `frictionless.Schema` → `CanonicalSchema`. |
 | `schema_to_context.py` (86) | `canonical_to_model_context()` — el único puente `CanonicalSchema` → `ModelContext`. |
 | `db_adapter.py` (79) | `list[ColumnInfo]` → `CanonicalSchema`, usado también para armar los badges PK/FK que ve `InputConnection.jsx`. |

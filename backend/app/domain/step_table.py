@@ -1,4 +1,4 @@
-"""T1 (docs/refactor/05-transversales.md), D62 (docs/refactor/02-decisiones.md):
+"""T1 (docs/decisiones/hallazgos-transversales.md), D62 (docs/decisiones/decisiones.md):
 una sola función que resuelve "qué tabla toca este step", devolviendo un
 mensaje de notificación en vez de tragar el caso vacío en silencio (R12,
 docs/arquitectura-objetivo.md). Reemplaza el `if not table: continue`

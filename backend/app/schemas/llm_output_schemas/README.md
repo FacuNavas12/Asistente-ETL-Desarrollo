@@ -7,7 +7,7 @@
 Nada en runtime — son constantes Python (dicts JSON Schema) importadas por `models/gemini_llm.py`/`anthropic_llm.py` al armar la request de "structured output".
 
 ## Qué sale
-El dict `JSON Schema` se manda al SDK del proveedor. La respuesta que vuelve (`json_data`, ya validada contra este schema por el proveedor) es lo que consume `services/etl_generator.py` — sin volver a validarla con Pydantic, ver `docs/auditoria/00-inventario.md` sección 3.2.
+El dict `JSON Schema` se manda al SDK del proveedor. La respuesta que vuelve (`json_data`, ya validada contra este schema por el proveedor) es lo que consume `services/etl_generator.py` — sin volver a validarla con Pydantic.
 
 ## Archivos
 | Archivo | Qué hace |
@@ -21,7 +21,7 @@ El dict `JSON Schema` se manda al SDK del proveedor. La respuesta que vuelve (`j
 | `job_explain_output.py` | Schema de la explicación de Job generado. |
 
 ## Reglas que aplican
-R5 — este es el borde de entrada de la fuente "LLM": el dict que vuelve del proveedor se parsea acá conceptualmente (el schema define la forma esperada), aunque la validación real de que el dict cumpla el schema la hace el SDK del proveedor, no Pydantic — ver "No verificable sin ejecutar" en `docs/auditoria/00-inventario.md` sección 4.
+R5 — este es el borde de entrada de la fuente "LLM": el dict que vuelve del proveedor se parsea acá conceptualmente (el schema define la forma esperada), aunque la validación real de que el dict cumpla el schema la hace el SDK del proveedor, no Pydantic — no verificable sin ejecutar contra el proveedor real.
 R6 — por qué `config` es `string` y no `object` en el schema: ver docstring de `etl_output.py:1-14`.
 
 ## Qué NO va acá

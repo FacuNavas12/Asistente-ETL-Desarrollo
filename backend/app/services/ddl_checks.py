@@ -1,12 +1,12 @@
 """
 Reglas puras sobre DDL de staging/DWH ya parseado con
 adapters.ddl_adapter.parse_ddl. Extraído de etl_generator.py — piggyback en
-O3 (ver docs/refactor/02-decisiones.md), no una migración de capa: sigue
+la decisión de dónde vive Python vs. el modelo (ver
+docs/decisiones/decision-python-vs-llm.md), no una migración de capa: sigue
 siendo services/, no domain/, porque depende de parse_ddl (sqlglot vía
 adapters/ddl_adapter.py, infraestructura) — ver "Criterio de capas" en
-CLAUDE.md. Mismo cluster que docs/auditoria/00b-fallos-silenciosos.md §3.3
-señaló: cada función es best-effort, un DDL no parseable degrada a []/{},
-solo loggeado, nunca corta el flujo (R11 sin resolver todavía, señalado ahí).
+GUIA_TECNICA.md. Cada función es best-effort: un DDL no parseable degrada a
+[]/{}, solo loggeado, nunca corta el flujo (R11 sin resolver todavía).
 """
 from __future__ import annotations
 

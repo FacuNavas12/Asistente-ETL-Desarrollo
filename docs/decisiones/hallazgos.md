@@ -1,10 +1,10 @@
-# Hallazgos — Refactor de fragmentación
+# Hallazgos — registro histórico
 
-**Cuerpo append-only, índice mutable.** Cada H se escribe una vez y no se reescribe — una actualización nueva se agrega como párrafo nuevo dentro de la misma entrada, con fecha. El índice al tope sí se edita en el momento en que el estado de un hallazgo cambia.
+**Registro de hallazgos citado desde comentarios de código (`# H29`, etc.) como respaldo de por qué el código hace algo — no es un plan vigente.** Cuerpo append-only, índice mutable: cada H se escribe una vez y no se reescribe — una actualización nueva se agrega como párrafo nuevo dentro de la misma entrada, con fecha.
 
-**Última actualización:** 2026-08-04 (H51 cerrado por construcción — D68, O3: `apply_dimension_contracts` escribe `update` del loader siempre, sin comparar contra lo que el step traía)
+**Última actualización:** 2026-08-04 (H51 cerrado por construcción — D68: `apply_dimension_contracts` escribe `update` del loader siempre, sin comparar contra lo que el step traía)
 
-Cada entrada: qué se encontró, evidencia (`archivo:línea`), de qué sesión salió, y estado. Estado se evalúa contra [`02-decisiones.md`](02-decisiones.md) — si una decisión ya cerró el hallazgo, dice cuál.
+Cada entrada: qué se encontró, evidencia (`archivo:línea`), de qué sesión salió, y estado. Estado se evalúa contra [`decisiones.md`](decisiones.md) — si una decisión ya cerró el hallazgo, dice cuál.
 
 Todas las líneas de código citadas fueron re-verificadas contra el repo en esta sesión (HEAD `149b836`, rama `run-pentaho`), salvo donde se marca explícitamente "no verificable sin ejecutar".
 

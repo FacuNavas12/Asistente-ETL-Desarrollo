@@ -1,8 +1,23 @@
 # Kettle — comportamiento real vs. lo que el emisor escribe
 
-**Referencia, no investigación.** Destila `docs/refactor/investigacion-tags-validos-por-step.md` (sesión T, cerrada/append-only — 47 steps auditados contra `readData()`/`getXML()` real de `pentaho-kettle`, clase+línea citada) + R-K5/R-K6 de `03c-investigacion-vocabulario-dimension-kettle.md` (mecánica general de KTR; R-K1-R-K4/R-K7, específicos de SCD, ya están en `referencia/scd.md`, no repetidos acá).
+**Referencia, no investigación.** Destila `investigacion-tags-validos-por-step.md` (sesión T, cerrada/append-only — 47 steps auditados contra `readData()`/`getXML()` real de `pentaho-kettle`, clase+línea citada) + R-K5/R-K6 de `investigacion-kettle-RK1-RK6.md` (mecánica general de KTR; R-K1-R-K4/R-K7, específicos de SCD, ya están en `referencia/scd.md`, no repetidos acá).
 
-**Diferencia con la fuente:** T es el inventario tag-por-tag, completo y congelado en el tiempo — sigue siendo la autoridad para el detalle exacto de cada `cfg[...]` y cada tag XML. Este archivo es el estado **actual**: de los 9 bugs con impacto real que T encontró, 8 ya se arreglaron en O1-a/O1-c — repetirlos como "abiertos" acá sería exactamente el tipo de doc-vs-código desfasado que `docs/README.md` Regla A prohíbe. Verificado contra código 2026-08-03 (2 fixes spot-checkeados directo en `steps/transform.py` y `steps/lookups.py`, el resto confirmado por commit presente en `git log` de esta rama).
+**Diferencia con la fuente:** T es el inventario tag-por-tag, completo y congelado en el tiempo — sigue siendo la autoridad para el detalle exacto de cada `cfg[...]` y cada tag XML. Este archivo es el estado **actual**: de los 9 bugs con impacto real que T encontró, 8 ya se arreglaron — repetirlos como "abiertos" acá sería doc-vs-código desfasado. Verificado contra código 2026-08-03 (2 fixes spot-checkeados directo en `steps/transform.py` y `steps/lookups.py`, el resto confirmado por commit presente en `git log` de esta rama).
+
+## Autoridad sobre comportamiento de Kettle
+
+Cuando hay ambigüedad sobre qué hace Kettle, el orden de autoridad es:
+
+1. **`readData()` / `loadXML()` / `getXML()` del `Meta` correspondiente en `pentaho/pentaho-kettle`**, citando clase y línea. Única autoridad normativa.
+2. **Fixtures de artefactos reales** del repo — contraste, no autoridad. Si difieren de (1), se registra la diferencia; no se elige una.
+3. Wiki, Apache Hop, blogs — **no son fuente**. Hop tiene el formato divergido en varios steps.
+
+Sin cita de clase y línea, una afirmación sobre Kettle queda marcada NO VERIFICADA. No se completa por analogía con otro step.
+
+Dos límites de esta regla, no obvios:
+
+- **Kettle es mudo donde no valida.** Acepta cualquier string como nombre de columna; el error aparece recién en runtime contra la base. Para legitimidad de nombres la autoridad es el DDL real, no el `Meta`. Son dos autoridades distintas.
+- **Kettle resuelve ambigüedades con silencio.** Un valor no reconocido cae a un default sin aviso (ver "Vocabularios condicionados" abajo) — a veces ese default coincide con un valor legítimo explícito, un centinela que colisiona con un valor real. Copiar ese comportamiento en el emisor sería propagar el mismo riesgo. La regla operativa del proyecto: **leer como Kettle, fallar distinto que Kettle.** Se replica su semántica de lectura para predecir qué va a hacer; el emisor reporta fuerte donde Kettle degradaría callado.
 
 ## Bugs con impacto real — 8 de 9 resueltos
 
@@ -42,7 +57,7 @@ Patrón repetido: una función Kettle resuelve nombre→id, y el id 0 (o el stri
 - **`JsonOutput.operation_type`** — ver arriba, índice 0 = `outputvalue`, no el default pretendido.
 - **`DimensionLookup.<field><update>` / `ATTRIBUTE_UPDATE_TYPE_CODES`** — ver `referencia/scd.md`. Mismo patrón: string no reconocido cae a modo Insert, no a error.
 
-**Regla operativa del proyecto ante este patrón** (`docs/README.md` § Autoridad sobre comportamiento de Pentaho): Kettle resuelve ambigüedad con silencio — *leer como Kettle, fallar distinto que Kettle*. Se replica su semántica de lectura para predecir qué va a hacer; el emisor tiene que reportar fuerte donde Kettle degradaría callado. Hoy eso existe para `ValueMetaFactory`→`VALUE_META_TYPE_NAMES` (E-02, D60) y para `DimensionLookup` (D60/E-01, en curso); **no existe todavía** para `GroupBy.type` ni `JsonOutput.operation_type` — abierto, no registrado como error individual porque ninguno de los dos tiene evidencia de haber ocurrido en una corrida real (a diferencia de E-01).
+**Regla operativa del proyecto ante este patrón** (ver "Autoridad sobre comportamiento de Kettle" arriba): *leer como Kettle, fallar distinto que Kettle*. Hoy eso existe para `ValueMetaFactory`→`VALUE_META_TYPE_NAMES` y para `DimensionLookup`; **no existe todavía** para `GroupBy.type` ni `JsonOutput.operation_type` — abierto, sin evidencia de haber ocurrido en una corrida real.
 
 ## Mismo concepto, dos nombres de clave `cfg` distintos
 
@@ -55,4 +70,4 @@ Patrón repetido: una función Kettle resuelve nombre→id, y el id 0 (o el stri
 
 ## Fuente de detalle
 
-Tag-por-tag completo, con clase+línea de `pentaho-kettle` para cada uno de los 47 steps: `docs/refactor/investigacion-tags-validos-por-step.md`. No se repite acá — este archivo es el índice de estado, no el reemplazo.
+Tag-por-tag completo, con clase+línea de `pentaho-kettle` para cada uno de los 47 steps: `investigacion-tags-validos-por-step.md`. No se repite acá — este archivo es el índice de estado, no el reemplazo.

@@ -337,7 +337,7 @@ def test_orphan_lookup_single_candidate_unresolvable_stream_warns_unverified():
 
 
 def test_string_operations_emits_literal_kettle_codes_not_numeric_indices():
-    """E-04 (docs/refactor/investigacion-tags-validos-por-step.md § A.3) --
+    """E-04 (docs/referencia/investigacion-tags-validos-por-step.md § A.3) --
     StringOperationsMeta.readData() lee trim_type/lower_upper como los
     literales 'none/left/right/both' y 'none/lower/upper', no como índices
     ('0'..'3'). Con índices el step nunca hacía nada, sin importar el cfg."""

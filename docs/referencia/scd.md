@@ -1,8 +1,8 @@
 # SCD — qué es, cuándo se aplica, qué implica para el step y el DDL
 
-**Referencia, no investigación.** Fusiona `docs/SCD/{criterios,SCD1,SCD2}.md` (hoy 3 archivos separados, contenido movido acá) + los hallazgos Kettle de `docs/refactor/03c-investigacion-vocabulario-dimension-kettle.md` (R-K1-R-K6, investigación cerrada) + lectura directa de `backend/app/domain/scd.py`. Motivo por el que existía disuelto en 3 lugares: `docs/refactor/30-decision-python-llm.md`.
+**Referencia, no investigación.** Fusiona `docs/SCD/{criterios,SCD1,SCD2}.md` (hoy 3 archivos separados, contenido movido acá) + los hallazgos Kettle R-K1-R-K6 (investigación cerrada, detalle completo en `investigacion-kettle-RK1-RK6.md`) + lectura directa de `backend/app/domain/scd.py`.
 
-Verificado contra código 2026-08-03 — todo símbolo citado abajo existe en `domain/scd.py` en la línea indicada (`classify_scd_candidates:172`, `is_calendar_dimension:151`, `derive_dimension_loader_step:359`, `derive_fact_lookup_step:370`, `derive_attribute_update_mode:427`, `detect_history_intent:135`, `ATTRIBUTE_UPDATE_TYPE_CODES:387`). Cuando este archivo y el código diverjan, gana el código (Regla A, `docs/README.md`).
+Verificado contra código 2026-08-03 — todo símbolo citado abajo existe en `domain/scd.py` en la línea indicada (`classify_scd_candidates:172`, `is_calendar_dimension:151`, `derive_dimension_loader_step:359`, `derive_fact_lookup_step:370`, `derive_attribute_update_mode:427`, `detect_history_intent:135`, `ATTRIBUTE_UPDATE_TYPE_CODES:387`). Cuando este archivo y el código diverjan, gana el código.
 
 ## Dos decisiones distintas, no una (D37)
 

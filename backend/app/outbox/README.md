@@ -7,7 +7,7 @@
 Operaciones de escritura sobre `Etl`/`Job` desde `services/etl_service.py` (con outbox) — `job_service.py` no lo usa, va directo contra el repo (ver su propio README para esa asimetría).
 
 ## Qué sale
-`EtlRead.sync_status` (`pending`/`synced`/`failed`) expuesto en la API — el único caso del repo donde un fallo de fondo SÍ llega al usuario en vez de quedar solo en logs (contraejemplo C3 en `docs/auditoria/00b-fallos-silenciosos.md` sección 4).
+`EtlRead.sync_status` (`pending`/`synced`/`failed`) expuesto en la API — el único caso del repo donde un fallo de fondo SÍ llega al usuario en vez de quedar solo en logs.
 
 ## Archivos
 | Archivo | Qué hace |
@@ -22,4 +22,4 @@ R11 — es el ejemplo correcto de "emisión" (ver R11 en `docs/arquitectura-obje
 
 ## Qué NO va acá
 - Lógica de negocio sobre cuándo un ETL "está listo" — eso es `services/etl_service.py`, el outbox solo garantiza que la escritura no se pierda.
-- Un segundo outbox para `Job` "porque `Etl` ya lo tiene" — la asimetría es una decisión existente, no un olvido a copiar sin revisar por qué (ver `docs/auditoria/00-inventario.md` sección 2, fila `job.py`).
+- Un segundo outbox para `Job` "porque `Etl` ya lo tiene" — la asimetría es una decisión existente, no un olvido a copiar sin revisar por qué.

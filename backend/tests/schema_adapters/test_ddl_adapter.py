@@ -238,7 +238,7 @@ class TestParseDDL:
 # ── H38: PK/FK con CONSTRAINT nombrado ────────────────────────────────────────
 # Confirmado contra DDL real de DWH que TODOS los constraints salen nombrados
 # (CONSTRAINT pk_x / fk_x) — sin desenvolver exp.Constraint, ni PK ni FK se
-# detectaban (docs/arquitectura-objetivo-candidatos.md, C1).
+# detectaban (ver docs/referencia/contrato-ddl.md, gap de las dos fuentes de key).
 
 class TestNamedConstraints:
     def test_named_table_level_pk_detected(self):

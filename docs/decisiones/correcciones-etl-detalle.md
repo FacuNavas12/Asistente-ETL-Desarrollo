@@ -1,6 +1,6 @@
-# Plan de implementación — reparación del generador de ETL
+# Correcciones al generador de ETL — detalle de implementación
 
-> **Plan confirmado 2026-08-01 — registrado como D55 en `docs/refactor/02-decisiones.md`.** Ese archivo es la fuente de verdad del refactor; esta copia es el detalle de implementación por ítem, D55 tiene el razonamiento y las correcciones de revisión resumidas.
+> **Ejecutado 2026-08-01 — registrado como D55 en `decisiones.md`, citado desde comentarios de código (`# P1-4`, `# V-1/V-2`, etc.) — no es un plan vigente.** `decisiones.md` tiene el razonamiento resumido; este archivo es el detalle de implementación por ítem, con sus revisiones.
 >
 > Revisión 2: corrige 3 defectos de "default silencioso" señalados por el usuario en las secciones 1, 7 y 8, y mueve una objeción real desde la sección 3 a OBJECIONES.
 > Revisión 3: la regla de la sección 1 ("fields no vacío en modo N es error") quedó refutada contra DimensionLookupMeta.java — corregida a la regla real de D-1 (vocabulario por modo, sin condición sobre si `fields` está vacío). Ver `[REV3]`. También responde la pregunta sobre bloqueo de emisión en el ítem 8.

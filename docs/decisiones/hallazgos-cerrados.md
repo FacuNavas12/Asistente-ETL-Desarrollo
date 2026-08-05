@@ -1,10 +1,10 @@
 # Hallazgos cerrados — archivo frío
 
-**Cuerpo append-only, no se edita.** Entradas movidas acá desde [`01-hallazgos.md`](01-hallazgos.md) por Regla 6 (`CLAUDE.md`) — archivado frío, hecho una sola vez al cerrar un objetivo, nunca continuo. El cuerpo de cada entrada es exactamente el que tenía en el archivo caliente al moverse; no se reescribe.
+**Complemento de [`hallazgos.md`](hallazgos.md), citado igual desde comentarios de código.** Cuerpo append-only, no se edita — entradas movidas acá cuando el hallazgo y su fase quedaron cerrados. El cuerpo de cada entrada es exactamente el que tenía en el archivo caliente al moverse.
 
-**Sesión de archivado:** 2026-08-04. Criterio: estado cerrado/resuelto/entregable/decidido, y la(s) fase(s) de la columna `Toca` (índice de `01-hallazgos.md`) ya cerradas — F1, F1.5, F2, F2.5, F3, F5, A0, A0.5. Ninguna entrada tocada por F4 o A1-A7/Track A (en curso) se movió, aunque diga "Cerrado" en su propio índice — ver `docs/README.md`.
+**Sesión de archivado:** 2026-08-04.
 
-En `01-hallazgos.md`, la fila de índice de cada una de estas queda como stub de una línea apuntando acá.
+En `hallazgos.md`, la fila de índice de cada una de estas queda como stub de una línea apuntando acá.
 
 ---
 

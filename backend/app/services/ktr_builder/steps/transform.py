@@ -144,7 +144,7 @@ def _step_Unique(el: Element, cfg: dict) -> None:
         # equivale a true (siempre case-insensitive). El emisor escribía
         # "case_sensitive", que Kettle nunca busca, con la polaridad además
         # invertida: el step deduplicaba filas que solo difieren en mayúsculas
-        # sin importar el cfg (docs/refactor/investigacion-tags-validos-por-step.md § A.5).
+        # sin importar el cfg (docs/referencia/investigacion-tags-validos-por-step.md § A.5).
         case_sensitive = f.get("case_sensitive", True) if isinstance(f, dict) else True
         field = SubElement(fe, "field")
         _sub(field, "name",             f if isinstance(f, str) else f.get("name", ""))

@@ -7,7 +7,7 @@
 Credenciales de Superset (config, no las de la BD del usuario) + el ZIP producido por `services/superset_export/`.
 
 ## Qué sale
-Dashboard/datasets creados en la instancia de Superset configurada. La conexión real al DWH se configura a mano en Superset (ver "Credenciales de conexión" en `CLAUDE.md`) — este cliente no la provisiona con password real.
+Dashboard/datasets creados en la instancia de Superset configurada. La conexión real al DWH se configura a mano en Superset (ver "Credenciales de conexión" en `GUIA_TECNICA.md`) — este cliente no la provisiona con password real.
 
 ## Archivos
 | Archivo | Qué hace |
@@ -18,7 +18,7 @@ Dashboard/datasets creados en la instancia de Superset configurada. La conexión
 | `dwh_tables.py` (178) | Resolución de tablas del DWH del lado de Superset. |
 | `database.py` (132) | `get_or_create_database` — placeholder si no hay conexión real configurada. |
 | `zip_tools.py` (212) | Utilidades de manejo de ZIP para el import. |
-| `datasets.py` (113) | Creación de datasets. `create_datasets_from_zip` traga cualquier excepción al chequear existencia previa sin loguear — fallo silencioso conocido, `docs/auditoria/00b-fallos-silenciosos.md` sección 2.1. |
+| `datasets.py` (113) | Creación de datasets. `create_datasets_from_zip` traga cualquier excepción al chequear existencia previa sin loguear — fallo silencioso conocido. |
 | `constants.py`, `errors.py` | Constantes y tipos de error propios. |
 
 ## Reglas que aplican
@@ -26,4 +26,4 @@ R1, R6 — es infraestructura pura; nada de acá debería ser importado por `dom
 
 ## Qué NO va acá
 - Armado del ZIP en sí (asset YAML, selección de charts) — eso es `services/superset_export/`, un directorio al lado.
-- Provisioning de la conexión real al DWH con password — decisión de diseño explícita en contra, ver `CLAUDE.md` sección "Credenciales de conexión".
+- Provisioning de la conexión real al DWH con password — decisión de diseño explícita en contra, ver `GUIA_TECNICA.md` sección "Credenciales de conexión".

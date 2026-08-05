@@ -4,7 +4,7 @@
 **Propósito:** tomar el dict `{steps: [...]}` que devolvió el LLM (ya normalizado y reparado) y convertirlo en un `.ktr` que Spoon pueda abrir, decidiendo antes cuántos archivos físicos hacen falta.
 
 ## Qué entra
-Un `dict` KTR sin tipar (`{name, type, config, x, y}` por step — vehículo real y dominante del sistema hoy, sin definición formal en código; ver `docs/auditoria/00-inventario.md` sección 5 para las 6 representaciones de `config` en circulación).
+Un `dict` KTR sin tipar (`{name, type, config, x, y}` por step — vehículo real y dominante del sistema hoy, sin definición formal en código; `config` circula en varias representaciones distintas según el punto del pipeline).
 
 ## Qué sale
 XML `.ktr` (uno o más, según `fragmentation.py`) + `.kjb` si hubo corte (`job_analyzer.build_kjb_xml`) + `warnings`/`notifications` acumuladas durante normalización/reparación/build.
@@ -24,14 +24,14 @@ XML `.ktr` (uno o más, según `fragmentation.py`) + `.kjb` si hubo corte (`job_
 | `step_emitters.py` | `infrastructure/pentaho/` | Mitad infra del mismo split: `STEP_BUILDERS` (tipo canónico → función XML, con los imports de `steps/*`) + `STEP_CONFIG_KEYS`/`unmapped_config_keys` (auditoría de fidelidad de esa serialización — es capacidad presente del builder, no invariante de dominio). |
 | `repair.py` | `services/` | Reparación de steps con config incompleto, LLM acotado a un step por vez. Recibe `llm: BaseLLM` por parámetro — decisión justificada en `docs/arquitectura-objetivo.md` mapa E1. |
 | `build.py` | `infrastructure/pentaho/` | Orquestador de serialización: normaliza, valida, resuelve conexiones, emite XML final vía `STEP_BUILDERS`. Punto único de entrada del paquete (`build_ktr`). |
-| `connection.py` | `infrastructure/pentaho/` | Resolución/serialización de conexiones Kettle. `resolve_real_connections` arma host/port/db/user reales — el password SIEMPRE queda como `${VAR}` de Kettle, nunca se resuelve (ver "Credenciales de conexión" en `CLAUDE.md`). |
+| `connection.py` | `infrastructure/pentaho/` | Resolución/serialización de conexiones Kettle. `resolve_real_connections` arma host/port/db/user reales — el password SIEMPRE queda como `${VAR}` de Kettle, nunca se resuelve (ver "Credenciales de conexión" en `GUIA_TECNICA.md`). |
 | `layout.py` | `infrastructure/pentaho/` | Auto-layout x/y de steps sin posición. |
 | `error_catalog_checks.py` | `infrastructure/pentaho/` | Auditoría del catálogo E1-E14 sobre el XML ya serializado. |
 | `steps/` | `infrastructure/pentaho/` | Subpaquete — ver su propio README. |
 
 ## Reglas que aplican
 R6 — `STEP_CONTRACTS` (`contracts.py`) es la única fuente de verdad de qué campos produce/consume cada tipo de step.
-R7 — el conocimiento de "qué tabla toca este step" vive en `contracts.py`/`fragmentation.py`, no se reimplementa por módulo. **Violación real y no resuelta:** hoy SÍ se reimplementa el reverso de esa pregunta (reacción cuando la tabla sale vacía) en tres lugares — `fragmentation.py:79`, `dimension_step_policy.py:158`, `fields_validate.py:111` — ver R12 y `docs/auditoria/00b-fallos-silenciosos.md` sección 3.1.
+R7 — el conocimiento de "qué tabla toca este step" vive en `contracts.py`/`fragmentation.py`, no se reimplementa por módulo. **Violación real y no resuelta:** hoy SÍ se reimplementa el reverso de esa pregunta (reacción cuando la tabla sale vacía) en tres lugares — `fragmentation.py:79`, `dimension_step_policy.py:158`, `fields_validate.py:111` — ver R12.
 R10 — el pipeline completo del paquete (`normalize_step_configs → repair_ktr_steps → repair_integrity_gaps → apply_dimension_contracts → split_ktr_by_cut → build_ktr`) hoy se comunica mutando el dict KTR in-place entre etapas — es la violación que motiva R10 forma positiva y `EtlDraft` (no implementado, ver `docs/arquitectura-objetivo.md`).
 
 **Nota sobre `KNOWN_PDI_STEP_TYPES` (borrada):** existía en `registry.py` como whitelist derivada de `STEP_BUILDERS.keys()`, pero nunca se consultaba en runtime — `build.py` rechaza un `type` no soportado por `STEP_BUILDERS.get() is None`, no por whitelist. La coherencia entre lo que `system_etl.txt` le promete al LLM y lo que este paquete efectivamente construye la cubre `backend/tests/test_pdi_step_coherence.py` (tres direcciones: prompt→builder, alias→builder, builder→prompt), sin agregar un símbolo muerto de vuelta.

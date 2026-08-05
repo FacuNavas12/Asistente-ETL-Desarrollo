@@ -168,7 +168,7 @@ def _step_ExcelInput(el: Element, cfg: dict) -> None:
     # tag ausente o no-parseable cae, en un catch, a SpreadSheetType.JXL (motor
     # legado que no lee .xlsx). El emisor nunca lo escribía, así que todo
     # ExcelInput caía siempre a JXL sin importar el archivo real
-    # (docs/refactor/investigacion-tags-validos-por-step.md § A.6). Valores
+    # (docs/referencia/investigacion-tags-validos-por-step.md § A.6). Valores
     # reales del enum: JXL, POI, SAX_POI, ODS (SpreadSheetType.java). Por
     # extensión: .xls -> JXL (el motor que sí lo lee), cualquier otro caso
     # (.xlsx/.xlsm/sin extensión) -> POI, que sí lee Excel 2007+.
@@ -235,7 +235,7 @@ def _step_JsonInput(el: Element, cfg: dict) -> None:
     # cae a getIncludeNullsProperty() -- lee kettle.properties del entorno que
     # ejecuta Spoon (KETTLE_JSON_INPUT_INCLUDE_NULLS, default "N"). El emisor
     # nunca lo escribía: el mismo .ktr se comportaba distinto según la máquina
-    # (docs/refactor/investigacion-tags-validos-por-step.md § A.7). Escribirlo
+    # (docs/referencia/investigacion-tags-validos-por-step.md § A.7). Escribirlo
     # siempre explícito saca la ambigüedad del entorno.
     _sub(el, "includeNulls",         "Y" if cfg.get("include_nulls", False) else "N")
 

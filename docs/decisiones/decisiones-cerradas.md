@@ -1,10 +1,10 @@
 # Decisiones cerradas — archivo frío
 
-**Cuerpo append-only, no se edita.** Entradas movidas acá desde [`02-decisiones.md`](02-decisiones.md) por Regla 6 (`CLAUDE.md`) — archivado frío, hecho una sola vez al cerrar un objetivo, nunca continuo. El cuerpo de cada entrada es exactamente el que tenía en el archivo caliente al moverse; no se reescribe.
+**Complemento de [`decisiones.md`](decisiones.md), citado igual desde comentarios de código.** Cuerpo append-only, no se edita — entradas movidas acá cuando la decisión y su fase quedaron cerradas. El cuerpo de cada entrada es exactamente el que tenía en el archivo caliente al moverse.
 
-**Sesión de archivado:** 2026-08-04. Criterio: estado del índice en cerrado/ejecutado/superseded/verificado, y fase que la toca (según `ESTADO.md`/`README.md`) ya cerrada — O0, O1, O2, F1, F1.5, F2, F2.5, F3, F5, A0, A0.5. Ninguna entrada tocada por O3 o F4 (ambos en curso) se movió, aunque diga "Ejecutado" en su propio índice — ver `docs/README.md`.
+**Sesión de archivado:** 2026-08-04.
 
-En `02-decisiones.md`, la fila de índice de cada una de estas queda como stub de una línea apuntando acá.
+En `decisiones.md`, la fila de índice de cada una de estas queda como stub de una línea apuntando acá.
 
 ---
 

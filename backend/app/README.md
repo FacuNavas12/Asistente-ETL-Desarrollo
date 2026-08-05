@@ -14,8 +14,7 @@ Usuario (React) ─▶ routers/ai.py POST /generate-from-inference
                        ├─▶ services/context_builder.py     (esquema origen → texto de prompt, único punto de salida)
                        ├─▶ services/ddl_validation.py       (LLM #0: corrige DDL del DWH)
                        ├─▶ models/{gemini,anthropic}_llm.py (LLM #1: origen→STG, LLM #2: STG→DWH)
-                       │       devuelve dict {ktr: {steps: [...]}} — ver "Estructuras en circulación"
-                       │       en docs/auditoria/00-inventario.md sección 5
+                       │       devuelve dict {ktr: {steps: [...]}} — sin definición formal en código
                        ├─▶ services/ktr_builder/contracts.py     (normaliza config de cada step)
                        ├─▶ services/ktr_builder/repair.py        (LLM acotado: repara steps incompletos)
                        ├─▶ services/ktr_builder/fragmentation.py (decide en cuántos .ktr se corta cada fase)
@@ -25,7 +24,7 @@ Usuario (React) ─▶ routers/ai.py POST /generate-from-inference
                        └─▶ schemas/etl_schemas.py::ETLGenerateResponse (respuesta final al frontend)
 ```
 
-Detalle completo del orden real de llamadas, con `archivo:línea`: `docs/auditoria/00-inventario.md` sección 3.6.
+Detalle completo del orden real de llamadas: leer los módulos citados arriba en orden, cada uno con su propio README.
 
 ## Mapa de carpetas
 

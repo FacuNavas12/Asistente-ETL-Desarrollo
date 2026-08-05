@@ -138,10 +138,9 @@ FROZEN_R3 = {
 # R4: routers que importan app.models.* (ORM) directo, salteando el service.
 FROZEN_R4 = {
     # routers/ai.py: db.add(KtrBuildJob) directo en generate-async y
-    # {job_id}/connections/{job_id}/status (00-inventario.md sección 2).
+    # {job_id}/connections/{job_id}/status.
     "routers.ai",
-    # routers/connections.py: CRUD completo de Connection sin service/repo
-    # (00-inventario.md sección 2).
+    # routers/connections.py: CRUD completo de Connection sin service/repo.
     "routers.connections",
 }
 

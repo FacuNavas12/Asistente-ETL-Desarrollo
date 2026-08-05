@@ -1,10 +1,6 @@
-# O3 — Dónde se decide: Python o el modelo
+# Dónde se decide: Python o el modelo
 
-**Mutable.** Lo escribe quien ejecuta el objetivo. Entrada: [`docs/README.md`](../README.md).
-
-**Prioridad 3.** Bloqueado por O1 (el sistema tiene que entregar de forma estable antes de rediseñar qué decide) y por la escritura de `referencia/` (sin eso la discusión vuelve a ser de memoria).
-
-**Distinto de [O2](20-arquitectura.md):** O2 decide *dónde vive* cada archivo. O3 decide *qué resuelve el sistema solo y qué le pregunta al modelo*. Un archivo puede estar en la capa correcta y seguir tomando una decisión que no le corresponde.
+**Caso testigo implementado (D68), citado desde comentarios de código — falta corrida real end-to-end para darlo por cerrado.** Decide *qué resuelve el sistema solo y qué le pregunta al modelo* — distinto de qué capa aloja cada archivo (eso es `arquitectura-objetivo.md`). Un archivo puede estar en la capa correcta y seguir tomando una decisión que no le corresponde.
 
 ---
 

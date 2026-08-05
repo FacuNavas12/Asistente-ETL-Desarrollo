@@ -1,8 +1,6 @@
-# Investigación — vocabulario de dimensión uniforme y corte visible (investigación cerrada, plan pendiente de implementar)
+# Investigación — vocabulario de dimensión uniforme y corte visible
 
-**Mutable.** Investigación de Fase 1 (Kettle, R-K1-R-K6) y de las preguntas de Fase 3 abiertas después (C.10-C.12) **cerradas y disueltas**: D44-D49 en `02-decisiones.md`, H41-H47 en `01-hallazgos.md`. Lo que queda vivo acá es el **plan de implementación** (Fase 0 red de seguridad, Fase 2 vocabulario, Fase 2-bis/2-ter, Fase 3 corte visible, Fase 4 corrida real). Qué fase está ejecutada y cuál sigue como diseño cerrado sin implementar vive en `ESTADO.md`, fila F4 — no repetirlo acá, citar ese archivo (a la fecha: Fase 0/D46 ejecutada, Fase 2/D44, Fase 3/D45, D47-D49 diseño cerrado sin implementar).
-
-Origen: análisis de dos corridas del mismo caso (`analisis-fragmentacion-setA-vs-setB.md`) + revisión con evidencia de ejecución real contra `Base_01` (`hallazgos-y-sugerencias-para-code.md`). Los dos quedan como anexos de evidencia bajo `docs/refactor/` — **no citarlos sin la tabla de correcciones** de la sección "Context" del plan abajo, porque el primero afirma cosas falsas sobre `_build_job_plan`, `recover_table_key`, un supuesto B-1 y la ausencia de validación post-serialización que la revisión 2 corrige.
+**Investigación cerrada, citada desde comentarios de código — no es un plan vigente.** Fase 1 (Kettle, R-K1-R-K6) y las preguntas de Fase 3 (C.10-C.12) están **cerradas y disueltas**: D44-D49 en `decisiones.md`, H41-H47 en `hallazgos.md`. El resultado ejecutado (comportamiento actual) vive en `../referencia/fragmentacion.md`, `../referencia/scd.md` y `../referencia/kettle-comportamiento.md` — este archivo es el registro de cómo se llegó ahí.
 
 ---
 

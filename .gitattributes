@@ -1,6 +1,5 @@
-# Normaliza EOL a LF en el repo, sin importar core.autocrlf local (H-O0-1,
-# docs/refactor/00-higiene-repo.md). Evita que un working tree en CRLF
-# reescriba archivos enteros en el diff.
+# Normaliza EOL a LF en el repo, sin importar core.autocrlf local (H-O0-1).
+# Evita que un working tree en CRLF reescriba archivos enteros en el diff.
 * text=auto eol=lf
 
 *.zip binary

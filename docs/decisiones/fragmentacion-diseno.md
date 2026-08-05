@@ -1,10 +1,10 @@
-# Plan — Refactor de fragmentación
+# Diseño histórico del motor de fragmentación
 
-**Mutable.** Se reescribe en el mismo turno en que una fase avanza. No repite estado de fase (ver `ESTADO.md`).
+**Registro de diseño citado desde comentarios de código (`# F3 punto 1, 03-plan.md`, etc.) — no es un plan vigente.** El comportamiento actual del motor de corte, ya destilado y al día, vive en [`../referencia/fragmentacion.md`](../referencia/fragmentacion.md); este archivo es el diseño original, con su razonamiento y las fases por las que pasó.
 
 **Última actualización:** 2026-08-01
 
-Deriva de [`00-objetivo.md`](00-objetivo.md) y [`01-hallazgos.md`](01-hallazgos.md), evaluado contra [`02-decisiones.md`](02-decisiones.md) — esa es la fuente de verdad cuando algo choca. Narrativa de sesión (algoritmos, investigación, reportes de cierre) vive en [`03b-reportes.md`](03b-reportes.md). El estado vigente de cada fase vive únicamente en [`ESTADO.md`](ESTADO.md) — acá no se repite, solo fases, dependencias y qué es cada una.
+Deriva de hallazgos previos, evaluado contra [`decisiones.md`](decisiones.md) — esa es la fuente de verdad cuando algo choca.
 
 Consolida dos planes que llegaron por separado: **Track A** (auditoría de arquitectura, prompts en `Contexto Cambios/Arquitectura/`) y **Track F** (motor de fragmentación, `Contexto Cambios/Fragmentacion/handoff_fragmentacion_y_errores.md`).
 

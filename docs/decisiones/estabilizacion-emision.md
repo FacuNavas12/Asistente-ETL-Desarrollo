@@ -1,8 +1,6 @@
-# O1 — Estabilizar la emisión
+# Estabilización de la emisión — registro histórico
 
-**Mutable.** Lo escribe quien ejecuta el objetivo. Entrada: [`docs/README.md`](../README.md).
-
-**Prioridad 1.** Bloqueado por [O0](00-higiene-repo.md) — sin diff legible no se puede revisar lo que este objetivo cambia.
+**Objetivo cerrado (D65), citado desde comentarios de código — no es un plan vigente.** Registro de qué abortaba la emisión de un `.ktr`/`.kjb` y con qué criterio se arregló cada caso.
 
 ---
 

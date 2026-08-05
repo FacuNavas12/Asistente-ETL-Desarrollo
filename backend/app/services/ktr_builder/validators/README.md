@@ -1,7 +1,7 @@
 # services/ktr_builder/validators
 
 **Capa:** `domain/` — cada pass es una función pura (`ValidationContext -> list[Finding]`), sin I/O.
-**Propósito:** passes pre-emisión sobre `ktr_data`, con un contrato uniforme (`base.py`) en vez de que cada validador invente su propia forma de retorno. Nace con H29 (docs/refactor/01-hallazgos.md) — ver D40 en `docs/refactor/02-decisiones.md` para el porqué.
+**Propósito:** passes pre-emisión sobre `ktr_data`, con un contrato uniforme (`base.py`) en vez de que cada validador invente su propia forma de retorno. Nace con H29 (`docs/decisiones/hallazgos.md`) — ver D40 en `docs/decisiones/decisiones.md` para el porqué.
 
 ## Qué entra
 `ValidationContext(ktr_data, step_type_aliases, known_tables)`. `known_tables` es el set de nombres de tabla física reales del ETL en curso (staging + DWH vía DDL, o `dim_contracts` cuando no hay DDL — ver `etl_generator.py`).
@@ -18,7 +18,7 @@
 | `__init__.py` | `PRE_EMIT_PASSES` (tupla completa) + `run_passes(ctx, passes=...)`. |
 
 ## Dónde se llama
-**Temprano, no solo dentro de `build_ktr()`.** O3 (docs/refactor/30-decision-python-llm.md) partió `PRE_EMIT_PASSES` en dos sub-tuplas, porque `apply_dimension_contracts` tiene que quedar SANDWICHEADA entre ellas:
+**Temprano, no solo dentro de `build_ktr()`.** La decisión de dónde vive Python vs. el modelo (`docs/decisiones/decision-python-vs-llm.md`) partió `PRE_EMIT_PASSES` en dos sub-tuplas, porque `apply_dimension_contracts` tiene que quedar SANDWICHEADA entre ellas:
 
 1. **`TABLE_RECOVERY_PASSES`** (`recover_table_key`, solo) — corre en `etl_generator._recover_table_keys()`, ANTES de `apply_dimension_contracts` y de `fragmentation.build_rw_matrix` (vía `split_ktr_by_cut`): ambos necesitan ver `table` ya recuperado.
 2. `apply_dimension_contracts` sintetiza el config de cada step de dimensión desde el contrato.
@@ -27,7 +27,7 @@
 `PRE_EMIT_PASSES` se preserva como la concatenación de ambas — `build.py` sigue corriendo la tupla completa como red de seguridad para callers que invocan `build_ktr()` directo sin pasar por `apply_dimension_contracts` (tests, `build_etl_from_raw` con `dim_contracts` vacío).
 
 ## Reglas que aplican
-D5/D15 — un pass puede mutar `ktr_data`, pero toda mutación va acompañada de un `Finding` con `repaired=True`. Nunca un `if not table: continue` sin reportar (R12, `docs/auditoria/00b-fallos-silenciosos.md`).
+D5/D15 — un pass puede mutar `ktr_data`, pero toda mutación va acompañada de un `Finding` con `repaired=True`. Nunca un `if not table: continue` sin reportar (R12).
 
 ## Qué NO va acá
 - Validadores que ya tienen su propio contrato consolidado en otro módulo (`fragmentation.py`, `dimension_step_policy.py`, `fields_validate.py`, `contract_validate.py`) — no se migran de arrastre; migran uno por uno, sesión aparte, cuando haga falta tocarlos igual.

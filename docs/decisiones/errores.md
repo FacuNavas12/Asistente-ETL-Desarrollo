@@ -1,10 +1,8 @@
 # Registro de errores
 
-**Mutable en las columnas `Estado` y `Objetivo`; el resto de cada fila es append-only.** Lo escribe cualquier sesión que encuentre o cierre un error.
+**Citado desde comentarios de código (`# E-20`, etc.) — no es un plan vigente.** Mutable en las columnas `Estado` y `Objetivo`; el resto de cada fila es append-only.
 
 **Para qué existe:** para que "arreglo un error y aparece otro" sea visible en vez de vivir en la memoria de quien está trabajando. La columna que hace el trabajo es **`Origen`** — de qué error salió éste. Con eso, a cuatro niveles de profundidad se puede ver dónde se está parado.
-
-> Se mueve a `registro/errores.md` cuando la reorganización de carpetas se ejecute. Hoy vive acá para no dejar dos estructuras a medio migrar.
 
 ---
 
