@@ -90,7 +90,7 @@ def _format_source_for_prompt(schemas: Optional[list[CanonicalSchema]], source_s
 # ─── SCD pre-check (D37) ──────────────────────────────────────────────────────
 # Proyección CanonicalSchema -> primitivos que domain/scd.py exige (domain no
 # puede importar Pydantic, R1). Vive acá, no en domain/, porque ES la traducción
-# desde un DTO de transporte concreto — ver "Criterio de capas" en CLAUDE.md.
+# desde un DTO de transporte concreto — ver "Criterio de capas" en GUIA_TECNICA.md.
 
 _CALENDAR_DATE_TYPES = (CanonicalType.DATE, CanonicalType.DATETIME)
 

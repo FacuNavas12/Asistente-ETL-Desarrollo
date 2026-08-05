@@ -153,7 +153,7 @@ La Ley 18.331 define dato personal como "toda información referida a personas f
 | **Veracidad** | El sistema no modifica ni almacena los metadatos de esquema recibidos; solo los reenvía al modelo IA. | ✅ |
 | **Minimización** | Solo se incluyen en los prompts los campos de esquema necesarios para la generación ETL (nombre, tipo, regla). No se transmiten datos de registros ni atributos no relevantes. | ✅ |
 | **Seguridad** | API keys en variables de entorno; credenciales cifradas; logs sin PII; autenticación JWT en producción; TLS en tránsito. | ✅ |
-| **Responsabilidad** | Presente documento. Decisiones de diseño documentadas en código y CLAUDE.md. Proveedores con DPA enterprise para producción. | ✅ |
+| **Responsabilidad** | Presente documento. Decisiones de diseño documentadas en código y GUIA_TECNICA.md. Proveedores con DPA enterprise para producción. | ✅ |
 | **Limitación de conservación** | Logs: rotación diaria, retención 90 días. Datos en navegador: TTL 30 días, limpieza en logout. Proveedor IA: retención 7 días (Anthropic) / configurable (Google). | ✅ |
 
 ---

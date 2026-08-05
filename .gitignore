@@ -41,8 +41,8 @@ backend/logs/
 Thumbs.db
 .DS_Store
 
-# Claude Code
-.claude/settings.local.json
+# Config local de herramientas de IDE/asistente
+.claude/
 
 # Promptfoo
 promptfoo/.promptfoo/

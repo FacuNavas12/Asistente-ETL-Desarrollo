@@ -26,4 +26,4 @@ R3 — cuando se implemente, el exception handler que traduce excepciones de dom
 ## Qué NO va acá
 - Una regla de negocio (ej. "si `AUTH_REQUIRED=false`, saltear ownership") más allá de la infraestructura de auth misma — eso ya está bien acotado hoy, cuidado si crece.
 - Un cliente HTTP a un servicio externo del dominio (LLM, Superset, BD del usuario) — eso es `infrastructure/`, `core` es transversal técnico, no un servicio más.
-- Cifrado/ofuscación reversible de credenciales de conexión — decisión de diseño explícita en contra, ver `CLAUDE.md` sección "Credenciales de conexión" (`kettle_crypto.py`/`core/crypto.py` se sacaron por esto).
+- Cifrado/ofuscación reversible de credenciales de conexión — decisión de diseño explícita en contra, ver `GUIA_TECNICA.md` sección "Credenciales de conexión" (`kettle_crypto.py`/`core/crypto.py` se sacaron por esto).

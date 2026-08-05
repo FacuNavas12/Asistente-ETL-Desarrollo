@@ -11,7 +11,7 @@ serializan a XML (eso es step_emitters.py).
                         falta — no es un chequeo cosmético.
 
 Split de registry.py (sesión de arquitectura): el criterio que separa este
-módulo de step_emitters.py es CLAUDE.md, "vocabulario PDI es dominio" — acá
+módulo de step_emitters.py es GUIA_TECNICA.md, "vocabulario PDI es dominio" — acá
 vive lo que un step ES (identidad, completitud mínima), no cómo se construye
 su XML. `KNOWN_PDI_STEP_TYPES` (whitelist derivada de STEP_BUILDERS.keys(),
 nunca consultada en runtime — build.py rechaza por STEP_BUILDERS.get() is

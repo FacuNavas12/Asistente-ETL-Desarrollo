@@ -19,7 +19,7 @@
 | `gemini_llm.py` | Implementación `BaseLLM` para Gemini. |
 | `llm_factory.py` | `build_llm(settings, role)` — elige proveedor según `settings.llm_provider`, sin singleton. |
 | `base.py` | `WorkflowItemMixin` — columnas compartidas por `Etl`/`Job` (ORM). |
-| `connection.py` | ORM `Connection` + enums `DbType`/`TestStatus`. Nunca tiene columna de password — ver "Credenciales de conexión" en `CLAUDE.md`. |
+| `connection.py` | ORM `Connection` + enums `DbType`/`TestStatus`. Nunca tiene columna de password — ver "Credenciales de conexión" en `GUIA_TECNICA.md`. |
 | `etl.py`, `job.py` | ORM `Etl`/`Job`, heredan `WorkflowItemMixin`. |
 | `ktr_build_job.py` | ORM `KtrBuildJob` — correlación entre generación async y conexiones destino. |
 
