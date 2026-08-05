@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.core.sanitize import friendly_connection_error
 from app.models.connection import DbType
 from app.services.db_connector import (
     _build_url,
@@ -68,6 +69,42 @@ class TestSanitizeError:
     def test_no_sensitive_data_passes_through(self):
         msg = "host unreachable"
         assert _sanitize_error(msg) == msg
+
+
+# ─── friendly_connection_error ─────────────────────────────────────────────────
+
+class TestFriendlyConnectionError:
+    def test_auth_failure_postgres(self):
+        msg = 'FATAL:  password authentication failed for user "app"'
+        assert friendly_connection_error(msg) == "Usuario o contraseña incorrectos."
+
+    def test_auth_failure_sqlserver(self):
+        msg = "Login failed for user 'app'."
+        assert friendly_connection_error(msg) == "Usuario o contraseña incorrectos."
+
+    def test_host_not_found(self):
+        msg = "could not translate host name \"bad-host\" to address"
+        assert friendly_connection_error(msg) == "No se encontró el host. Verificá la dirección."
+
+    def test_connection_refused(self):
+        msg = "connection to server at \"localhost\" failed: Connection refused"
+        assert friendly_connection_error(msg) == "El servidor rechazó la conexión. Verificá host y puerto."
+
+    def test_timeout(self):
+        msg = "timeout expired"
+        assert friendly_connection_error(msg) == "Tiempo de espera agotado. Verificá que el servidor esté accesible."
+
+    def test_database_does_not_exist(self):
+        msg = 'FATAL:  database "nope" does not exist'
+        assert friendly_connection_error(msg) == "La base de datos indicada no existe."
+
+    def test_ssl_error(self):
+        msg = "SSL error: certificate verify failed"
+        assert friendly_connection_error(msg) == "Error de SSL/certificado. Revisá el modo SSL configurado."
+
+    def test_unknown_error_falls_back_to_generic(self):
+        msg = "some completely unexpected driver error XYZ-123"
+        assert friendly_connection_error(msg) == "No se pudo conectar. Verificá host, puerto, base de datos y credenciales."
 
 
 # ─── _build_url ───────────────────────────────────────────────────────────────

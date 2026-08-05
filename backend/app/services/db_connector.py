@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
-from app.core.sanitize import sanitize_error
+from app.core.sanitize import friendly_connection_error, sanitize_error
 from app.models.connection import Connection, DbType
 from app.schemas.connection import ColumnInfo, ConnectionTestResult, TableDataResponse
 from app.services.dialect import SampleResult, get_dialect
@@ -313,11 +313,11 @@ def test_connection(conn: Connection, password: str) -> ConnectionTestResult:
     except OperationalError as exc:
         msg = sanitize_error(str(exc))
         logger.warning("Connection test failed [%s]: %s", conn.id, msg)
-        return ConnectionTestResult(success=False, message=msg)
+        return ConnectionTestResult(success=False, message=friendly_connection_error(msg))
     except Exception as exc:
         msg = sanitize_error(str(exc))
         logger.error("Unexpected error testing connection [%s]: %s", conn.id, msg)
-        return ConnectionTestResult(success=False, message=f"Error inesperado: {msg}")
+        return ConnectionTestResult(success=False, message=friendly_connection_error(msg))
 
 
 def list_tables(conn: Connection, password: str) -> list[str]:
