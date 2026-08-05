@@ -36,6 +36,7 @@ from app.services.ddl_checks import (
     _scd_zero_calendar_guard,
     _staging_table_names_from_ddl,
     _type_mismatch_warnings,
+    find_unloaded_dimensions,
 )
 from app.services.ddl_validation import synthesize_missing_seed_rows, validate_and_correct_ddl
 from app.services.ktr_builder import (
@@ -276,8 +277,10 @@ def _inferred_member_notifications(dims: list[dict]) -> list[str]:
 # artefactos impecables (03c:270, "no opcional respecto de la Fase 2"). Las dos
 # funciones de abajo operan solo sobre dim_contracts — sin DDL, a diferencia de
 # _scd_zero_calendar_guard — así que valen en TODO camino que tenga
-# dim_contracts, incluido build_etl_from_raw (sin DDL disponible, ver su
-# docstring).
+# dim_contracts, incluido build_etl_from_raw. (dwh_ddl SÍ es un parámetro
+# opcional de build_etl_from_raw y hoy alimenta find_unloaded_dimensions ahí
+# mismo — ver su docstring —, pero eso no cambia nada acá: estas dos funciones
+# siguen sin necesitarlo.)
 def _scd_consequence_findings(dim_contracts: list) -> list[str]:
     """Mitigación 1 (03c:172): un finding por dimensión con la consecuencia
     concreta del scd_type elegido, no solo el número — convierte una decisión
@@ -846,13 +849,17 @@ async def build_etl_from_raw(
     - flujo de 2 KTR: {"ktr_1": {...plano...}, "ktr_2": {...plano...}} (ver
       KtrBuildError en _build_response_from_two_ktr_data).
 
-    stg_ddl/dwh_ddl (opcional): a diferencia del resto de este docstring, esto
-    NO alimenta ninguna reparación — es puro passthrough hacia
-    ETLGenerateResponse.dwh_ddl/stg_ddl para que ResultView (EtlDetail) pinte
-    la sección de DDL igual que en el flujo de generación normal. El frontend
-    ya los tiene en memoria (inferResult.stg_ddl/dwh_ddl) cuando llama a este
-    endpoint ("Reutilizar respuesta") — sin este parámetro, no había forma de
-    que llegaran acá, y ResultView oculta la sección entera sin ellos.
+    stg_ddl/dwh_ddl (opcional): originalmente documentado como puro passthrough
+    hacia ETLGenerateResponse.dwh_ddl/stg_ddl (para que ResultView/EtlDetail
+    pinte la sección de DDL igual que en el flujo de generación normal — el
+    frontend ya los tiene en memoria, inferResult.stg_ddl/dwh_ddl, cuando llama
+    a este endpoint "Reutilizar respuesta"; sin este parámetro no había forma
+    de que llegaran acá). ACTUALIZADO: dwh_ddl ya no es solo passthrough —
+    find_unloaded_dimensions (ddl_checks.py) lo usa para clasificar severidad
+    error/warning de dimensiones sin loader (FK NOT NULL vs. no). Sigue siendo
+    opcional y sigue degradando sin abortar: dwh_ddl=None hace que esa
+    clasificación caiga a "no se pudo verificar" (warning explícito, nunca
+    error asumido sin poder confirmarlo).
 
     llm=None (default): no llama al LLM para repair_ktr_steps() (comportamiento
     histórico). llm=<instancia>: antes de construir, corre repair_ktr_steps()
@@ -900,8 +907,13 @@ async def build_etl_from_raw(
         region_inferencia="local",
     )
     extra_warnings: list[str] = []
-    # H29: sin DDL en este camino (ver docstring arriba) — dim_contracts es la
-    # única fuente de nombres de tabla reales disponible acá.
+    # H29: known_tables se deriva de dim_contracts, NO de dwh_ddl, aunque
+    # dwh_ddl SÍ está disponible como parámetro de esta función (:839) y SÍ se
+    # usa más abajo (find_unloaded_dimensions) — la afirmación original de este
+    # comentario ("sin DDL en este camino") quedó desactualizada apenas
+    # dwh_ddl se agregó como parámetro; dim_contracts sigue siendo, a
+    # propósito, la única fuente para ESTE set puntual (recover_table_key no
+    # necesita más que eso).
     known_tables = frozenset(c.table.strip().lower() for c in (dim_contracts or []) if c.table)
     if "ktr_1" in raw_llm_data and "ktr_2" in raw_llm_data:
         raw_llm_data["ktr_1"]["ktr"], cfg_w1 = normalize_step_configs(raw_llm_data["ktr_1"]["ktr"])
@@ -932,6 +944,10 @@ async def build_etl_from_raw(
                 raw_llm_data["ktr_2"]["ktr"], dim_contracts, STEP_TYPE_ALIASES,
                 raw_llm_data["ktr_2"].get("validaciones", []),
             )
+            step_policy_results.extend(find_unloaded_dimensions(
+                raw_llm_data["ktr_2"]["ktr"], dim_contracts, dwh_ddl, STEP_TYPE_ALIASES,
+                raw_llm_data["ktr_2"].get("validaciones", []),
+            ))
             verify_warnings_2 = _verify_emitted_ktr(
                 raw_llm_data["ktr_2"]["ktr"], known_tables,
                 narracion_modelo=raw_llm_data["ktr_2"].get("validaciones", []),
@@ -975,6 +991,10 @@ async def build_etl_from_raw(
                 raw_llm_data["ktr"], dim_contracts, STEP_TYPE_ALIASES,
                 raw_llm_data.get("validaciones", []),
             )
+            step_policy_results.extend(find_unloaded_dimensions(
+                raw_llm_data["ktr"], dim_contracts, dwh_ddl, STEP_TYPE_ALIASES,
+                raw_llm_data.get("validaciones", []),
+            ))
             verify_warnings = _verify_emitted_ktr(
                 raw_llm_data["ktr"], known_tables,
                 narracion_modelo=raw_llm_data.get("validaciones", []),
@@ -1222,6 +1242,9 @@ async def generate_etl_from_inference(
     step_policy_results = apply_dimension_contracts(
         data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
     )
+    step_policy_results.extend(find_unloaded_dimensions(
+        data_2["ktr"], req.dim_contracts, dwh_ddl, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
+    ))
     verify_warnings = _verify_emitted_ktr(
         data_2["ktr"], known_tables, dwh_constraints,
         narracion_modelo=data_2.get("validaciones", []), dwh_numeric_scale=dwh_numeric_scale,
@@ -1590,6 +1613,9 @@ async def generate_etl_async(job_id, req: ETLFromInferenceRequest, llm: BaseLLM,
             step_policy_results = apply_dimension_contracts(
                 data_2["ktr"], req.dim_contracts, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
             )
+            step_policy_results.extend(find_unloaded_dimensions(
+                data_2["ktr"], req.dim_contracts, dwh_ddl, STEP_TYPE_ALIASES, data_2.get("validaciones", []),
+            ))
             verify_warnings = _verify_emitted_ktr(
                 data_2["ktr"], known_tables, dwh_constraints,
                 narracion_modelo=data_2.get("validaciones", []), dwh_numeric_scale=dwh_numeric_scale,

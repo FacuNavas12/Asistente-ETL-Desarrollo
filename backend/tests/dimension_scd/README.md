@@ -10,6 +10,7 @@ de SCD es determinística por diseño, ver `apply_dimension_contracts`).
 | `test_scd_consequence_and_monetary_guard.py` | Emite un finding no-error nombrando la consecuencia concreta del `scd_type` elegido por dimensión; marca como error un atributo monetario/de monto versionado dentro de una dimensión SCD2. |
 | `test_scd_zero_calendar_guard.py` | `scd_type=0` solo es seguro para una dimensión calendario genuina (`is_calendar_dimension`); cualquier otro caso de `scd_type=0` se reporta como error sin abortar; no-op best-effort si falta DDL o es inválido. |
 | `test_inferred_member.py` | Dimensiones referenciadas por una FK NOT NULL desde una fact table se identifican como necesitadas del patrón anti-join+Union (inferred member) y se formatean correctamente para el prompt del LLM. |
+| `test_unloaded_dimension.py` | `find_unloaded_dimensions` (ddl_checks.py) — cruza dim_contracts × ktr_data × DDL, después de `apply_dimension_contracts`, para detectar dimensiones sin ningún step que las cargue. Error si hay FK NOT NULL confirmada, warning si no; override registrado y loader presente no disparan; DDL ausente/inválido notifica la degradación en vez de devolver `[]` en silencio (diverge a propósito de la convención best-effort del resto de `ddl_checks.py`). |
 
 ```bash
 pytest tests/dimension_scd/ -v

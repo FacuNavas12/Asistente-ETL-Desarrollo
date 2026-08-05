@@ -29,6 +29,7 @@ from app.services.ktr_builder.dimension_step_policy import (
     derive_attribute_update_mode,
     derive_dimension_loader_step,
     derive_fact_lookup_step,
+    has_registered_override,
 )
 from app.services.ktr_builder.fragmentation import compute_cut, split_ktr_by_cut, validate_stage_contract
 from app.services.ktr_builder.layout import _auto_layout
@@ -59,6 +60,7 @@ __all__ = [
     "derive_attribute_update_mode",
     "ATTRIBUTE_UPDATE_TYPE_CODES",
     "apply_dimension_contracts",
+    "has_registered_override",
     "OVERRIDE_STEP_PREFIX",
     "normalize_step_configs",
     "ConfigParseError",

@@ -16,6 +16,11 @@ from app.domain.canonical_types import CanonicalType
 from app.domain.scd import is_calendar_dimension
 from app.services.adapters.ddl_adapter import parse_ddl
 from app.services.ktr_builder import PRE_EMIT_ERROR_PREFIX
+from app.services.ktr_builder.contracts import normalize_config, parse_cfg
+from app.services.ktr_builder.dimension_step_policy import (
+    DIMENSION_STEP_TYPES,
+    has_registered_override,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -330,3 +335,155 @@ def _dims_with_inferred_member(dwh_ddl: str, dim_contracts: list) -> list[dict]:
                 "natural_keys": list(dim.natural_keys),
             })
     return result
+
+
+# ─── Invariante: toda dimensión de dim_contracts tiene un step que la carga
+# (docs/refactor/02-decisiones.md, D-pendiente "toda dimensión con FK tiene
+# loader") ─────────────────────────────────────────────────────────────────
+#
+# _dims_with_inferred_member (arriba) ve DDL + dim_contracts pero nunca
+# ktr_data — su salida solo alimenta el prompt (D21), nunca se re-verifica
+# contra el .ktr ya emitido. apply_dimension_contracts (dimension_step_policy.py)
+# ve ktr_data + dim_contracts pero nunca DDL, y sobre todo itera los STEPS que
+# el modelo escribió — una dimensión sin ningún step (loader omitido del
+# todo) nunca entra a ese loop, queda en silencio. Ningún camino existente
+# cruza las tres fuentes (dim_contracts × ktr_data × DDL). find_unloaded_dimensions
+# corre DESPUÉS de apply_dimension_contracts (que ya normalizó in-place todo
+# loader real a type="DimensionLookup"/config["update"]="Y", D44/O3) — lee ese
+# estado post-mutación en vez de reimplementar el BFS de rol (D16/D58).
+#
+# Divergencia deliberada del resto de este módulo: el docstring de arriba dice
+# "un DDL no parseable degrada a []/{}, solo loggeado, nunca corta el flujo" —
+# acá, además de loggear, se emite una Validacion de warning explícita. Un
+# hueco de cobertura (no se pudo confirmar si falta un loader) no puede
+# quedar indistinguible de "no falta ningún loader": la máxima del proyecto
+# es nunca crear sin notificar, y un [] silencioso acá sería exactamente eso.
+UNVERIFIED_DIMENSION_COVERAGE_FIELD = "verificacion_dimensiones"
+
+
+def _dwh_ddl_parseable(dwh_ddl: str | None) -> bool:
+    """True si `dwh_ddl` trae texto y parsea sin excepción. No distingue
+    "vacío" de "inválido" para el caller — ambos son el mismo caso de
+    degradación (no se puede clasificar severidad por FK)."""
+    if not dwh_ddl or not dwh_ddl.strip():
+        return False
+    try:
+        parse_ddl(dwh_ddl, dialect=None)
+    except Exception:
+        return False
+    return True
+
+
+def _tables_with_loader_step(
+    ktr_data: dict, step_type_aliases: dict[str, str], validaciones_modelo: list,
+) -> set[str]:
+    """{tabla_lower} con evidencia de estar cargada: un step DimensionLookup/
+    CombinationLookup con update="Y" (loader, tal como lo dejó
+    apply_dimension_contracts — D44 fuerza siempre a DimensionLookup), o una
+    tabla con override registrado (OVERRIDE_STEP_PREFIX) — ese caso
+    apply_dimension_contracts la deja intacta a propósito (decisión explícita
+    del modelo, no un hueco), así que contarla como "sin loader" sería un
+    falso positivo sobre algo que ya se decidió a mano."""
+    loaded: set[str] = set()
+    for step in ktr_data.get("steps", []):
+        canonical = step_type_aliases.get(step.get("type", ""), step.get("type", ""))
+        if canonical not in DIMENSION_STEP_TYPES:
+            continue
+        cfg = normalize_config(canonical, parse_cfg(step.get("config", {})))
+        table = (cfg.get("table") or "").strip().lower()
+        if not table:
+            continue
+        if cfg.get("update") == "Y":
+            loaded.add(table)
+        elif has_registered_override(validaciones_modelo, table):
+            loaded.add(table)
+    return loaded
+
+
+def find_unloaded_dimensions(
+    ktr_data: dict,
+    dim_contracts: list,
+    dwh_ddl: str | None,
+    step_type_aliases: dict[str, str],
+    validaciones_modelo: list | None = None,
+) -> list[dict]:
+    """Toda tabla de `dim_contracts` sin ningún step loader (ni override
+    registrado) en `ktr_data`. Devuelve dicts {"tipo","campo","mensaje"}
+    listos para Validacion(**v) — mismo contrato de salida que
+    apply_dimension_contracts (dimension_step_policy.py), pensado para
+    extender la misma lista de resultados en el caller.
+
+    Severidad: "error" si la dimensión faltante es además referenciada por
+    una FK NOT NULL desde una fact table (_dims_with_inferred_member) — ese
+    caso garantiza violación del constraint o un lookup que nunca matchea en
+    runtime, no es una sugerencia. El resto sale "warning" (podría ser una
+    dimensión legítimamente precargada por fuera del ETL, ej. calendario).
+
+    Nunca aborta. Si dim_contracts viene vacío, no reporta nada acá — ese
+    caso ("dim_contracts se perdió del todo") ya lo cubre
+    _dim_contracts_anomaly_warning, no duplicar. Si `dwh_ddl` no llega o no
+    parsea, no se puede clasificar por FK — se emite un warning adicional
+    diciéndolo explícitamente (ver nota de divergencia arriba) y toda
+    dimensión faltante sale "warning" (nunca se asume "error" sin poder
+    confirmar la FK)."""
+    if not dim_contracts:
+        return []
+
+    validaciones_modelo = validaciones_modelo or []
+    loaded = _tables_with_loader_step(ktr_data, step_type_aliases, validaciones_modelo)
+    faltantes = [
+        c for c in dim_contracts
+        if c.table.strip().lower() not in loaded
+    ]
+    if not faltantes:
+        return []
+
+    ddl_ok = _dwh_ddl_parseable(dwh_ddl)
+    findings: list[dict] = []
+    if not ddl_ok:
+        findings.append({
+            "tipo": "warning",
+            "campo": UNVERIFIED_DIMENSION_COVERAGE_FIELD,
+            "mensaje": (
+                "No se pudo verificar si las dimensiones de dim_contracts tienen step de carga "
+                "— el DDL del DWH no llegó o no es parseable. Las "
+                f"{len(faltantes)} dimensión(es) sin loader detectadas se reportan como "
+                "advertencia porque no se pudo confirmar si un hecho las referencia por FK NOT NULL."
+            ),
+        })
+        fk_by_table: dict[str, dict] = {}
+    else:
+        fk_by_table = {
+            entry["dimension"].strip().lower(): entry
+            for entry in _dims_with_inferred_member(dwh_ddl, dim_contracts)
+        }
+
+    for c in faltantes:
+        table_lower = c.table.strip().lower()
+        fk = fk_by_table.get(table_lower)
+        if fk is not None:
+            findings.append({
+                "tipo": "error",
+                "campo": c.table,
+                "mensaje": (
+                    f"dim_contracts declara '{c.table}', referenciada por FK NOT NULL "
+                    f"'{fk['fact_table']}.{fk['fk_column']}', pero ningún step del .ktr la carga "
+                    "(no hay DimensionLookup con update=Y sobre esa tabla). En runtime la "
+                    "dimensión queda vacía salvo su fila DESCONOCIDO: el lookup de la FK no "
+                    "matchea y la carga del hecho cae a la clave por defecto o viola el NOT "
+                    "NULL. Agregar el step de carga en Spoon antes de ejecutar."
+                ),
+            })
+        else:
+            findings.append({
+                "tipo": "warning",
+                "campo": c.table,
+                "mensaje": (
+                    f"dim_contracts declara '{c.table}', pero ningún step del .ktr la carga "
+                    "(no hay DimensionLookup con update=Y sobre esa tabla) — no se detectó una "
+                    "FK NOT NULL que la referencie, así que no es necesariamente un error, pero "
+                    "revisar: si esa dimensión se precarga por fuera del ETL (ej. calendario, "
+                    "K18), ignorar este aviso."
+                ),
+            })
+    return findings

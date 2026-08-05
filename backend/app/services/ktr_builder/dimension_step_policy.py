@@ -71,6 +71,7 @@ __all__ = [
     "role_of_dimension_step",
     "build_dimension_lookup_config",
     "apply_dimension_contracts",
+    "has_registered_override",
 ]
 
 # Mismo patrón que FIELD_INTEGRITY_PREFIX en fields_validate.py: un prefijo de
@@ -150,7 +151,13 @@ def role_of_dimension_step(
     return "loader"
 
 
-def _has_registered_override(validaciones: list, table: str) -> bool:
+def has_registered_override(validaciones: list, table: str) -> bool:
+    """Pública desde el diagnóstico de dim_contracts × ktr_data (docs/refactor/
+    02-decisiones.md, D-pendiente "toda dimensión con FK tiene loader"):
+    find_unloaded_dimensions (ddl_checks.py) necesita el mismo criterio que
+    apply_dimension_contracts usa para NO tocar un step con override — una
+    dimensión con override registrado no cuenta como "sin loader", es una
+    decisión explícita del modelo, no un hueco."""
     table_lower = table.strip().lower()
     for v in validaciones or []:
         mensaje = str(v.get("mensaje", "") if isinstance(v, dict) else getattr(v, "mensaje", ""))
@@ -506,7 +513,7 @@ def apply_dimension_contracts(
             })
             continue
 
-        if _has_registered_override(validaciones_modelo, table):
+        if has_registered_override(validaciones_modelo, table):
             logger.info(
                 "apply_dimension_contracts: override registrado para '%s' — step respetado tal cual.",
                 table,
