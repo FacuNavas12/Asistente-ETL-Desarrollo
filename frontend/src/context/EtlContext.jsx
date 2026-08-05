@@ -1,5 +1,8 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { listEtls, createEtl, updateEtl, deleteEtlById } from "../api/etls";
+import { useToast } from "../components/ui/Toast";
+
+const ETLS_RETRY_MS = 5000;
 
 const EtlContext = createContext();
 
@@ -58,10 +61,41 @@ export function EtlProvider({ children }) {
   const [etls, setEtls] = useState([]);
   const [draft, setDraftState] = useState(loadDraft);
   const [hiddenIds, setHiddenIds] = useState(loadHiddenIds);
+  const [backendDown, setBackendDown] = useState(false);
+  const { notifySystem } = useToast() ?? {};
 
+  // Al montar (o cuando el backend estaba caído), reintenta cada ETLS_RETRY_MS
+  // hasta que /api/etls responda — evita que el usuario tenga que refrescar
+  // a mano después de levantar el backend con el front ya abierto.
   useEffect(() => {
-    listEtls().then(setEtls).catch(console.error);
-  }, []);
+    let cancelled = false;
+    let timer = null;
+    let wasDown = false;
+
+    const tryLoad = async () => {
+      try {
+        const data = await listEtls();
+        if (cancelled) return;
+        setEtls(data);
+        setBackendDown(false);
+        if (wasDown) notifySystem?.("Conexión con el servidor restablecida.");
+      } catch {
+        if (cancelled) return;
+        if (!wasDown) {
+          wasDown = true;
+          setBackendDown(true);
+          notifySystem?.("No se pudo conectar con el servidor. Reintentando…");
+        }
+        timer = setTimeout(tryLoad, ETLS_RETRY_MS);
+      }
+    };
+
+    tryLoad();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Draft (session-only) ────────────────────────────────────────────────
   const saveDraft = (data) => {
@@ -172,7 +206,7 @@ export function EtlProvider({ children }) {
     <EtlContext.Provider value={{
       etls, visibleEtls, draft, saveDraft, clearDraft, addEtl, savePendingEtl, saveInProgressEtl,
       hideEtlLocally, deleteEtlPermanently, patchEtlLocal,
-      clearAll,
+      clearAll, backendDown,
     }}>
       {children}
     </EtlContext.Provider>

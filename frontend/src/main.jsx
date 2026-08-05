@@ -14,11 +14,11 @@ const router = createBrowserRouter([
     element: (
       <AuthProvider>
         <ThemeProvider>
-          <EtlProvider>
-            <ToastProvider>
+          <ToastProvider>
+            <EtlProvider>
               <App />
-            </ToastProvider>
-          </EtlProvider>
+            </EtlProvider>
+          </ToastProvider>
         </ThemeProvider>
       </AuthProvider>
     ),
