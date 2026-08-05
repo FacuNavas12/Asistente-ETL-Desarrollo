@@ -202,7 +202,7 @@ El objeto `ktr` es la representación estructurada del archivo .ktr de Pentaho S
             {"name": "activo",     "type": "Boolean"}],
  "remove": ["campo_a_eliminar"]}
 ```
-**FilterRows** — filtrar filas con condición:
+**FilterRows** — filtrar filas con condición. `field`/`operator`/`value` son SINGULARES: un `FilterRows` evalúa UNA sola columna, nunca una condición compuesta AND. Si necesitás descartar filas por varias columnas (ej. "precios negativos" cuando el destino tiene CHECK de rango en más de una columna), encadená un `FilterRows` por columna — ver K20:
 ```json
 {"field": "estado", "operator": "IS NOT NULL", "value": null,
  "true_target":  "Nombre del step si cumple la condición",
@@ -574,6 +574,16 @@ K19. **Dialecto SQL [CRÍTICO]:** todo SQL que escribas (`TableInput.sql`, `Exec
    - Calendario de `dim_tiempo`: `generate_series` (ver K18).
    - Tipo del literal default en `COALESCE` alineado al tipo de columna (ver K17) — no un `''`/`0` genérico sin mirar el tipo real.
    Cada vez que emitas una de estas construcciones (o cualquier otra dependiente de motor), agregá una entrada en `validaciones` con `tipo: "info"` declarando qué construcción es dialecto-específica y que asume Postgres — es información crítica que se fija antes de generar, no algo a corregir después si el usuario cambia de motor.
+K20. **Múltiples CHECK de rango en la misma tabla destino [CRÍTICO]:** Si la tabla destino (staging o DWH) tiene más de una columna con CHECK de rango (`>= mínimo` / `<= máximo`) en el DDL provisto, un solo `FilterRows` NO alcanza — cada `FilterRows` evalúa una sola columna (ver bloque `FilterRows` arriba). Encadená un `FilterRows` por cada columna con CHECK, cada uno con su propio `false_target` apuntando al mismo `Dummy` de descarte y su `true_target` hacia el siguiente `FilterRows` (o al step real si es el último de la cadena). Ejemplo con dos columnas bounded (`precio_lista >= 0` y `precio_unitario >= 0`), ambas con CHECK en la tabla de hechos:
+```json
+[{"name": "Filtrar Precio Lista Negativo", "type": "FilterRows",
+  "config": {"field": "precio_lista", "operator": ">=", "value": 0, "value_type": "Number",
+             "true_target": "Filtrar Precio Unitario Negativo", "false_target": "Descartar Precios Invalidos"}},
+ {"name": "Filtrar Precio Unitario Negativo", "type": "FilterRows",
+  "config": {"field": "precio_unitario", "operator": ">=", "value": 0, "value_type": "Number",
+             "true_target": "Siguiente Step Real", "false_target": "Descartar Precios Invalidos"}}]
+```
+Un `FilterRows` nombrado genéricamente ("filtrar precios negativos") que solo cubre una de las columnas deja pasar filas que violan el CHECK de la otra — el error recién aparece en el motor de base de datos al hacer INSERT/UPDATE, abortando toda la transformación en producción.
 ---
 
 ## Reglas de integridad del grafo — releer antes de emitir el JSON final
@@ -637,6 +647,7 @@ Antes de cerrar el JSON, recorrés esta lista en orden. Si alguna respuesta es N
 20. ¿Algún `TableInput` de la capa staging→DWH lee columnas nullable que se mapean a columnas NOT NULL en el destino sin envolver en `COALESCE`? [B14] → Si SÍ: agregar `COALESCE(columna, default_literal) AS columna` en el SELECT.
 21. ¿Algún `InsertUpdate` carga una dimensión por clave natural (no una tabla de hechos) y esa clave natural aparece en `keys` pero NO en `fields`? [B16] → Si SÍ: agregala también a `fields` con `"update": false` (ver ejemplo de la regla B16) — si no, el INSERT la omite y viola su propio NOT NULL.
 22. ¿Emitiste alguna construcción SQL dialecto-dependiente (`DISTINCT ON`, `generate_series`, u otra específica de Postgres) sin declarar `tipo: "info"` en `validaciones`? [K19] → Si SÍ: agregá la entrada de `validaciones` faltante.
+23. ¿La tabla destino de algún `TableOutput`/`InsertUpdate`/`DimensionLookup` tiene más de una columna con CHECK de rango (mínimo/máximo) en el DDL provisto? [K20] → Si SÍ: verificá que exista un `FilterRows` encadenado POR CADA columna con CHECK — un solo `FilterRows` genérico ("filtrar negativos") que solo cubre una columna deja pasar filas que violan el CHECK de la otra hasta el INSERT/UPDATE final.
 23. Si el prompt trae "## DIMENSIONES CON MIEMBRO INFERIDO OBLIGATORIO" (D21): ¿cada dimensión listada tiene EXACTAMENTE un step que la escribe (anti-join + Union hacia el ÚNICO loader)? → Si NO: corregí — un segundo writer sobre esa tabla es exactamente el doble-escritor que este proyecto existe para eliminar (ver "PATRÓN MIEMBRO INFERIDO"). El modo de lectura/escritura del lookup de FK del lado del hecho lo pone el build por topología, no hace falta chequearlo acá.
 24. ¿Algún step busca la FK de una dimensión de `dim_contracts` usando `CombinationLookup` o `DBLookup`? [D16/D44/D51] → Si SÍ: reemplazá por `DimensionLookup` (mismo `table`/`keys`, sin `fields`) — ver "LOOKUP DE FK DEL LADO DEL HECHO". El modo (`update`) lo pone el build por topología, no lo declares vos.
 25. ¿Algún campo con nombre de pinta monetaria/contable (importe, precio, monto, total, subtotal, valor, costo, impuesto, iva, descuento, saldo, comisión, recargo, tipo de cambio, arancel, cuota) queda declarado `"type"`/`"value_type": "Number"` en vez de `"BigNumber"`, en cualquier step que lo declare (`Calculator`, `Formula`, `SelectValues` meta, `ScriptValueMod`, `GetVariable`, `RowGenerator`, `CsvInput`/`TextFileInput`/`ExcelInput`/`JsonInput`/`TextFileOutput`/`ExcelOutput`)? [B17] → Si SÍ: cambiá a `BigNumber` y verificá que los operandos de entrada (`field_a`/`field_b`/campos referenciados en `formula`) también lo sean — no alcanza con tipar solo el resultado.
