@@ -2,6 +2,14 @@ import { useState } from "react";
 import "../../css/shared.css";
 import "../../css/dwhForm.css";
 
+// Identidad única de una tabla de origen. Para tablas de conexión a BD
+// (schema_name presente) usa "schema.tabla" — mismo formato que devuelve
+// list_tables() del backend — para no colisionar con una tabla homónima
+// en otro schema. CSV/Excel/Formulario no tienen schema_name → solo tableName.
+export function tableKey(t) {
+  return t?.schema_name ? `${t.schema_name}.${t.tableName}` : t?.tableName;
+}
+
 export function useTableList(items, setItems) {
   return {
     add:        (item)         => setItems([...items, item]),

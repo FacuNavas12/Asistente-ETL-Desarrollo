@@ -24,8 +24,41 @@
   font-weight: 500;
   min-width: 180px;
   max-width: 340px;
-  cursor: default;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  cursor: grab;
+  touch-action: none;
   animation: toast-in 0.22s ease forwards;
+}
+
+.toast-item--dragging {
+  cursor: grabbing;
+  z-index: 10000;
+  animation: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.toast-item__text {
+  flex: 1;
+}
+
+.toast-item__close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
+
+.toast-item__close:hover {
+  opacity: 1;
+  background: rgba(128, 128, 128, 0.15);
 }
 
 .toast-item--system {

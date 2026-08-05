@@ -19,8 +19,12 @@ function loadSystemMessages() {
 
 function ToastItem({ id, message, type, onDismiss }) {
   const [out, setOut] = useState(false);
-  const timerRef = useRef(null);
-  const outRef   = useRef(false);
+  const [dragPos, setDragPos] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const timerRef    = useRef(null);
+  const outRef      = useRef(false);
+  const dragOffset  = useRef({ x: 0, y: 0 });
+  const dragWidth   = useRef(null);
 
   function dismiss() {
     if (outRef.current) return;
@@ -35,7 +39,7 @@ function ToastItem({ id, message, type, onDismiss }) {
 
   function startTimer() {
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(dismiss, 10000);
+    timerRef.current = setTimeout(dismiss, 2000);
   }
 
   useEffect(() => {
@@ -43,13 +47,55 @@ function ToastItem({ id, message, type, onDismiss }) {
     return () => clearTimeout(timerRef.current);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  function handlePointerDown(e) {
+    if (e.target.closest(".toast-item__close")) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    dragWidth.current = rect.width;
+    setDragPos({ left: rect.left, top: rect.top });
+    setDragging(true);
+    stopTimer();
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
+  function handlePointerMove(e) {
+    if (!dragging) return;
+    setDragPos({
+      left: e.clientX - dragOffset.current.x,
+      top: e.clientY - dragOffset.current.y,
+    });
+  }
+
+  function handlePointerUp() {
+    if (!dragging) return;
+    setDragging(false);
+    startTimer();
+  }
+
+  const style = dragPos
+    ? { position: "fixed", left: dragPos.left, top: dragPos.top, width: dragWidth.current }
+    : undefined;
+
   return (
     <div
-      className={`toast-item toast-item--${type}${out ? " toast-item--out" : ""}`}
+      className={`toast-item toast-item--${type}${out ? " toast-item--out" : ""}${dragging ? " toast-item--dragging" : ""}`}
+      style={style}
       onMouseEnter={stopTimer}
-      onMouseLeave={startTimer}
+      onMouseLeave={() => { if (!dragging) startTimer(); }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
     >
-      {message}
+      <span className="toast-item__text">{message}</span>
+      <button
+        type="button"
+        className="toast-item__close"
+        aria-label="Cerrar"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={dismiss}
+      >
+        →
+      </button>
     </div>
   );
 }

@@ -1,13 +1,14 @@
 import TableDataPreview from "../TableDataPreview";
 import TablesPopupButton from "../TablesPopup";
+import { tableKey } from "../tableUtils";
 import "../../../css/shared.css";
 import "../../../css/inputOrigin.css";
 
 export default function ConfirmedTablesList({ tables = [], onChange }) {
   if (!tables.length) return null;
 
-  const handleRemove = (tableName) => {
-    onChange(tables.filter(t => t.tableName !== tableName));
+  const handleRemove = (key) => {
+    onChange(tables.filter(t => tableKey(t) !== key));
   };
 
   return (
@@ -20,7 +21,7 @@ export default function ConfirmedTablesList({ tables = [], onChange }) {
         <TableDataPreview
           key={i}
           table={t}
-          onRemove={() => handleRemove(t.tableName)}
+          onRemove={() => handleRemove(tableKey(t))}
         />
       ))}
     </div>

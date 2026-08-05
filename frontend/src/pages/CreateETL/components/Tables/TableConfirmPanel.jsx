@@ -1,5 +1,6 @@
 import { useState } from "react";
 import TableDataPreview from "./TableDataPreview";
+import { tableKey } from "./tableUtils";
 import "../../css/shared.css";
 import "../../css/tableConfirmPanel.css";
 
@@ -8,15 +9,15 @@ import "../../css/tableConfirmPanel.css";
  * Todos los inputs (Connection, CSV, Excel, Formulario) lo usan.
  */
 export function useTableConfirmation({ value = [], onChange }) {
-  const confirmedNames = new Set((value || []).map(t => t.tableName));
+  const confirmedNames = new Set((value || []).map(tableKey));
 
   const confirm = (tableObj) => {
-    const rest = (value || []).filter(t => t.tableName !== tableObj.tableName);
+    const rest = (value || []).filter(t => tableKey(t) !== tableKey(tableObj));
     onChange([...rest, tableObj]);
   };
 
-  const remove = (tableName) => {
-    onChange((value || []).filter(t => t.tableName !== tableName));
+  const remove = (key) => {
+    onChange((value || []).filter(t => tableKey(t) !== key));
   };
 
   return { confirmedNames, confirm, remove };
@@ -47,27 +48,31 @@ function CandidateRow({
     <>
       <tr className={isSelected ? "tpc-row--selected" : undefined}>
         <td className="tpc-row-num">{index + 1}</td>
-        <td
-          className={clickable ? "tpc-row-name tpc-row-name--clickable" : "tpc-row-name"}
-          onClick={clickable ? handleNameClick : undefined}
-        >
-          {name}
-          {confirmed && <span className="tpc-confirmed-badge">✓ confirmada</span>}
-        </td>
-        <td className="tpc-row-action">
-          {confirmed ? (
-            <button className="staging-remove-btn" onClick={() => onRemove(name)}>
-              Quitar
-            </button>
-          ) : (
-            <button
-              className="staging-add-btn tpc-confirm-btn"
-              onClick={() => onConfirm(name, isObj ? candidate : null)}
-              disabled={anyConfirming}
+        <td colSpan={2} className="tpc-row-main">
+          <div className="tpc-row-flex">
+            <span
+              className={clickable ? "tpc-row-name tpc-row-name--clickable" : "tpc-row-name"}
+              onClick={clickable ? handleNameClick : undefined}
             >
-              {isConfirming ? "Cargando..." : "Confirmar"}
-            </button>
-          )}
+              {name}
+              {confirmed && <span className="tpc-confirmed-badge">✓ confirmada</span>}
+            </span>
+            <span className="tpc-row-action">
+              {confirmed ? (
+                <button className="staging-remove-btn" onClick={() => onRemove(name)}>
+                  Quitar
+                </button>
+              ) : (
+                <button
+                  className="staging-add-btn tpc-confirm-btn"
+                  onClick={() => onConfirm(name, isObj ? candidate : null)}
+                  disabled={anyConfirming}
+                >
+                  {isConfirming ? "Cargando..." : "Confirmar"}
+                </button>
+              )}
+            </span>
+          </div>
         </td>
       </tr>
       {previewOpen && hasCols && (

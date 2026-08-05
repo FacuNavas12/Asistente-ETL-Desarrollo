@@ -82,26 +82,25 @@ export default function OrigenInput({ value, onChange }) {
         )}
       </div>
 
-      {!collapsed && (
-        <>
-          {modo === "formulario" && (
-            <OrigenInputFormulario value={value} onChange={onChange} />
-          )}
-          {modo === "csv" && (
-            <OrigenInputCSV value={value} onChange={onChange} onSwitchMode={switchMode} />
-          )}
-          {modo === "excel" && (
-            <OrigenInputExcel value={value} onChange={onChange} onSwitchMode={switchMode} />
-          )}
-          {modo === "connections" && (
-            <InputConection value={value} onChange={onChange} />
-          )}
-          {modo === "ddl" && (
-            <InputDDL value={value} onChange={onChange} />
-          )}
-
-        </>
-      )}
+      {/* display:none en vez de desmontar — colapsar/expandir no debe perder el
+          estado local del modo activo (ej. la conexión a BD abierta en "connections") */}
+      <div style={collapsed ? { display: "none" } : undefined}>
+        {modo === "formulario" && (
+          <OrigenInputFormulario value={value} onChange={onChange} />
+        )}
+        {modo === "csv" && (
+          <OrigenInputCSV value={value} onChange={onChange} onSwitchMode={switchMode} />
+        )}
+        {modo === "excel" && (
+          <OrigenInputExcel value={value} onChange={onChange} onSwitchMode={switchMode} />
+        )}
+        {modo === "connections" && (
+          <InputConection value={value} onChange={onChange} />
+        )}
+        {modo === "ddl" && (
+          <InputDDL value={value} onChange={onChange} />
+        )}
+      </div>
     </div>
   );
 }

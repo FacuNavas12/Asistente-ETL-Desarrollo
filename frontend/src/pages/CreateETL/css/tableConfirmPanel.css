@@ -23,6 +23,25 @@
   opacity: 0.75;
 }
 
+/* Nombre + botón agrupados en un solo bloque, en vez de dos columnas
+   separadas por todo el ancho de la tabla — la relación entre ambos
+   se lee de un vistazo. */
+.tpc-row-main {
+  padding: 0;
+}
+
+.tpc-row-flex {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 12px;
+}
+
+/* Filas intercaladas (zebra) para separar visualmente cada par nombre/botón. */
+.tpc-scroll tbody tr:nth-child(even):not(.tpc-row--selected) td {
+  background: var(--bg-panel);
+}
+
 .tpc-row--selected td {
   background-color: var(--accent-subtle, rgba(99, 102, 241, 0.12));
 }
@@ -118,9 +137,7 @@
 }
 
 .tpc-row-action {
-  text-align: right;
   white-space: nowrap;
-  padding-right: 6px;
 }
 
 button.staging-add-btn.tpc-confirm-btn {

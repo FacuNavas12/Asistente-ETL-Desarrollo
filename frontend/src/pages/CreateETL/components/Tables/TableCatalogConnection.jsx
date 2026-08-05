@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { getTableData, getTableProfile } from "@/api/connections";
 import TableConfirmPanel from "./TableConfirmPanel";
+import { tableKey } from "./tableUtils";
 import "../../css/shared.css";
 import "../../css/inputConnection.css";
 
@@ -85,7 +86,8 @@ export default function TableCatalogConnection({ tables, connId, password, value
 
       const { schema, table } = splitTable(qualified);
       const newTable = { tableName: table, connection_id: connId, schema_name: schema, columns };
-      onChange([...(Array.isArray(value) ? value : []), newTable]);
+      const rest = (Array.isArray(value) ? value : []).filter(t => tableKey(t) !== tableKey(newTable));
+      onChange([...rest, newTable]);
     } catch (err) {
       setConfirmError(`No se pudo confirmar "${qualified}": ${err.message}`);
     } finally {
@@ -218,16 +220,16 @@ export default function TableCatalogConnection({ tables, connId, password, value
         </TableConfirmPanel>
       )}
 
-      {(value || []).some(t => tableStructure[t.tableName]) && (
+      {(value || []).some(t => tableStructure[tableKey(t)]) && (
         <div className="conn-schema-summary">
           <p className="conn-catalog-header" style={{ marginTop: "1rem" }}>
             Esquema de tablas confirmadas
           </p>
           {(value || []).map(t => {
-            const struct = tableStructure[t.tableName];
+            const struct = tableStructure[tableKey(t)];
             if (!struct) return null;
             return (
-              <div key={t.tableName} className="conn-schema-table">
+              <div key={tableKey(t)} className="conn-schema-table">
                 <p className="conn-schema-table-name">{t.tableName}</p>
                 <div className="conn-schema-cols">
                   {(t.columns || []).map(col => (
