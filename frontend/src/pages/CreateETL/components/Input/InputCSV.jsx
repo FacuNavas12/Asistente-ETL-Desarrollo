@@ -21,7 +21,7 @@ function parsePreview(file) {
   });
 }
 
-export default function OrigenInputCSV({ value = [], onChange, onSwitchMode }) {
+export default function OrigenInputCSV({ value = [], onChange }) {
   const inputRef = useRef();
   const [candidates, setCandidates] = useState(null);
   const [loading, setLoading]       = useState(false);
@@ -60,14 +60,15 @@ export default function OrigenInputCSV({ value = [], onChange, onSwitchMode }) {
     setCandidates(null);
   };
 
-  const handleEditInForm = () => {
-    if (candidates) {
-      const confirmedNames = new Set((value || []).map(t => t.tableName));
-      const toAdd = candidates.filter(t => !confirmedNames.has(t.tableName));
-      if (toAdd.length > 0) onChange([...(value || []), ...toAdd]);
-    }
-    onSwitchMode?.("formulario");
-  };
+  // handleEditInForm desactivado junto con botón "Editar en formulario" (modo formulario desconectado)
+  // const handleEditInForm = () => {
+  //   if (candidates) {
+  //     const confirmedNames = new Set((value || []).map(t => t.tableName));
+  //     const toAdd = candidates.filter(t => !confirmedNames.has(t.tableName));
+  //     if (toAdd.length > 0) onChange([...(value || []), ...toAdd]);
+  //   }
+  //   onSwitchMode?.("formulario");
+  // };
 
   return (
     <div className="origen-file-zone">
@@ -119,9 +120,11 @@ export default function OrigenInputCSV({ value = [], onChange, onSwitchMode }) {
             onChange={onChange}
           />
           <div className="origen-file-loaded__actions" style={{ marginTop: "12px" }}>
+            {/* botón desactivado: modo "formulario" desconectado como opción de origen
             <button className="staging-add-btn" onClick={handleEditInForm}>
               Editar en formulario
             </button>
+            */}
             <button
               className="staging-remove-btn origen-cancel-btn"
               onClick={handleReset}

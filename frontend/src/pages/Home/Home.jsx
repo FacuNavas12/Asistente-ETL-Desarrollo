@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useEtl } from "@/context/EtlContext";
 import Layout from "@/components/layout/Layout";
@@ -21,13 +21,28 @@ function EmptyState() {
 
 export default function Home() {
   const navigate = useNavigate();
-  const { visibleEtls, hideEtlLocally, deleteEtlPermanently, addEtl } = useEtl();
+  const { visibleEtls, hideEtlLocally, deleteEtlPermanently, addEtl, syncStaleEtl } = useEtl();
   const { addToast } = useToast();
   const [hideTarget, setHideTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const importInputRef = useRef(null);
 
   const isEmpty = visibleEtls.length === 0;
+
+  // Chequeo único al entrar a Home: si alguna fila "en_proceso" quedó
+  // huérfana (usuario salió de CreateETL con el job corriendo en background,
+  // ver EtlContext.syncStaleEtl), la actualiza a "listo" sin que haga falta
+  // reabrir la card. visibleEtls arranca vacío (listEtls todavía no resolvió)
+  // — el ref evita barrer en el primer render vacío y repetir en cada
+  // cambio posterior de la lista.
+  const sweptRef = useRef(false);
+  useEffect(() => {
+    if (sweptRef.current || visibleEtls.length === 0) return;
+    sweptRef.current = true;
+    visibleEtls
+      .filter(e => e.status === "en_proceso" && e.formData?.jobId)
+      .forEach(e => syncStaleEtl(e));
+  }, [visibleEtls, syncStaleEtl]);
 
   const handleImport = async (e) => {
     const file = e.target.files?.[0];

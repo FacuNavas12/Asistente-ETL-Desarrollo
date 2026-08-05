@@ -1,22 +1,22 @@
 import { useState, useRef, useEffect } from "react";
 import "../../css/shared.css";
 import "../../css/inputOrigin.css";
-import OrigenInputFormulario from "./InputFormulario";
+// import OrigenInputFormulario from "./InputFormulario"; // desconectado como opción de origen
 import OrigenInputCSV        from "./InputCSV";
 import OrigenInputExcel      from "./InputExcel";
 import InputConection        from "./InputConnection";
-import InputDDL              from "./InputDDL";
+// import InputDDL              from "./InputDDL"; // desconectado como opción de origen
 
 const MODOS = [
-  { id: "formulario",  label: "Formulario" },
+  // { id: "formulario",  label: "Formulario" }, // desconectado como opción de origen
   { id: "csv",         label: "CSV"        },
   { id: "excel",       label: "Excel"      },
   { id: "connections", label: "Conexiones" },
-  { id: "ddl",         label: "DDL"        },
+  // { id: "ddl",         label: "DDL"        }, // desconectado como opción de origen
 ];
 
 export default function OrigenInput({ value, onChange }) {
-  const [modo, setModo]         = useState("formulario");
+  const [modo, setModo]         = useState("csv");
   const [open, setOpen]         = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const menuRef                 = useRef();
@@ -85,9 +85,10 @@ export default function OrigenInput({ value, onChange }) {
       {/* display:none en vez de desmontar — colapsar/expandir no debe perder el
           estado local del modo activo (ej. la conexión a BD abierta en "connections") */}
       <div style={collapsed ? { display: "none" } : undefined}>
+        {/* formulario desconectado como opción de origen
         {modo === "formulario" && (
           <OrigenInputFormulario value={value} onChange={onChange} />
-        )}
+        )} */}
         {modo === "csv" && (
           <OrigenInputCSV value={value} onChange={onChange} onSwitchMode={switchMode} />
         )}
@@ -97,9 +98,10 @@ export default function OrigenInput({ value, onChange }) {
         {modo === "connections" && (
           <InputConection value={value} onChange={onChange} />
         )}
+        {/* ddl desconectado como opción de origen
         {modo === "ddl" && (
           <InputDDL value={value} onChange={onChange} />
-        )}
+        )} */}
       </div>
     </div>
   );

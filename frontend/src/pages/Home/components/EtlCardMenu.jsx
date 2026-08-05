@@ -82,6 +82,7 @@ export default function EtlCardMenu({ etl, onDeletePermanent }) {
           >
             Descargar .ktr
           </button>
+          {/*
           <button
             className="etl-card-menu__item"
             disabled={supersetBusy}
@@ -89,6 +90,7 @@ export default function EtlCardMenu({ etl, onDeletePermanent }) {
           >
             {supersetBusy ? "Abriendo en Superset..." : "Abrir en Superset"}
           </button>
+           */}
           <button
             className="etl-card-menu__item etl-card-menu__item--danger"
             onClick={(e) => handle(e, onDeletePermanent)}

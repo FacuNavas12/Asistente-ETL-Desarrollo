@@ -2,6 +2,8 @@ import { apiFetch, API } from "../services/api";
 
 export const listEtls = () => apiFetch("/api/etls/");
 
+export const getEtl = (id) => apiFetch(`/api/etls/${id}`);
+
 export const createEtl = (payload) =>
   apiFetch("/api/etls/", {
     method: "POST",

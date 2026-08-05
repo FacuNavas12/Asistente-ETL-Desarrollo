@@ -11,10 +11,13 @@ import "./etlDetail-global.css";
 
 export default function EtlDetail() {
   const { id } = useParams();
-  const { etls } = useEtl();
+  const { etls, renameEtl } = useEtl();
   const navigate = useNavigate();
   const [pageTab, setPageTab] = useState("resultado");
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInputVal, setNameInputVal] = useState("");
+  const [isSavingName, setIsSavingName] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 400);
@@ -45,6 +48,37 @@ export default function EtlDetail() {
   // viva distinguido en el panel de "Validaciones".
   const errorValidations = (etl.result?.validaciones ?? []).filter(v => v.tipo === "error");
 
+  const startEditingName = () => {
+    setNameInputVal(etl.name);
+    setIsEditingName(true);
+  };
+
+  const cancelEditingName = () => {
+    setIsEditingName(false);
+    setNameInputVal(etl.name);
+  };
+
+  const handleRenameConfirm = async () => {
+    const trimmed = nameInputVal.trim();
+    if (!trimmed || trimmed === etl.name) {
+      cancelEditingName();
+      return;
+    }
+    setIsSavingName(true);
+    try {
+      await renameEtl(etl.id, trimmed);
+      setIsEditingName(false);
+    } catch (err) {
+      alert(err.duplicateName
+        ? `${err.message} Elegí otro nombre o tocá ✕ para descartar el cambio.`
+        : (err?.message ?? "No se pudo renombrar el ETL."));
+      // se queda en modo edición (isEditingName sigue true) — el usuario
+      // puede corregir el nombre ahí mismo, o cancelar con ✕.
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
   const handleDownloadKtr = async () => {
     if (errorValidations.length > 0) {
       const proceed = window.confirm(
@@ -67,7 +101,49 @@ export default function EtlDetail() {
       <div className={`etl-detail${pageTab === "linaje" ? " etl-detail--fill" : ""}`}>
 
         <div className="etl-detail__header">
-          <h1 className="etl-detail__title">{etl.name}</h1>
+          {isEditingName ? (
+            <div className="etl-detail__title-edit">
+              <input
+                className="etl-detail__title-input"
+                value={nameInputVal}
+                onChange={e => setNameInputVal(e.target.value)}
+                onFocus={e => e.target.select()}
+                onKeyDown={e => {
+                  if (e.key === "Enter") handleRenameConfirm();
+                  if (e.key === "Escape") cancelEditingName();
+                }}
+                autoFocus
+                disabled={isSavingName}
+              />
+              <button
+                type="button"
+                className="etl-detail__title-btn etl-detail__title-btn--confirm"
+                onClick={handleRenameConfirm}
+                disabled={isSavingName}
+                title="Confirmar nombre"
+              >
+                {isSavingName ? "…" : "✓"}
+              </button>
+              <button
+                type="button"
+                className="etl-detail__title-btn etl-detail__title-btn--cancel"
+                onClick={cancelEditingName}
+                disabled={isSavingName}
+                title="Cancelar"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <h1
+              className="etl-detail__title etl-detail__title--editable"
+              onClick={startEditingName}
+              title="Editar nombre"
+            >
+              {etl.name}
+              <span className="etl-detail__title-edit-hint">Editar</span>
+            </h1>
+          )}
           <span className="etl-detail__date">
             {new Date(etl.createdAt).toLocaleDateString("es-AR", { dateStyle: "long" })}
           </span>

@@ -24,6 +24,7 @@ import { stagesArrayToMap, mergeProgressLogs } from "./utils/progressLog";
 import { tryAutoDownloadRawSteps } from "./utils/tempAutoDownloadRawSteps"; // TEMPORAL — ver ese archivo
 import CreateETLOptions from "./components/CreateETLOptions";
 import { listConnections } from "@/api/connections";
+import { getEtl } from "@/api/etls";
 import "./css/createETL.css";
 
 // Estados de la máquina:
@@ -123,6 +124,7 @@ export default function CreateETL() {
   // directo con connectionsMapRef.current sin volver a pedirlas.
   const connectionsDecidedRef   = useRef(false);
   const pollTimeoutRef          = useRef(null);
+  const syncPollTimeoutRef      = useRef(null);
   // TEMPORAL — jobIds ya auto-descargados (ver utils/tempAutoDownloadRawSteps.js)
   const autoDownloadedJobIdsRef = useRef(new Set());
   // D29: último seq de progreso ya volcado a ktrLogs — el poll solo agrega
@@ -133,6 +135,14 @@ export default function CreateETL() {
   const importInputRef          = useRef(null);
   const importRawInputRef       = useRef(null);
   const currentEtlIdRef      = useRef(location.state?.etlId ?? null);
+  // job_id de un intento de generación anterior que quedó huérfano — el
+  // usuario salió de esta pantalla con el job corriendo en background (ver
+  // _saveSnapshot(jobId) y EtlContext.syncStaleEtl). Solo aplica al reabrir
+  // vía "Continuar" (etlId presente) — "Reutilizar" no manda etlId, así que
+  // nunca dispara esto aunque arrastre un jobId viejo en el formData copiado.
+  const resumeJobIdRef      = useRef(
+    (location.state?.etlId && initSource?.jobId) ? initSource.jobId : null
+  );
   // Track serialized tables to distinguish real changes from reference-only re-renders
   const origenTablesSerialRef = useRef(JSON.stringify(initSource?.origenTables ?? []));
 
@@ -168,6 +178,7 @@ export default function CreateETL() {
   useEffect(() => {
     return () => {
       if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      if (syncPollTimeoutRef.current) clearTimeout(syncPollTimeoutRef.current);
     };
   }, []);
 
@@ -220,32 +231,110 @@ export default function CreateETL() {
     setIsEditingName(false);
   };
 
-  const _saveSnapshot = async () => {
+  // El outbox guarda local (SQLite) y drena a Supabase en background (ver
+  // backend/app/outbox/README.md) — el syncStatus "pending" recién devuelto
+  // por el guardado puede tardar unos segundos en pasar a "synced". Sin este
+  // poll el badge "Guardando…" quedaba pegado para siempre hasta recargar
+  // la página.
+  const _applySyncStatus = (id, newStatus) => {
+    if (syncPollTimeoutRef.current) clearTimeout(syncPollTimeoutRef.current);
+    setSyncStatus(newStatus);
+    if (newStatus === "pending") {
+      syncPollTimeoutRef.current = setTimeout(async () => {
+        let record;
+        try {
+          record = await getEtl(id);
+        } catch {
+          if (currentEtlIdRef.current === id) _applySyncStatus(id, "pending"); // reintenta
+          return;
+        }
+        if (currentEtlIdRef.current !== id) return; // se guardó otra fila mientras tanto
+        _applySyncStatus(id, record.syncStatus);
+      }, 3000);
+    } else if (newStatus === "synced") {
+      // Badge ya cumplió su propósito (confirmar el guardado) — se retira solo.
+      syncPollTimeoutRef.current = setTimeout(() => setSyncStatus(null), 2000);
+    }
+    // "failed" queda visible con el botón de reintentar (handleRetrySync).
+  };
+
+  // jobIdOverride: para persistir el job_id recién obtenido de generateAsync
+  // (ver handleConfirm) — sin esto, una fila en_proceso nunca queda
+  // recuperable si el usuario sale de esta pantalla mientras el job corre
+  // (ver resumeJobIdRef / EtlContext.syncStaleEtl). undefined = mantiene el
+  // jobId que ya traía el formulario (o ninguno).
+  const _saveSnapshot = async (jobIdOverride) => {
     const values = getValues();
-    const { id, syncStatus: ss } = await saveInProgressEtl(values.etlName, {
+    const { id, name: savedName, syncStatus: ss } = await saveInProgressEtl(values.etlName, {
       ...values,
       inferResult,
       stg_definition: inferResult?.stg_ddl ?? null,
       dwh_model:      inferResult?.dwh_ddl ?? null,
+      jobId: jobIdOverride !== undefined ? jobIdOverride : jobId,
     }, currentEtlIdRef.current);
     currentEtlIdRef.current = id;
-    setSyncStatus(ss);
+    _applySyncStatus(id, ss);
+    // La fila nueva puede haberse guardado con un nombre distinto al pedido
+    // (auto-sufijo por colisión — ver EtlContext.saveInProgressEtl, típico
+    // al "Reutilizar" un ETL sin cambiarle el nombre). Sin sincronizar el
+    // campo acá, el siguiente Guardar compara contra el nombre viejo y el
+    // backend lo rechaza como duplicado contra la fila que SE ACABA de crear.
+    if (savedName && savedName !== values.etlName) {
+      setValue("etlName", savedName, { shouldDirty: false });
+      setNameInputVal(savedName);
+      values.etlName = savedName;
+    }
     return values;
   };
 
+  // Nombre repetido (EtlContext.saveInProgressEtl tira duplicateName al
+  // renombrar una fila existente hacia un nombre ya usado por OTRA fila —
+  // crear una fila nueva nunca bloquea, se auto-sufija) — vuelve a FORM con
+  // el campo de nombre abierto para editar en el lugar, en vez de perder el
+  // guardado silenciosamente.
+  const _saveSnapshotSafe = async (jobIdOverride) => {
+    try {
+      return await _saveSnapshot(jobIdOverride);
+    } catch (err) {
+      if (err.duplicateName) {
+        notifySystem(`${err.message} Cambiá el nombre o descartá los cambios.`);
+        setStep(STEP.FORM);
+        setNameInputVal(etlName);
+        setIsEditingName(true);
+      } else {
+        notifySystem(`Error al guardar: ${err.message}`);
+      }
+      throw err;
+    }
+  };
+
   const handleGuardar = async () => {
-    const values = await _saveSnapshot();
+    let values;
+    try {
+      values = await _saveSnapshotSafe();
+    } catch {
+      return;
+    }
     addToast("Guardado");
-    pendingNavigateRef.current = "/home";
-    reset(values); // isDirty → false → useEffect fires → navigate
+    reset(values); // isDirty → false, sin navegar
   };
 
   const handleGuardarFromReview = async () => {
-    await _saveSnapshot();
+    try {
+      await _saveSnapshotSafe();
+    } catch {
+      // ya notificado por _saveSnapshotSafe
+      return;
+    }
+    addToast("Guardado");
   };
 
   const handleRetrySync = async () => {
-    await _saveSnapshot();
+    try {
+      await _saveSnapshotSafe();
+    } catch {
+      // ya notificado por _saveSnapshotSafe
+    }
   };
 
   const handleLimpiar = () => {
@@ -497,6 +586,26 @@ export default function CreateETL() {
     tick();
   };
 
+  // Retoma un job huérfano al reabrir esta pantalla (Home → "Continuar"
+  // sobre una card en_proceso, ver resumeJobIdRef): en vez de mostrar el
+  // formulario desde cero, saltea directo a PROCESSING y retoma el polling.
+  // Si el job ya terminó del lado del backend, _pollJobStatus lo detecta en
+  // el primer tick y navega directo a EtlDetail (_finishEtl); si expiró
+  // (TTL 30 min) o falló, cae a REVIEW con el aviso de siempre — el usuario
+  // sigue desde ahí, no perdió el DDL ya inferido.
+  useEffect(() => {
+    const staleJobId = resumeJobIdRef.current;
+    if (!staleJobId) return;
+    resumeJobIdRef.current = null;
+    setEtlPhase("waiting");
+    setKtrLogs([]);
+    lastProgressSeqRef.current = -1;
+    setJobId(staleJobId);
+    setStep(STEP.PROCESSING);
+    _pollJobStatus(staleJobId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Se llama una sola vez, cuando el usuario confirma el formulario de
   // conexiones destino en DestinationConnections (botón "Generar" — cada
   // capa ya decidida como metadata completa o "Completar en Spoon"). Con
@@ -566,7 +675,14 @@ export default function CreateETL() {
     // en Revisión, y _finishEtl termina creando una fila nueva en vez de
     // completar esta (el DDL confirmado en Inferencia se pierde de la fila
     // final, que es justo lo que se reportó como bug).
-    await _saveSnapshot();
+    try {
+      await _saveSnapshotSafe();
+    } catch (err) {
+      // Nombre repetido ya deja al usuario en STEP.FORM con el campo de
+      // nombre abierto (ver _saveSnapshotSafe) — no lo pisamos con REVIEW.
+      if (!err.duplicateName) setStep(STEP.REVIEW);
+      return;
+    }
 
     try {
       const { job_id } = await generateAsync({
@@ -579,6 +695,17 @@ export default function CreateETL() {
         reuse_stage_1:  reuseStage1,
       });
       setJobId(job_id);
+
+      // Persiste el job_id en la fila en_proceso — sin esto, salir de esta
+      // pantalla mientras el job corre en background la deja huérfana para
+      // siempre (ver resumeJobIdRef / EtlContext.syncStaleEtl). Best-effort:
+      // si falla, el job igual sigue corriendo del lado del backend, solo se
+      // pierde la posibilidad de retomar el polling más tarde.
+      try {
+        await _saveSnapshot(job_id);
+      } catch (err) {
+        console.error("No se pudo guardar el job_id para poder reanudar más tarde:", err);
+      }
 
       _pollJobStatus(job_id);
     } catch (err) {
@@ -719,11 +846,15 @@ export default function CreateETL() {
               <h1 className="etl-title">{etlName}</h1>
             )}
           </div>
-          {syncStatus && (
+          {/* "pending" no se muestra: el guardado ya se confirmó con el toast
+              "Guardado" al hacer clic — este badge solo confirma sync a
+              Supabase, y esa confirmación puede tardar o no llegar nunca
+              (sin credenciales configuradas queda pending para siempre),
+              lo que dejaba un "Guardando…" pegado y confuso. */}
+          {syncStatus && syncStatus !== "pending" && (
             <span className={`etl-sync-badge etl-sync-badge--${syncStatus}`}>
-              {syncStatus === "pending" && "Guardando…"}
-              {syncStatus === "synced"  && "✓ Guardado"}
-              {syncStatus === "failed"  && (
+              {syncStatus === "synced" && "✓ Guardado"}
+              {syncStatus === "failed" && (
                 <button className="etl-sync-retry" onClick={handleRetrySync}>
                   ⚠ Error de sync · Reintentar
                 </button>
