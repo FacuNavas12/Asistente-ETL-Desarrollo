@@ -1,124 +1,50 @@
 """
-Generador de linaje de datos a partir del dict KTR o de su XML serializado.
-Funciones puras y deterministas: no llaman al modelo, no emiten tokens.
-Producen un grafo dirigido origen → staging → DWH listo para el frontend.
+Borde de infraestructura del linaje: envuelve las reglas puras de
+`app.domain.lineage` en el contrato de transporte real (`schemas.lineage.Lineage`,
+Pydantic — no puede vivir en `domain/`, ver ese README) y parsea el XML .ktr
+ya serializado para el camino inverso (`/api/ai/lineage-from-ktr`).
+
+Split O2-c: `build_lineage`/`stitch_lineage_many`/`stitch_lineage` (grafo puro
+sobre el dict KTR) viven ahora en `app.domain.lineage`. Acá solo queda la
+conversión a `Lineage` y la lectura de XML.
 """
 from __future__ import annotations
 
 import logging
-import re
-from typing import Optional
 from xml.etree import ElementTree as ET
 
+from app.domain.lineage import LineageGraphData
+from app.domain.lineage import build_lineage as _build_lineage_graph
+from app.domain.lineage import stitch_lineage_many as _stitch_lineage_graphs_many
 from app.schemas.lineage import Lineage, LineageEdge, LineageNode
-from app.services.ktr_builder import STEP_TYPE_ALIASES
 
 logger = logging.getLogger(__name__)
 
-# Steps cuyo config tiene un campo "table" directo.
-_TABLE_FIELD_TYPES = {
-    "TableOutput",
-    "InsertUpdate",
-    "Update",
-    "Delete",
-    "DimensionLookup",
-    "CombinationLookup",
-}
 
-# Regex best-effort para extraer el nombre de tabla de un SQL SELECT.
-_FROM_RE = re.compile(
-    r"\bFROM\s+(?:\"?[\w]+\"?\.)?"  # esquema opcional
-    r"\"?([\w]+)\"?",               # nombre de tabla
-    re.IGNORECASE,
-)
-
-
-def _canonical(raw_type: str) -> str:
-    return STEP_TYPE_ALIASES.get(raw_type, raw_type)
-
-
-def _extract_table(canonical_type: str, config: dict) -> Optional[str]:
-    if canonical_type in _TABLE_FIELD_TYPES:
-        return config.get("table") or None
-    if canonical_type == "CsvInput":
-        return config.get("filename") or None
-    if canonical_type == "TableInput":
-        m = _FROM_RE.search(config.get("sql", ""))
-        return m.group(1) if m else None
-    return None
-
-
-def _classify_layer(
-    in_deg: int,
-    out_deg: int,
-    tabla: Optional[str],
-) -> str:
-    """
-    Clasifica la capa del step por posición en el DAG (autoritativa).
-    La convención de nombres refina solo en el caso de sinks (out_deg == 0)
-    donde STG_ vs DIM_/FACT_ es la única señal disponible.
-    """
-    if in_deg == 0:
-        return "origen"
-
-    if out_deg == 0:
-        if tabla:
-            upper = tabla.upper()
-            if upper.startswith(("DIM_", "FACT_")):
-                return "dwh"
-            if upper.startswith("STG_"):
-                return "staging"
-        return "dwh"
-
-    return "staging"
+def _to_schema(graph: LineageGraphData) -> Lineage:
+    return Lineage(
+        nodes=[
+            LineageNode(step_name=n.step_name, tipo_step=n.tipo_step, tabla=n.tabla, capa=n.capa)
+            for n in graph.nodes
+        ],
+        edges=[LineageEdge(from_step=e.from_step, to_step=e.to_step) for e in graph.edges],
+    )
 
 
 def build_lineage(ktr_data: dict) -> Lineage:
-    """
-    Construye el grafo de linaje a partir del dict KTR devuelto por el LLM.
-    Tolera hops rotos: los saltea con log.warning sin lanzar excepción.
-    """
-    steps = ktr_data.get("steps", [])
-    hops = ktr_data.get("hops", [])
+    """Construye el grafo de linaje a partir del dict KTR devuelto por el LLM."""
+    return _to_schema(_build_lineage_graph(ktr_data))
 
-    step_index: dict[str, dict] = {s["name"]: s for s in steps}
 
-    in_deg: dict[str, int] = {name: 0 for name in step_index}
-    out_deg: dict[str, int] = {name: 0 for name in step_index}
+def stitch_lineage_many(ktr_data_list: list[dict]) -> Lineage:
+    """Cose el linaje de M archivos KTR en un único grafo continuo. Ver
+    `app.domain.lineage.stitch_lineage_many` para el algoritmo."""
+    return _to_schema(_stitch_lineage_graphs_many(ktr_data_list))
 
-    valid_hops: list[dict] = []
-    for hop in hops:
-        frm = hop.get("from", "")
-        to = hop.get("to", "")
-        if frm not in step_index:
-            logger.warning("lineage: hop desde step desconocido '%s' — omitido", frm)
-            continue
-        if to not in step_index:
-            logger.warning("lineage: hop hacia step desconocido '%s' — omitido", to)
-            continue
-        out_deg[frm] += 1
-        in_deg[to] += 1
-        valid_hops.append(hop)
 
-    nodes: list[LineageNode] = []
-    for name, step in step_index.items():
-        raw_type = step.get("type", "Dummy")
-        c_type = _canonical(raw_type)
-        tabla = _extract_table(c_type, step.get("config", {}))
-        capa = _classify_layer(in_deg[name], out_deg[name], tabla)
-        nodes.append(LineageNode(
-            step_name=name,
-            tipo_step=c_type,
-            tabla=tabla,
-            capa=capa,
-        ))
-
-    edges: list[LineageEdge] = [
-        LineageEdge(from_step=h["from"], to_step=h["to"])
-        for h in valid_hops
-    ]
-
-    return Lineage(nodes=nodes, edges=edges)
+def stitch_lineage(ktr_data_1: dict, ktr_data_2: dict) -> Lineage:
+    """Caso M=2 de stitch_lineage_many() — origen→STG (KTR_1) y STG→DWH (KTR_2)."""
+    return stitch_lineage_many([ktr_data_1, ktr_data_2])
 
 
 def _parse_ktr_xml(ktr_xml: str) -> dict:
@@ -161,3 +87,8 @@ def _parse_ktr_xml(ktr_xml: str) -> dict:
 def build_lineage_from_xml(ktr_xml: str) -> Lineage:
     """Genera el linaje directamente desde el string XML de un .ktr ya serializado."""
     return build_lineage(_parse_ktr_xml(ktr_xml))
+
+
+def stitch_lineage_from_xml(ktr_xml_1: str, ktr_xml_2: str) -> Lineage:
+    """Igual que stitch_lineage() pero parseando ambos KTR desde su XML serializado."""
+    return stitch_lineage(_parse_ktr_xml(ktr_xml_1), _parse_ktr_xml(ktr_xml_2))

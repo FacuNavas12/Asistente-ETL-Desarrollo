@@ -17,9 +17,20 @@
 
 .home-header__left {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.home-header__logo {
+  height: 96px;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
+.app-light .home-header__logo {
+  filter: brightness(0);
 }
 
 .home-title {
@@ -55,51 +66,30 @@
   border: 1px solid var(--border);
 }
 
-/* ── Filter toggle ── */
-.home-filter {
+.home-header__right {
   display: flex;
   align-items: center;
-  gap: 4px;
-  background: var(--bg-card);
+  gap: 10px;
+}
+
+/* ── Importar button ── */
+.home-import-btn {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Outfit', sans-serif;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 3px;
-}
-
-.home-filter__btn {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 5px 14px;
-  border-radius: 7px;
-  border: none;
-  background: transparent;
+  background: none;
   color: var(--text-2);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  letter-spacing: 0.02em;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
-.home-filter__btn:hover:not(.home-filter__btn--active) {
+.home-import-btn:hover {
   background: var(--accent-bg);
+  border-color: var(--accent-border);
   color: var(--text-1);
-}
-
-.home-filter__btn--active {
-  background: var(--accent);
-  color: #fff;
-}
-
-/* ── Botón crear job (variante outlined del botón principal) ── */
-.job-create-btn {
-  background: none !important;
-  border: 1px solid var(--accent-border) !important;
-  color: var(--accent) !important;
-  box-shadow: none !important;
-}
-.job-create-btn:hover {
-  background: var(--accent-bg) !important;
-  opacity: 1;
-  box-shadow: none !important;
 }
 
 /* ── Empty state ── */
@@ -170,19 +160,10 @@
   transition: opacity 0.2s;
 }
 
-.etl-card--job::before {
-  background: linear-gradient(90deg, #6366f1, rgba(99, 102, 241, 0.2));
-}
-
 .etl-card:hover {
   border-color: var(--accent-border);
   box-shadow: 0 4px 20px var(--accent-shadow);
   transform: translateY(-2px);
-}
-
-.etl-card--job:hover {
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
 }
 
 .etl-card:hover::before {
@@ -206,11 +187,7 @@
   flex-shrink: 0;
 }
 
-.etl-card__icon--job {
-  background: rgba(99, 102, 241, 0.1);
-}
-
-/* Type tag (ETL / Job) */
+/* Type tag */
 .etl-card__type-tag {
   display: inline-flex;
   align-self: flex-start;
@@ -225,11 +202,6 @@
 .etl-card__type-tag--etl {
   background: var(--accent-bg);
   color: var(--accent);
-}
-
-.etl-card__type-tag--job {
-  background: rgba(99, 102, 241, 0.1);
-  color: #6366f1;
 }
 
 .etl-card__name {
@@ -283,6 +255,117 @@
   color: var(--accent);
 }
 
-.etl-card--job:hover .etl-card__action {
-  color: #6366f1;
+/* ── Top-right action cluster ──────────────────────────────────────────── */
+.etl-card__top-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.etl-card:hover .etl-card__top-actions {
+  opacity: 1;
+}
+
+.etl-card__delete {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.etl-card__delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+/* ── EtlCard three-dot menu ────────────────────────────────────────────── */
+.etl-card-menu {
+  position: relative;
+}
+
+.etl-card-menu__trigger {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.etl-card-menu__trigger:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.etl-card-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.etl-card-menu__item {
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Outfit', sans-serif;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  color: var(--text-1);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.etl-card-menu__item:hover:not(:disabled) {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.etl-card-menu__item:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.etl-card-menu__item--danger {
+  color: var(--error, #e55);
+}
+
+.etl-card-menu__item--danger:hover:not(:disabled) {
+  background: #ef444418;
+  color: var(--error, #e55);
 }

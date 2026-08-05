@@ -19,21 +19,28 @@ class ConnectionBase(BaseModel):
     port: int = Field(..., ge=1, le=65535)
     database: str = Field(..., min_length=1, max_length=255)
     username: str = Field(..., min_length=1, max_length=255)
-    # Variante A: owner_id se acepta en el body del create.
-    # TODO (auth): asignarlo desde la sesión autenticada; eliminar del body.
-    owner_id: Optional[uuid.UUID] = None
+    # owner_id ya NO se acepta del body — se deriva del claim "sub" del JWT
+    # autenticado (ver get_current_owner en app.core.auth), nunca del cliente.
 
 
 class PostgresConnectionCreate(ConnectionBase):
     db_type: Literal[DbType.postgresql] = DbType.postgresql
     password: str = Field(..., min_length=1)
-    ssl_mode: _SslMode = "prefer"
+    # "require" por default — "prefer" permite degradar a sin cifrar en
+    # silencio si el servidor no ofrece SSL. Sigue siendo configurable
+    # (incluye "disable") para Postgres locales de dev sin TLS, pero ya
+    # no como default silencioso.
+    ssl_mode: _SslMode = "require"
     extra_options: Optional[dict] = None
 
 
 class SqlServerConnectionCreate(ConnectionBase):
     db_type: Literal[DbType.sqlserver] = DbType.sqlserver
     password: str = Field(..., min_length=1)
+    # Antes no existía este campo — _build_url defaulteaba Encrypt=no
+    # incondicionalmente para SQL Server. Mismo criterio que Postgres:
+    # cifrado por default, configurable.
+    ssl_mode: _SslMode = "require"
     extra_options: Optional[dict] = None
 
 
@@ -46,13 +53,14 @@ class SqlServerConnectionCreate(ConnectionBase):
 
 
 class ConnectionUpdate(BaseModel):
-    """Todos los campos son opcionales; solo se actualizan los provistos."""
+    """Todos los campos son opcionales; solo se actualizan los provistos.
+    Sin password — no hay nada persistido que actualizar; se resuelve
+    fresco en cada operación que conecta de verdad (test, exploración)."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     host: Optional[str] = Field(None, min_length=1, max_length=255)
     port: Optional[int] = Field(None, ge=1, le=65535)
     database: Optional[str] = Field(None, min_length=1, max_length=255)
     username: Optional[str] = Field(None, min_length=1, max_length=255)
-    password: Optional[str] = Field(None, min_length=1)
     ssl_mode: _SslMode = None
     extra_options: Optional[dict] = None
 
@@ -69,7 +77,6 @@ class ConnectionRead(BaseModel):
     username: str
     ssl_mode: Optional[str] = None
     extra_options: Optional[dict] = None
-    owner_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
     last_tested_at: Optional[datetime] = None

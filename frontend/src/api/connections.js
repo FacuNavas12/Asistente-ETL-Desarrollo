@@ -20,6 +20,23 @@ async function parseResponse(res) {
   throw new Error(msg);
 }
 
+// El backend ya no persiste passwords de conexión — viaja por header en
+// cada request que abre una conexión real (test, exploración de esquema).
+// Nunca en query string (evita que termine en logs de acceso).
+function passwordHeader(password) {
+  return { "X-DB-Password": password };
+}
+
+// Lista las conexiones guardadas del usuario (solo metadata: host/puerto/base/
+// usuario/tipo/ssl_mode — el password nunca viaja, llega como "********").
+// Permite reusar una conexión ya creada sin re-ingresar todos los datos a mano.
+export async function listConnections() {
+  const res = await fetch(`${BASE}/api/connections`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  return parseResponse(res);
+}
+
 export async function createConnection(payload) {
   const res = await fetch(`${BASE}/api/connections`, {
     method: "POST",
@@ -31,22 +48,22 @@ export async function createConnection(payload) {
 
 // Nota: /test devuelve 200 OK incluso cuando la conexión falla.
 // Leer body.success, NO el status HTTP.
-export async function testConnection(id) {
+export async function testConnection(id, password) {
   const res = await fetch(`${BASE}/api/connections/${id}/test`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...passwordHeader(password) },
   });
   return parseResponse(res);
 }
 
-export async function listTables(id) {
+export async function listTables(id, password) {
   const res = await fetch(`${BASE}/api/connections/${id}/schema/tables`, {
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...passwordHeader(password) },
   });
   return parseResponse(res);
 }
 
-export async function getTableData(id, schema, table, page = 1, pageSize = 100, exactCount = false) {
+export async function getTableData(id, schema, table, password, page = 1, pageSize = 100, exactCount = false) {
   const params = new URLSearchParams({
     schema,
     table,
@@ -54,12 +71,16 @@ export async function getTableData(id, schema, table, page = 1, pageSize = 100, 
     page_size: pageSize,
     exact_count: exactCount,
   });
-  const res = await fetch(`${BASE}/api/connections/${id}/schema/table-data?${params}`);
+  const res = await fetch(`${BASE}/api/connections/${id}/schema/table-data?${params}`, {
+    headers: passwordHeader(password),
+  });
   return parseResponse(res);
 }
 
-export async function getColumns(id, tableName) {
-  const res = await fetch(`${BASE}/api/connections/${id}/schema/tables/${encodeURIComponent(tableName)}/columns`);
+export async function getColumns(id, tableName, password) {
+  const res = await fetch(`${BASE}/api/connections/${id}/schema/tables/${encodeURIComponent(tableName)}/columns`, {
+    headers: passwordHeader(password),
+  });
   return parseResponse(res);
 }
 
@@ -68,9 +89,10 @@ export async function getColumns(id, tableName) {
  * + statistical profile (null_pct, distinct_count, format_hint).
  * No raw row values are included in the response.
  */
-export async function getTableProfile(id, tableName) {
+export async function getTableProfile(id, tableName, password) {
   const res = await fetch(
     `${BASE}/api/connections/${id}/schema/tables/${encodeURIComponent(tableName)}/profile`,
+    { headers: passwordHeader(password) },
   );
   return parseResponse(res);
 }

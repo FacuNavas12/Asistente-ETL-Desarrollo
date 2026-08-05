@@ -23,6 +23,19 @@ __pycache__/
 *.pyc
 venv/
 .venv/
+.venv-*/
+.pytest_cache/
+backend/.pytest_cache/
+
+# SQLite (bases locales de dev — nunca commitear datos reales, incluye credenciales cifradas)
+backend/app.db
+backend/outbox.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs (locales por dev, rotan diario, no interesan al repo)
+backend/logs/
 
 # Sistemas operativos
 Thumbs.db

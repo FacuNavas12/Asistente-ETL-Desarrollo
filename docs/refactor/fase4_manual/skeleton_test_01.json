@@ -1,0 +1,69 @@
+{
+  "type": "etl_skeleton",
+  "version": "1.0",
+  "exportedAt": "2026-07-13T16:52:40.014Z",
+  "name": "01_ETL_Completo_00",
+  "formData": {
+    "etlName": "01_ETL_Completo_00",
+    "descripcionObjetivo": "Consolidar el catálogo de productos de una tienda online integrando las tablas de categorías y productos en un Data Warehouse para análisis de inventario: valor de stock por categoría, identificación de productos activos y comparación de precios unitarios.",
+    "origenTables": [
+      {
+        "tableName": "categorias",
+        "connection_id": "4c1009f2-5bdb-4ff2-8a7f-fb0a1ddf14f6",
+        "schema_name": "public",
+        "columns": [
+          {
+            "name": "cod_categoria",
+            "dataType": "int",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "nombre_categoria",
+            "dataType": "string",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          }
+        ]
+      },
+      {
+        "tableName": "productos",
+        "connection_id": "4c1009f2-5bdb-4ff2-8a7f-fb0a1ddf14f6",
+        "schema_name": "public",
+        "columns": [
+          {
+            "name": "cod_producto",
+            "dataType": "int",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "nombre_producto",
+            "dataType": "string",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "categoria",
+            "dataType": "string",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          },
+          {
+            "name": "precio_lista",
+            "dataType": "float",
+            "dataFormat": "",
+            "role": "atributo",
+            "data": []
+          }
+        ]
+      }
+    ],
+    "reglasNegocio": "1. Quitar precios negativos.\n\n2. Calcular el valor de inventario de cada producto como precio_unitario \\* stock.\n\n3. Generar una clave de negocio (BK) por producto concatenando cod_categoria y cod_producto separados por guion.\n\n4. Normalizar los nombres de columnas a snake_case, sin tildes ni espacios."
+  }
+}

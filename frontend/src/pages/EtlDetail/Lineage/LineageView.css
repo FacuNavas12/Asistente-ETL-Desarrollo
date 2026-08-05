@@ -1,13 +1,36 @@
 /* ── Wrapper ─────────────────────────────────────────────────────────────── */
+/* flex:1 en vez de height:100% — porcentaje contra un padre con altura
+   resuelta por flex es frágil (colapsa a min-height del canvas en algunos
+   casos); flex-grow es robusto en cualquier nivel de anidado. */
 .lineage-view-wrapper {
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Toolbar (reset button) ──────────────────────────────────────────────── */
 .ln-toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.ln-toolbar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Lectura en vivo del viewport (x/y/zoom) — para copiar y fijar un
+   defaultViewport puntual en <ReactFlow>. Quitar si ya no hace falta. */
+.ln-viewport-readout {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-3);
 }
 
 .ln-reset-btn {
@@ -28,9 +51,11 @@
   color: var(--accent);
 }
 
-/* ── React Flow canvas — height is set via inline style from JS ──────────── */
+/* ── React Flow canvas — llena el espacio disponible del wrapper (flex),
+   ReactFlow hace fitView/zoom en vez de estirar la página con scroll ────── */
 .lineage-view {
   width: 100%;
+  flex: 1;
   min-height: 300px;
   border-radius: 12px;
   border: 1px solid var(--border);
@@ -128,6 +153,9 @@
   flex-direction: column;
   gap: 6px;
   pointer-events: none;
+  /* +30% al aparecer (on hover del nodo) */
+  transform: scale(1.3);
+  transform-origin: top left;
 }
 
 .ln-step-panel__orden {

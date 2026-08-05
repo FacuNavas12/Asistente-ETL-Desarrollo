@@ -3,6 +3,13 @@ Schema extraction from uploaded files (CSV, Excel) using Frictionless v5.
 
 API contract:
   - infer_file_schema(path, source_name) → CanonicalSchema
+    Caller already has the file on disk (e.g. a test fixture).
+  - infer_schema_from_upload(filename, chunks) → CanonicalSchema
+    Owns the upload boundary: validates extension, spools chunks to a temp
+    file, enforces MAX_UPLOAD_BYTES, delegates to infer_file_schema(), and
+    always cleans up the temp file. This is where routers/schema.py's upload
+    handling belongs (R2, docs/arquitectura-objetivo.md) — the router only
+    translates HTTP <-> bytes and maps exceptions to status codes.
   - Raw rows NEVER leave this module; only CanonicalSchema exits.
 
 Frictionless v5 notes (verified on 5.19.0):
@@ -14,8 +21,10 @@ Frictionless v5 notes (verified on 5.19.0):
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from frictionless import Detector, Resource
 from frictionless.exception import FrictionlessException
@@ -30,6 +39,18 @@ logger = logging.getLogger(__name__)
 # How many rows frictionless reads for type inference and our profiling.
 # Large enough to be representative; small enough for fast uploads.
 _SAMPLE_SIZE = 1000
+
+# Upload boundary policy — enforced in infer_schema_from_upload(), not by callers.
+ALLOWED_EXTENSIONS = frozenset({".csv", ".xlsx", ".xls"})
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB hard limit
+
+
+class UnsupportedFileType(ValueError):
+    """Raised when the upload's extension is not in ALLOWED_EXTENSIONS."""
+
+
+class FileTooLarge(ValueError):
+    """Raised when the upload exceeds MAX_UPLOAD_BYTES."""
 
 
 def infer_file_schema(path: str | Path, source_name: str) -> CanonicalSchema:
@@ -76,6 +97,51 @@ def infer_file_schema(path: str | Path, source_name: str) -> CanonicalSchema:
         raise ValueError(f"Error al inferir el esquema: {exc.error.message}") from exc
     finally:
         resource.close()
+
+
+async def infer_schema_from_upload(
+    filename: Optional[str],
+    chunks: AsyncIterator[bytes],
+) -> CanonicalSchema:
+    """
+    Infer schema from an in-flight upload, given as raw byte chunks.
+
+    Validates the extension against ALLOWED_EXTENSIONS before consuming a
+    single chunk. Spools the chunks to a temp file with the original suffix
+    (frictionless detects format by suffix), enforcing MAX_UPLOAD_BYTES while
+    writing. Always deletes the temp file, even if inference fails.
+
+    Raises:
+      UnsupportedFileType — extension not allowed.
+      FileTooLarge — upload exceeds MAX_UPLOAD_BYTES.
+      ValueError — propagated from infer_file_schema() (unreadable file).
+    """
+    suffix = Path(filename or "upload").suffix.lower()
+    if suffix not in ALLOWED_EXTENSIONS:
+        raise UnsupportedFileType(
+            f"Tipo de archivo no soportado: '{suffix}'. Use .csv, .xlsx o .xls."
+        )
+
+    source_name = Path(filename or "tabla").stem
+
+    tmp_path: Optional[str] = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp_path = tmp.name
+            total = 0
+            async for chunk in chunks:
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise FileTooLarge(
+                        f"Archivo demasiado grande (máximo "
+                        f"{MAX_UPLOAD_BYTES // 1_048_576} MB)."
+                    )
+                tmp.write(chunk)
+
+        return infer_file_schema(tmp_path, source_name)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

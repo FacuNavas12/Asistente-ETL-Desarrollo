@@ -45,7 +45,7 @@ python -m venv venv
 # Windows
 venv\Scripts\activate
 # Mac / Linux
-source venv/bin/activate
+source venv/bin/activate 
 
 pip install -r requirements.txt
 
@@ -281,6 +281,127 @@ El archivo `.kjb` es el formato de **Jobs** de Pentaho Spoon (PDI 9.x).
   - Camino de error hacia `Abort job` (y=400)
   - `SUCCESS` al final del camino exitoso
 - Los `.ktr` se referencian con **rutas relativas** (`./nombre.ktr`) — basta tener el `.kjb` y los `.ktr` en la misma carpeta para ejecutar sin modificaciones
+
+---
+
+## Seguridad y compliance regulatorio
+
+El sistema fue diseñado para cumplir con el **Marco AGESIC 5.0 (Decreto 66/025)** y la **Ley 18.331 de Protección de Datos Personales** de Uruguay. A continuación se describen los controles implementados en el código.
+
+### Principio de minimización de datos — Al LLM solo llega estructura
+
+> **Invariante no negociable:** el modelo de IA nunca recibe filas de datos crudos, solo la estructura (nombres de columnas, tipos, formatos, reglas). Los valores de producción nunca salen del backend.
+
+Todo origen de datos — CSV, Excel, conexión de BD, DDL pegado o formulario manual — converge en un `CanonicalSchema` y luego pasa por `format_model_context_for_prompt()` antes de enviarse al LLM. Esta función tiene una **whitelist explícita** de campos del perfil estadístico (tipos, porcentaje de nulos, cardinalidad estimada). No hay otro exit point hacia el modelo.
+
+Referencia: `backend/app/services/context_builder.py`
+
+---
+
+### Autenticación de endpoints (AGESIC 5.0 — función Proteger)
+
+Todos los endpoints de la API están protegidos por la dependencia `require_auth` de FastAPI.
+
+| Variable | Valor por defecto | Descripción |
+|---|---|---|
+| `AUTH_REQUIRED` | `false` | `false` = sin validación (desarrollo). `true` = exige Bearer JWT firmado. |
+| `AUTH_JWKS_URL` | — | Endpoint JWKS del proveedor de identidad (Auth0, Azure AD, Keycloak). |
+| `AUTH_AUDIENCE` | — | Identificador de la API (claim `aud` del JWT). |
+| `AUTH_ISSUER` | — | Issuer del token (claim `iss`). |
+
+En producción se requiere `AUTH_REQUIRED=true` con las tres variables configuradas. El módulo valida firma RS256, expiración, audiencia e issuer en cada request.
+
+Referencia: `backend/app/core/auth.py`
+
+---
+
+### Residencia geográfica de inferencia (Ley 18.331 / AGESIC 5.0)
+
+El sistema soporta dos proveedores LLM, ambos con control de región configurable. Canadá tiene reconocimiento de adecuación GDPR equivalente a Uruguay (PIPEDA).
+
+**Google Gemini — Vertex AI (recomendado para producción)**
+
+```env
+GEMINI_PROVIDER=vertex-ai
+GCP_PROJECT_ID=mi-proyecto-gcp
+GCP_LOCATION=northamerica-northeast1   # Montréal — adecuación GDPR equivalente UY
+```
+
+Con `GEMINI_PROVIDER=google-ai-studio` (default de desarrollo), las inferencias se procesan en EE.UU. sin control de región. Para entornos con restricciones de soberanía de datos, usar `vertex-ai`.
+
+**Anthropic Claude**
+
+```env
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_INFERENCE_REGION=ca          # Canadá — adecuación GDPR equivalente UY
+```
+
+El header `anthropic-geography: ca` se envía en cada request para routing geográfico. La garantía de residencia de datos requiere DPA firmado con Anthropic (gestión contractual, independiente del código).
+
+La región efectiva de cada generación queda registrada en el campo `region_inferencia` de la respuesta de la API y en los logs del servidor.
+
+Referencia: `backend/app/models/gemini_llm.py`, `backend/app/models/anthropic_llm.py`
+
+---
+
+### Cifrado de credenciales de conexión (AGESIC 5.0 — función Proteger)
+
+Los passwords de conexiones a bases de datos se cifran con **Fernet (AES-128-CBC + HMAC-SHA256)** antes de persistirse. La clave activa es la primera de la lista; las siguientes solo descifran (rotación sin downtime).
+
+```env
+CREDENTIALS_ENCRYPTION_KEYS=CLAVE_ACTIVA,CLAVE_ANTERIOR_SI_HAY_ROTACION
+```
+
+Generar una clave nueva:
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Sin `CREDENTIALS_ENCRYPTION_KEYS` configurado el módulo de conexiones rechaza cualquier operación de escritura en runtime. **Nunca commitear este valor.**
+
+Referencia: `backend/app/core/crypto.py`
+
+---
+
+### Logs de generaciones (Ley 18.331 — Limitación de conservación)
+
+Cada llamada al LLM genera una entrada de log que incluye modelo usado, región de inferencia, tokens de entrada/salida y latencia. Los logs **nunca incluyen el contenido de los prompts** ni datos del usuario.
+
+- Rotación diaria a medianoche UTC
+- Retención: **90 días** (`backupCount=90`)
+- Filtro activo que redacta passwords si aparecieran en cualquier mensaje de log
+
+```
+backend/logs/generaciones.log
+backend/logs/generaciones.log.YYYY-MM-DD   ← archivos rotados
+```
+
+Referencia: `backend/app/main.py`, `backend/app/core/log_filters.py`
+
+---
+
+### Retención de datos en el cliente (Ley 18.331 — Limitación de conservación)
+
+Los metadatos de esquema almacenados en `localStorage` (nombres de tablas, columnas, tipos) se tratan como datos personales indirectos bajo la definición amplia de la ley.
+
+| Almacenamiento | TTL | Descripción |
+|---|---|---|
+| `sessionStorage` | 2 horas | Borrador activo del formulario ETL |
+| `localStorage` | 30 días | Lista de ETLs y Jobs guardados |
+
+Al expirar el TTL los datos se eliminan automáticamente en la próxima carga. El logout llama a `clearAllStoredData()` que limpia ambos almacenes.
+
+Referencia: `frontend/src/context/EtlContext.jsx`
+
+---
+
+### Gestión de secretos
+
+- `backend/.env` está excluido del repositorio vía `.gitignore`. **Nunca se commitea.**
+- `backend/.env.example` sirve de plantilla documentada para onboarding. No contiene valores reales.
+- El backend falla en arranque si `GOOGLE_API_KEY` no está configurado (Gemini) o `ANTHROPIC_API_KEY` (Anthropic).
 
 ---
 

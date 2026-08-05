@@ -1,0 +1,452 @@
+"""Fuente única de verdad por tipo de step: alias de claves de config y
+semántica de flujo de campos (produce/consume/narrows). Un mismo defecto
+apareció tres veces con distinta cara (tipo no registrado degradado a Dummy,
+semántica de campo no modelada en el validador, validador leyendo una clave
+que el config no trae por drift camelCase/snake_case) porque cada capa
+(emisor XML, validador de grafo) reimplementaba por su cuenta qué claves leer
+y qué campos produce/consume cada step. Este módulo centraliza eso:
+
+  normalize_config()  — traduce alias de clave -> canónica (top-level y
+                         anidada) UNA sola vez, antes de emitir y validar.
+                         Los emisores en steps/*.py NO cambian: reciben el
+                         config ya normalizado.
+  STEP_CONTRACTS       — produces/consumes/required_keys por tipo, usado por
+                         fields_validate.py en vez de tener su propia tabla
+                         de semántica por tipo.
+"""
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass, field
+from typing import Callable
+
+from app.services.ktr_builder.common import _yn
+
+ProducerFn = Callable[[dict, "set[str] | None"], "set[str] | None"]
+ConsumerFn = Callable[[dict], "set[str]"]
+
+
+class ConfigParseError(ValueError):
+    """`config` llegó como string y no es JSON válido. H6/D5: un parseo roto
+    no se degrada a `{}` en silencio — se distingue de `Exception` genérica
+    para que cada call-site pueda capturarla quirúrgicamente (D15: marcar solo
+    ese step como no-verificable, sin abortar el resto del job) en vez de
+    dejar que un `except Exception` de otro nivel se la trague por error."""
+
+
+def parse_cfg(raw) -> dict:
+    """Config puede llegar como dict (schema object) o string JSON (schema
+    string) — normaliza siempre a dict. Usada por build.py y fields_validate.py
+    para no reimplementar el mismo try/except JSON en cada módulo.
+
+    Fail-fast (D5/H6): un string no-JSON o JSON inválido lanza ConfigParseError
+    en vez de degradar a `{}` — un `{}` en silencio hace que el step se vuelva
+    invisible para la matriz R/W, la política de dimensiones y los
+    validadores, exactamente el fallo silencioso que D5 prohíbe."""
+    if isinstance(raw, str):
+        if not raw.strip():
+            return {}
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise ConfigParseError(f"config no es JSON válido: {e}") from e
+    return raw or {}
+
+
+def _names(items, *keys: str) -> set[str]:
+    """Extrae un set de nombres de una lista de items string|dict, probando
+    `keys` en orden de preferencia por item dict."""
+    out: set[str] = set()
+    for it in items or []:
+        if isinstance(it, str):
+            out.add(it)
+            continue
+        if not isinstance(it, dict):
+            continue
+        for k in keys:
+            v = it.get(k)
+            if v:
+                out.add(v)
+                break
+    return out - {"", None}
+
+
+def _select_columns(sql: str) -> set[str] | None:
+    """Extrae nombres de columna de un SELECT simple (sin subqueries). None si
+    no se puede resolver con certeza (SELECT *, expresión no reconocida) —
+    en ese caso el step se trata como fuente desconocida."""
+    if not sql or not sql.strip():
+        return None
+    m = re.search(r"select\s+(.*?)\s+from\s", sql, re.IGNORECASE | re.DOTALL)
+    if not m:
+        return None
+    cols_str = m.group(1)
+    if "*" in cols_str:
+        return None
+
+    parts, current, depth = [], "", 0
+    for ch in cols_str:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append(current)
+            current = ""
+        else:
+            current += ch
+    parts.append(current)
+
+    cols: set[str] = set()
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        alias_match = re.search(r"\bas\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", p, re.IGNORECASE)
+        if alias_match:
+            cols.add(alias_match.group(1))
+            continue
+        token = p.split()[-1] if " " in p else p
+        token = token.split(".")[-1].strip('`"[]')
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", token):
+            cols.add(token)
+        else:
+            return None  # expresión no resoluble -> se pierde certeza para todo el SELECT
+    return cols
+
+
+# Steps que PDI ejecuta sin necesitar ninguna fila de entrada — generan sus
+# propias filas (lectura de BD/archivo, o filas sintéticas). Cualquier otro
+# tipo de step, si no tiene predecesores en el grafo de hops, nunca corre (o
+# corre y no produce nada): esa es exactamente la falla de "Constant/Add
+# constants alimentado por un WriteToLog sin entrada" — WriteToLog no está
+# acá porque solo loggea/pasa filas que ya recibió, no las genera. Usado por
+# fields_validate.validate_row_sources() para detectar en build-time ramas
+# que van a producir 0 filas de forma determinística.
+ROW_GENERATOR_TYPES = frozenset({
+    "TableInput", "CsvInput", "ExcelInput", "JsonInput", "TextFileInput",
+    "RowGenerator", "DataGrid", "GetSystemInfo",
+})
+
+
+@dataclass(frozen=True)
+class StepContract:
+    key_aliases: dict[str, str] = field(default_factory=dict)
+    # (required_key, razón legible si falta) — evaluado sobre el config YA
+    # normalizado (alias resueltos), así "returns" cuenta como "return_fields".
+    required_keys: tuple[tuple[str, str], ...] = ()
+    produces: ProducerFn | None = None
+    consumes: ConsumerFn | None = None
+
+
+# ─── produces: (cfg, upstream) -> set[str] | None ──────────────────────────
+# None = desconocido, no validar consumidores aguas abajo de este punto.
+
+def _produces_table_input(cfg, upstream):
+    return _select_columns(cfg.get("sql", ""))
+
+
+def _produces_file_input(cfg, upstream):
+    names = {f.get("name") for f in cfg.get("fields", []) if isinstance(f, dict) and f.get("name")}
+    return names or None
+
+
+def _produces_added_fields(cfg, upstream):
+    if upstream is None:
+        return None
+    added = {f.get("name") for f in cfg.get("fields", []) if isinstance(f, dict) and f.get("name")}
+    return upstream | added
+
+
+def _produces_calculator(cfg, upstream):
+    if upstream is None:
+        return None
+    added = {
+        c.get("field_name") for c in cfg.get("calculations", [])
+        if c.get("field_name") and _yn(c.get("removed_from_result", c.get("remove"))) != "Y"
+    }
+    return upstream | added
+
+
+def _produces_number_range(cfg, upstream):
+    if upstream is None:
+        return None
+    return upstream | {cfg.get("output_field", "range")}
+
+
+def _produces_group_by(cfg, upstream):
+    if upstream is None:
+        return None
+    # GroupBy descarta el resto del stream: solo sobreviven los campos de
+    # agrupación y los resultados de agregación (mismo comportamiento que
+    # GroupByMeta/MemoryGroupByMeta en Kettle).
+    group = _names(cfg.get("group_fields", []), "name")
+    aggregates = {
+        agg.get("name") or agg.get("result_field") or agg.get("aggregate") or agg.get("output_field")
+        for agg in cfg.get("aggregates", [])
+    }
+    return (group | aggregates) - {None, ""}
+
+
+def _produces_formula(cfg, upstream):
+    if upstream is None:
+        return None
+    added = _names(cfg.get("formulas", cfg.get("fields", [])), "field_name", "name")
+    return upstream | added
+
+
+def _produces_select_values(cfg, upstream):
+    select_fields = cfg.get("select") or cfg.get("fields") or cfg.get("columns") or []
+    remove_fields = _names(cfg.get("remove", []), "name")
+    if select_fields:
+        out = set()
+        for f in select_fields:
+            if isinstance(f, str):
+                out.add(f)
+            else:
+                out.add(f.get("rename") or f.get("name", ""))
+        return out - {""}
+    if upstream is None:
+        return None
+    return upstream - remove_fields
+
+
+def _produces_dimension_lookup(cfg, upstream):
+    if upstream is None:
+        return None
+    return_field = (cfg.get("return_field") or cfg.get("returnfield") or
+                    cfg.get("sk_field") or cfg.get("surrogate_key") or "id_sk")
+    return upstream | {return_field}
+
+
+def _produces_db_lookup(cfg, upstream):
+    if upstream is None:
+        return None
+    added = _names(cfg.get("return_fields", cfg.get("returns", [])), "rename", "name")
+    return upstream | added
+
+
+def _produces_stream_lookup(cfg, upstream):
+    if upstream is None:
+        return None
+    added = _names(cfg.get("values", cfg.get("fields", [])), "rename", "name")
+    return upstream | added
+
+
+def _produces_get_variable(cfg, upstream):
+    # Get Variables NO genera filas por sí solo (a diferencia de RowGenerator/
+    # TableInput/GetSystemInfo) — necesita una fila de entrada a la que
+    # agregarle los campos de variable. Ver ROW_GENERATOR_TYPES.
+    if upstream is None:
+        return None
+    added = _names(cfg.get("variables", cfg.get("fields", [])), "name")
+    return upstream | added
+
+
+# ─── consumes: cfg -> set[str] ──────────────────────────────────────────────
+
+def _consumes_table_output(cfg):
+    return _names(cfg.get("fields", []), "stream_name", "source")
+
+
+def _consumes_keys_and_fields(cfg):
+    return (_names(cfg.get("keys", []), "stream_field", "name") |
+            _names(cfg.get("fields", []), "stream_field", "name"))
+
+
+def _consumes_delete(cfg):
+    return _names(cfg.get("keys", []), "stream_field", "name")
+
+
+def _consumes_dimension_lookup(cfg):
+    req = _names(cfg.get("keys", []), "stream", "stream_field", "name")
+    # Hallazgo (01-hallazgos.md): antes de esto, 'fields' (los atributos
+    # scd1/scd2 a insertar/actualizar) no formaba parte de lo consumido —
+    # el grafo de campos (fields_validate.py, corre en build.py:214) era
+    # ciego a un stream_field inventado/inexistente ahí. Misma prioridad de
+    # clave que el emisor real (lookups.py: f.get("stream") or
+    # f.get("stream_field") or f.get("name", "")).
+    req |= _names(cfg.get("fields", []), "stream", "stream_field", "name")
+    if cfg.get("date_field"):
+        req.add(cfg["date_field"])
+    return req
+
+
+def _consumes_combination_lookup(cfg):
+    return _names(cfg.get("keys", []), "stream", "name")
+
+
+def _consumes_db_lookup(cfg):
+    return _names(cfg.get("keys", []), "stream_field", "name")
+
+
+def _consumes_stream_lookup(cfg):
+    return _names(cfg.get("keys", []), "stream", "name")
+
+
+def _consumes_sort_rows(cfg):
+    return _names(cfg.get("fields", cfg.get("sort_fields", [])), "name", "field", "column")
+
+
+def _consumes_unique(cfg):
+    return _names(cfg.get("fields", []), "name")
+
+
+# ─── Registry ────────────────────────────────────────────────────────────────
+
+# Tipos cuyo config referencia una tabla física (lectura o escritura). Fuente
+# de verdad para validators/table_key_recovery.py (H29) — deliberadamente
+# explícito en vez de derivado por introspección de key_aliases, para que un
+# test de coherencia (test_pdi_step_coherence.py) pueda comparar los dos y
+# detectar drift si alguien agrega un step con tabla y se olvida acá.
+TABLE_BEARING_STEPS = frozenset({
+    "TableOutput", "InsertUpdate", "Update", "Delete",
+    "DimensionLookup", "CombinationLookup", "DBLookup",
+})
+
+STEP_CONTRACTS: dict[str, StepContract] = {
+    "TableInput": StepContract(produces=_produces_table_input),
+    "CsvInput": StepContract(produces=_produces_file_input),
+    "ExcelInput": StepContract(produces=_produces_file_input),
+    "JsonInput": StepContract(produces=_produces_file_input),
+    "TextFileInput": StepContract(produces=_produces_file_input),
+    "RowGenerator": StepContract(
+        required_keys=(("fields", "no declara fields (campos a generar) en su config"),),
+        produces=_produces_file_input,
+    ),
+
+    "Constant": StepContract(
+        required_keys=(("fields", "no declara fields (campos de auditoría/derivados) en su config"),),
+        produces=_produces_added_fields,
+    ),
+    "GetSystemInfo": StepContract(produces=_produces_added_fields),
+    "GetVariable": StepContract(produces=_produces_get_variable),
+
+    "Calculator": StepContract(
+        required_keys=(("calculations", "no declara calculations en su config"),),
+        produces=_produces_calculator,
+    ),
+    "NumberRange": StepContract(
+        key_aliases={"inputField": "input_field", "outputField": "output_field", "fallBackValue": "fallback"},
+        required_keys=(("input_field", "no declara input_field en su config"),),
+        produces=_produces_number_range,
+    ),
+    "GroupBy": StepContract(
+        required_keys=(("aggregates", "no declara aggregates en su config"),),
+        produces=_produces_group_by,
+    ),
+    "MemoryGroupBy": StepContract(
+        required_keys=(("aggregates", "no declara aggregates en su config"),),
+        produces=_produces_group_by,
+    ),
+    "Formula": StepContract(
+        key_aliases={"fieldName": "field_name"},
+        required_keys=(("formulas", "no declara formulas en su config"),),
+        produces=_produces_formula,
+    ),
+    "SelectValues": StepContract(produces=_produces_select_values),
+
+    "DimensionLookup": StepContract(
+        key_aliases={
+            "target_table": "table", "table_name": "table",
+            "returnfield": "return_field", "sk_field": "return_field", "surrogate_key": "return_field",
+        },
+        required_keys=(("keys", "no declara keys de búsqueda en su config"),),
+        produces=_produces_dimension_lookup,
+        consumes=_consumes_dimension_lookup,
+    ),
+    "CombinationLookup": StepContract(
+        key_aliases={"target_table": "table", "table_name": "table"},
+        required_keys=(("keys", "no declara keys de búsqueda en su config"),),
+        produces=_produces_dimension_lookup,
+        consumes=_consumes_combination_lookup,
+    ),
+    "DBLookup": StepContract(
+        key_aliases={"target_table": "table", "table_name": "table", "returns": "return_fields"},
+        required_keys=(("return_fields", "no declara campos de retorno (return_fields) en su config"),),
+        produces=_produces_db_lookup,
+        consumes=_consumes_db_lookup,
+    ),
+    "StreamLookup": StepContract(
+        required_keys=(("values", "no declara values a traer del stream de lookup en su config"),),
+        produces=_produces_stream_lookup,
+        consumes=_consumes_stream_lookup,
+    ),
+
+    "TableOutput": StepContract(
+        key_aliases={"target_table": "table", "table_name": "table"},
+        consumes=_consumes_table_output,
+    ),
+    "InsertUpdate": StepContract(
+        key_aliases={"target_table": "table", "table_name": "table"},
+        consumes=_consumes_keys_and_fields,
+    ),
+    "Update": StepContract(
+        key_aliases={"target_table": "table", "table_name": "table"},
+        consumes=_consumes_keys_and_fields,
+    ),
+    "Delete": StepContract(
+        key_aliases={"target_table": "table", "table_name": "table"},
+        consumes=_consumes_delete,
+    ),
+    "SortRows": StepContract(consumes=_consumes_sort_rows),
+    "Unique": StepContract(consumes=_consumes_unique),
+}
+
+
+def _apply_aliases(node, aliases: dict[str, str]):
+    if isinstance(node, dict):
+        return {aliases.get(k, k): _apply_aliases(v, aliases) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_apply_aliases(item, aliases) for item in node]
+    return node
+
+
+def normalize_config(canonical_type: str, cfg: dict) -> dict:
+    """Traduce alias de clave -> canónica en `cfg`, a cualquier profundidad,
+    según el contrato de `canonical_type`. Idempotente. cfg sin contrato o
+    contrato sin key_aliases -> se devuelve tal cual (passthrough)."""
+    contract = STEP_CONTRACTS.get(canonical_type)
+    if contract is None or not contract.key_aliases or not isinstance(cfg, dict):
+        return cfg
+    return _apply_aliases(cfg, contract.key_aliases)
+
+
+def normalize_step_configs(ktr_data: dict) -> tuple[dict, list[str]]:
+    """Corre UNA vez, en el punto más temprano del pipeline (antes de
+    repair_ktr_steps) — parsea el `config` (string JSON) de cada step a dict,
+    in-place. Después de esto, todo consumidor downstream (fields_validate,
+    validate.py, ktr_default_validator, lineage_builder, dimension_step_policy,
+    build.py) recibe siempre un dict ya resuelto: sus propias llamadas a
+    parse_cfg/normalize_config nunca vuelven a lanzar ConfigParseError para el
+    mismo step, porque ya no reciben un string.
+
+    D15 (mejor esfuerzo, notifica sin bloquear): un config roto no aborta la
+    generación. D5/H6 (nunca en silencio): se reemplaza por `{}` (mismo efecto
+    que tenía el bug original para el resto del pipeline) pero acá, una sola
+    vez, se emite un warning accionable por step — no en cada uno de los ~20
+    call-sites que leen `config` aguas abajo."""
+    warnings: list[str] = []
+    for step in ktr_data.get("steps", []):
+        raw = step.get("config", {})
+        if not isinstance(raw, str):
+            continue
+        try:
+            step["config"] = parse_cfg(raw)
+        except ConfigParseError as e:
+            step["config"] = {}
+            warnings.append(
+                f"Step '{step.get('name')}' ({step.get('type')}): config no es JSON válido, "
+                f"tratado como vacío — {e}. Revisar este step antes de ejecutar en Spoon."
+            )
+    return ktr_data, warnings
+
+
+def missing_required_keys(canonical_type: str, cfg: dict) -> list[tuple[str, str]]:
+    """[(key, razón)] para required_keys del contrato ausentes/vacíos en
+    `cfg` (ya normalizado). [] si el tipo no tiene contrato o no le falta nada."""
+    contract = STEP_CONTRACTS.get(canonical_type)
+    if contract is None or not isinstance(cfg, dict):
+        return []
+    return [(key, reason) for key, reason in contract.required_keys if not cfg.get(key)]

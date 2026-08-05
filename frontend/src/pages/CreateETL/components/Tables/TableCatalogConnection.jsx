@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { getTableData, getTableProfile } from "@/api/connections";
 import TableConfirmPanel from "./TableConfirmPanel";
+import { tableKey } from "./tableUtils";
 import "../../css/shared.css";
 import "../../css/inputConnection.css";
 
@@ -23,7 +24,7 @@ function mapCanonicalType(canonicalType) {
   }
 }
 
-export default function TableCatalogConnection({ tables, connId, value, onChange }) {
+export default function TableCatalogConnection({ tables, connId, password, value, onChange }) {
   const [open, setOpen]                       = useState(false);
   const [tableStructure, setTableStructure]   = useState({});
   const [selectedTable, setSelectedTable]     = useState(null);
@@ -43,7 +44,7 @@ export default function TableCatalogConnection({ tables, connId, value, onChange
     setDataError("");
     setTableData(null);
     try {
-      const data = await getTableData(connId, schema, table, page);
+      const data = await getTableData(connId, schema, table, password, page);
       setTableData(data);
     } catch (err) {
       setDataError(err.message);
@@ -62,7 +63,7 @@ export default function TableCatalogConnection({ tables, connId, value, onChange
     setConfirmingTable(qualified);
     setConfirmError("");
     try {
-      const canonicalSchema = await getTableProfile(connId, qualified);
+      const canonicalSchema = await getTableProfile(connId, qualified, password);
       const pkSet = new Set(canonicalSchema.primary_key ?? []);
       const fkSet = new Set(
         (canonicalSchema.foreign_keys ?? []).flatMap(fk => fk.fields)
@@ -83,9 +84,10 @@ export default function TableCatalogConnection({ tables, connId, value, onChange
         data:       [],
       }));
 
-      const { schema } = splitTable(qualified);
-      const newTable = { tableName: qualified, connection_id: connId, schema_name: schema, columns };
-      onChange([...(Array.isArray(value) ? value : []), newTable]);
+      const { schema, table } = splitTable(qualified);
+      const newTable = { tableName: table, connection_id: connId, schema_name: schema, columns };
+      const rest = (Array.isArray(value) ? value : []).filter(t => tableKey(t) !== tableKey(newTable));
+      onChange([...rest, newTable]);
     } catch (err) {
       setConfirmError(`No se pudo confirmar "${qualified}": ${err.message}`);
     } finally {
@@ -218,16 +220,16 @@ export default function TableCatalogConnection({ tables, connId, value, onChange
         </TableConfirmPanel>
       )}
 
-      {(value || []).some(t => tableStructure[t.tableName]) && (
+      {(value || []).some(t => tableStructure[tableKey(t)]) && (
         <div className="conn-schema-summary">
           <p className="conn-catalog-header" style={{ marginTop: "1rem" }}>
             Esquema de tablas confirmadas
           </p>
           {(value || []).map(t => {
-            const struct = tableStructure[t.tableName];
+            const struct = tableStructure[tableKey(t)];
             if (!struct) return null;
             return (
-              <div key={t.tableName} className="conn-schema-table">
+              <div key={tableKey(t)} className="conn-schema-table">
                 <p className="conn-schema-table-name">{t.tableName}</p>
                 <div className="conn-schema-cols">
                   {(t.columns || []).map(col => (

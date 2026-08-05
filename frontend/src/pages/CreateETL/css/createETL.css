@@ -23,6 +23,86 @@
   letter-spacing: -0.5px;
 }
 
+.etl-title--editable {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.etl-title-edit-hint {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-primary, #6366f1);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  letter-spacing: 0;
+}
+
+.etl-title--editable:hover .etl-title-edit-hint {
+  opacity: 1;
+}
+
+.etl-title-input {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-h);
+  letter-spacing: -0.5px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--color-primary, #6366f1);
+  outline: none;
+  padding: 0 4px 2px;
+  flex: 1;
+  margin-right: 16px;
+  min-width: 0;
+}
+
+.etl-header__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.etl-header__logo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.etl-header__logo {
+  height: 96px;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
+.app-light .etl-header__logo {
+  filter: brightness(0);
+}
+
+.etl-name-input {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  outline: none;
+  width: 340px;
+  max-width: 100%;
+  transition: border-color 0.15s;
+}
+
+.etl-name-input:focus {
+  border-color: var(--accent, #e8501a);
+}
+
+.etl-name-input::placeholder {
+  color: var(--text-3);
+}
+
 /* Limpiar button inside the form header */
 .etl-page__header .etl-clear-btn {
   width: auto;
@@ -80,6 +160,26 @@
   min-height: 300px;
 }
 
+/* Variante con formulario de conexiones destino: izquierda 4/5 (conexiones,
+   se van completando), derecha 1/5 (EtlChecks, progreso del modelo). */
+.etl-processing--split {
+  justify-content: stretch;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.etl-processing__connections {
+  flex: 4 1 0;
+  min-width: 0;
+}
+
+.etl-processing__checks {
+  flex: 1 1 0;
+  min-width: 220px;
+  position: sticky;
+  top: 24px;
+}
+
 /* ── Limpiar button (shared) ── */
 .etl-clear-btn {
   padding: 10px 14px;
@@ -120,14 +220,66 @@
   transition: opacity 0.2s, transform 0.15s;
 }
 
-.etl-infer-header-btn:hover {
+.etl-infer-header-btn:hover:not(:disabled) {
   opacity: 0.9;
   transform: translateY(-1px);
 }
 
-.etl-infer-header-btn:active {
+.etl-infer-header-btn:active:not(:disabled) {
   transform: scale(0.97);
 }
+
+.etl-infer-header-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Wrapper que mantiene accesible el tooltip (title) aun con el botón disabled. */
+.etl-infer-btn-wrap {
+  display: inline-flex;
+}
+
+.etl-infer-header-btn--next {
+  background: var(--bg);
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+  box-shadow: none;
+}
+
+.etl-infer-header-btn--next:hover {
+  background: var(--accent-bg);
+}
+
+/* ── Guardar button in the header row ── */
+.etl-save-btn {
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Outfit', sans-serif;
+  border: none;
+  border-radius: 10px;
+  background: #3b82f6;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.etl-save-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.etl-save-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.etl-save-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
 /* ── CreateETL — header actions ───────────────────────────────────────────── */
 
 .etl-header-actions {
@@ -152,4 +304,90 @@
   border-color: var(--accent);
   background: var(--accent-bg);
   color: var(--text-h);
+}
+
+/* ── Sync status badge ─────────────────────────────────────────────────── */
+.etl-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Outfit', sans-serif;
+  padding: 4px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.etl-sync-badge--pending {
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.etl-sync-badge--synced {
+  color: #065f46;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.etl-sync-badge--failed {
+  color: #991b1b;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.etl-sync-retry {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.etl-sync-retry:hover {
+  opacity: 0.75;
+}
+
+/* ── CreateETLOptions dropdown ─────────────────────────────────────────── */
+.etl-options {
+  position: relative;
+}
+
+.etl-options__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 150px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.etl-options__item {
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Outfit', sans-serif;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  color: var(--text-1);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.etl-options__item:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
 }

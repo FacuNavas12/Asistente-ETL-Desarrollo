@@ -1,0 +1,50 @@
+.dest-connections {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.dest-connections__section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.dest-connections__section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 12px;
+}
+
+.dest-connections__done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #38b000;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.dest-connections__same {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.dest-connections__readonly {
+  font-size: 13px;
+  color: var(--text-muted, var(--text));
+  margin: 0;
+}
+
+.dest-connections__warning {
+  font-size: 13px;
+  color: #b45309;
+  margin: 0 0 10px;
+}

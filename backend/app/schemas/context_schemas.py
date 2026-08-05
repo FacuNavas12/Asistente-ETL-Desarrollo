@@ -27,12 +27,27 @@ class ColumnProfile(BaseModel):
     casing_distribution: dict[str, float]
     min_length: Optional[int] = None
     max_length: Optional[int] = None
+    # Rango numérico estructural (CHECK col >= lit / col <= lit / BETWEEN del
+    # DDL) — no son datos de fila, son el contrato declarado por el schema,
+    # mismo criterio que required/default_kind.
+    minimum: Optional[str] = None
+    maximum: Optional[str] = None
+    # Valores válidos estructurales (CHECK col IN (...) del DDL) — igual que
+    # minimum/maximum, viene del contrato, no de una muestra de datos reales.
+    enum: Optional[list[str]] = None
     # Descriptor only: "YYYY-MM-DD", regex pattern, "enum-like (N distinct values)".
     # NEVER the actual category list or real sample values.
     format_hint: Optional[str] = None
     # Only when format is ambiguous AND cardinality is high enough to avoid
     # revealing the value set. Values are masked (e.g. j***@***.com).
     masked_examples: Optional[list[str]] = None
+    # Estructura de la columna (NOT NULL / PK) — nunca dato. required=True sin
+    # default_kind indica que el ETL debe proveer el valor obligatoriamente.
+    required: bool = False
+    # "literal" (emitible como constante) o "function" (NOW(), nextval(...):
+    # la debe aplicar la BD destino, el ETL nunca la emite como valor). None
+    # cuando la columna no declara DEFAULT.
+    default_kind: Optional[Literal["literal", "function"]] = None
 
 
 class InternalTableRef(BaseModel):

@@ -11,11 +11,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.core.config import settings
 from app.core.database import Base
 import app.models.connection  # noqa: F401  — registra Connection en Base.metadata
+import app.models.etl  # noqa: F401  — registra Etl en Base.metadata
+import app.models.job  # noqa: F401  — registra Job en Base.metadata
+import app.models.ktr_build_job  # noqa: F401  — registra KtrBuildJob en Base.metadata
 
 config = context.config
 
 # Sobreescribe la URL del ini con el valor de settings para no hardcodear credenciales.
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# "%" escapado a "%%": ConfigParser usa "%" como caracter de interpolacion,
+# y la URL puede traer secuencias percent-encoded (ej. "%23" en el password).
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

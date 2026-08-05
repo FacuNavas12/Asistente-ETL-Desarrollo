@@ -81,4 +81,9 @@ def _field_to_minimal_profile(field: CanonicalField) -> ColumnProfile:
         leading_trailing_spaces_pct=0.0,
         casing_distribution={},
         format_hint=fmt_hint,
+        required=field.constraints.required,
+        default_kind=field.default_kind,
+        minimum=field.constraints.minimum,
+        maximum=field.constraints.maximum,
+        enum=field.constraints.enum,
     )

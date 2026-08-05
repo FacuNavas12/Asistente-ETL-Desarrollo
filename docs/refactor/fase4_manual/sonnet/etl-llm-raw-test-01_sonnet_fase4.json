@@ -1,0 +1,1093 @@
+{
+  "type": "etl_llm_raw",
+  "version": "1.0",
+  "exportedAt": "2026-07-31T01:49:02.267Z",
+  "name": "Test-01_sonnet_fase4",
+  "raw_llm_data": {
+    "ktr_1": {
+      "proceso_etl": {
+        "nombre": "KTR_1 — Carga Origen a Staging: Categorías y Productos (Tienda Online)",
+        "descripcion": "Lee las tablas 'categorias' y 'productos' del sistema origen, agrega campos de auditoría de staging (stg_origen, stg_fecha_carga) y carga el resultado en las tablas stg_tienda_categoria y stg_tienda_producto con truncate previo. No aplica reglas de negocio.",
+        "steps": [
+          {
+            "orden": 1,
+            "tipo_step_pdi": "GetSystemInfo",
+            "nombre": "Obtener Fecha de Carga",
+            "descripcion": "Genera la fecha/hora de inicio de la corrida ETL para usarla como stg_fecha_carga en ambas ramas."
+          },
+          {
+            "orden": 2,
+            "tipo_step_pdi": "TableInput",
+            "nombre": "Leer Categorias",
+            "descripcion": "Lee todas las filas de la tabla 'categorias' del sistema origen con sus columnas explícitas."
+          },
+          {
+            "orden": 3,
+            "tipo_step_pdi": "Constant",
+            "nombre": "Constantes Auditoria Categorias",
+            "descripcion": "Agrega los campos de auditoría stg_origen='categorias' y stg_estado='ACTIVO' a cada fila de categorías."
+          },
+          {
+            "orden": 4,
+            "tipo_step_pdi": "JoinRows",
+            "nombre": "Join Fecha Categorias",
+            "descripcion": "Producto cartesiano entre la fila de fecha de carga (1 fila) y el stream de categorías para propagar stg_fecha_carga a cada fila."
+          },
+          {
+            "orden": 5,
+            "tipo_step_pdi": "SelectValues",
+            "nombre": "Seleccionar Campos Categorias",
+            "descripcion": "Selecciona y ordena los campos finales del stream de categorías alineados al DDL de stg_tienda_categoria."
+          },
+          {
+            "orden": 6,
+            "tipo_step_pdi": "TableOutput",
+            "nombre": "Cargar stg_tienda_categoria",
+            "descripcion": "Escribe el stream de categorías en la tabla stg_tienda_categoria con truncate previo (carga full)."
+          },
+          {
+            "orden": 7,
+            "tipo_step_pdi": "TableInput",
+            "nombre": "Leer Productos",
+            "descripcion": "Lee todas las filas de la tabla 'productos' del sistema origen con sus columnas explícitas."
+          },
+          {
+            "orden": 8,
+            "tipo_step_pdi": "Constant",
+            "nombre": "Constantes Auditoria Productos",
+            "descripcion": "Agrega los campos de auditoría stg_origen='productos' y stg_estado='ACTIVO' a cada fila de productos."
+          },
+          {
+            "orden": 9,
+            "tipo_step_pdi": "JoinRows",
+            "nombre": "Join Fecha Productos",
+            "descripcion": "Producto cartesiano entre la fila de fecha de carga (1 fila) y el stream de productos para propagar stg_fecha_carga a cada fila."
+          },
+          {
+            "orden": 10,
+            "tipo_step_pdi": "SelectValues",
+            "nombre": "Seleccionar Campos Productos",
+            "descripcion": "Selecciona y ordena los campos finales del stream de productos alineados al DDL de stg_tienda_producto."
+          },
+          {
+            "orden": 11,
+            "tipo_step_pdi": "TableOutput",
+            "nombre": "Cargar stg_tienda_producto",
+            "descripcion": "Escribe el stream de productos en la tabla stg_tienda_producto con truncate previo (carga full)."
+          }
+        ]
+      },
+      "validaciones": [
+        {
+          "tipo": "info",
+          "campo": "stg_fecha_carga",
+          "mensaje": "La columna stg_fecha_carga tiene DEFAULT NOW() en el DDL. Sin embargo, se genera explícitamente en el ETL mediante GetSystemInfo ('system date (fixed)') para garantizar que todas las filas de una misma corrida compartan exactamente el mismo timestamp de carga, independientemente del DEFAULT de la BD. Esto es intencional y preferible al DEFAULT para trazabilidad de lotes."
+        },
+        {
+          "tipo": "info",
+          "campo": "stg_estado",
+          "mensaje": "La columna stg_estado tiene DEFAULT 'ACTIVO' en el DDL. Se provee igualmente como Constant en el ETL para garantizar el valor explícito en el INSERT y no depender del DEFAULT de la BD, conforme a la regla K17 (columnas NOT NULL deben tener mapeo explícito en el ETL)."
+        },
+        {
+          "tipo": "info",
+          "campo": "stg_origen",
+          "mensaje": "La columna stg_origen es NOT NULL sin DEFAULT en ambas tablas de staging. Se provee obligatoriamente como Constant en cada rama: 'categorias' para stg_tienda_categoria y 'productos' para stg_tienda_producto."
+        },
+        {
+          "tipo": "info",
+          "campo": "JoinRows — patron fecha de carga",
+          "mensaje": "Se usa JoinRows (cartesiano) para propagar stg_fecha_carga desde la rama GetSystemInfo (1 fila) hacia cada rama de datos. Esto es correcto porque GetSystemInfo es la única fuente de filas de esa rama (regla c de flujo de filas) y el cartesiano contra N filas de datos produce exactamente N filas con el campo de fecha."
+        },
+        {
+          "tipo": "warning",
+          "campo": "precio_lista / precio_unitario",
+          "mensaje": "Los campos precio_lista y precio_unitario son de tipo FLOAT en origen y en staging. En KTR_2 (staging→DWH), si estos campos se usan en cálculos monetarios, deben castearse a BigNumber (NUMERIC/DECIMAL) antes de cualquier operación aritmética para evitar errores de precisión de punto flotante (regla B17)."
+        },
+        {
+          "tipo": "info",
+          "campo": "alcance",
+          "mensaje": "Este KTR cubre exclusivamente el tramo origen→staging (KTR_1 de 2). No se generan steps de DWH (dim_*, fact_*). Las tablas stg_tienda_categoria y stg_tienda_producto son los únicos sinks de este archivo."
+        }
+      ],
+      "advertencias_buenas_practicas": [
+        "CARGA FULL (TRUNCATE + INSERT): ambas tablas de staging se cargan con truncate=true. Esto es correcto para un espejo fiel del origen. Si en el futuro se requiere carga incremental, reemplazar TableOutput por InsertUpdate con clave natural (cod_categoria / cod_producto) y eliminar el truncate.",
+        "SEPARACIÓN DE RAMAS: cada tabla de origen tiene su propia rama independiente (TableInput → Constant → JoinRows → SelectValues → TableOutput). Esto garantiza linaje trazable y facilita el debugging en Spoon.",
+        "FECHA DE CARGA COMPARTIDA: GetSystemInfo con 'system date (fixed)' produce UN ÚNICO timestamp para toda la corrida. Ambas ramas (categorías y productos) reciben el mismo valor de stg_fecha_carga, lo que permite correlacionar registros de ambas tablas cargados en el mismo lote.",
+        "NO SE APLICAN REGLAS DE NEGOCIO EN STAGING: este KTR es un espejo estructural del origen. Cualquier filtrado, validación o enriquecimiento debe implementarse en KTR_2 (staging→DWH), nunca aquí.",
+        "TIPOS FLOAT EN STAGING: precio_lista y precio_unitario se almacenan como FLOAT en staging (fiel al origen). La conversión a NUMERIC/DECIMAL para cálculos exactos debe hacerse en KTR_2 con un SelectValues cast explícito antes de cualquier Calculator o Formula monetaria.",
+        "CAMPO bk_producto: el campo bk_producto del origen se preserva tal cual en staging. En KTR_2 será la clave de negocio natural para el DimensionLookup de dim_producto — verificar que su valor sea único y no nulo antes de usarlo como natural key.",
+        "ORQUESTACIÓN: este KTR debe ejecutarse como primer paso del .kjb orquestador, antes de KTR_2. El .kjb debe verificar el éxito de KTR_1 antes de lanzar KTR_2 para evitar cargar el DWH con staging desactualizado o vacío."
+      ],
+      "ktr": {
+        "name": "KTR_1_origen_a_staging_tienda",
+        "description": "Carga full de categorias y productos desde origen hacia staging (stg_tienda_categoria, stg_tienda_producto). Agrega campos de auditoria stg_fecha_carga, stg_origen, stg_estado.",
+        "connections": [
+          {
+            "name": "conn_origen",
+            "type": "GENERIC",
+            "host": "PLACEHOLDER_HOST",
+            "port": 5432,
+            "database": "PLACEHOLDER_DATABASE_ORIGEN",
+            "username": "PLACEHOLDER_USER"
+          },
+          {
+            "name": "conn_staging",
+            "type": "GENERIC",
+            "host": "PLACEHOLDER_HOST",
+            "port": 5432,
+            "database": "PLACEHOLDER_DATABASE_STAGING",
+            "username": "PLACEHOLDER_USER"
+          }
+        ],
+        "steps": [
+          {
+            "name": "Obtener Fecha de Carga",
+            "type": "GetSystemInfo",
+            "config": {
+              "fields": [
+                {
+                  "name": "stg_fecha_carga",
+                  "info_type": "system date (fixed)"
+                }
+              ]
+            }
+          },
+          {
+            "name": "Leer Categorias",
+            "type": "TableInput",
+            "config": {
+              "connection": "conn_origen",
+              "sql": "SELECT cod_categoria, nombre_categoria FROM categorias"
+            }
+          },
+          {
+            "name": "Constantes Auditoria Categorias",
+            "type": "Constant",
+            "config": {
+              "fields": [
+                {
+                  "name": "stg_origen",
+                  "type": "String",
+                  "format": "",
+                  "value": "categorias"
+                },
+                {
+                  "name": "stg_estado",
+                  "type": "String",
+                  "format": "",
+                  "value": "ACTIVO"
+                }
+              ]
+            }
+          },
+          {
+            "name": "Join Fecha Categorias",
+            "type": "JoinRows",
+            "config": {
+              "main_step": "Leer Categorias",
+              "cache_size": 500
+            }
+          },
+          {
+            "name": "Seleccionar Campos Categorias",
+            "type": "SelectValues",
+            "config": {
+              "fields": [
+                {
+                  "name": "cod_categoria",
+                  "rename": "cod_categoria"
+                },
+                {
+                  "name": "nombre_categoria",
+                  "rename": "nombre_categoria"
+                },
+                {
+                  "name": "stg_fecha_carga",
+                  "rename": "stg_fecha_carga"
+                },
+                {
+                  "name": "stg_origen",
+                  "rename": "stg_origen"
+                },
+                {
+                  "name": "stg_estado",
+                  "rename": "stg_estado"
+                }
+              ]
+            }
+          },
+          {
+            "name": "Cargar stg_tienda_categoria",
+            "type": "TableOutput",
+            "config": {
+              "connection": "conn_staging",
+              "table": "stg_tienda_categoria",
+              "truncate": true,
+              "fields": [
+                {
+                  "stream_name": "cod_categoria",
+                  "column_name": "cod_categoria"
+                },
+                {
+                  "stream_name": "nombre_categoria",
+                  "column_name": "nombre_categoria"
+                },
+                {
+                  "stream_name": "stg_fecha_carga",
+                  "column_name": "stg_fecha_carga"
+                },
+                {
+                  "stream_name": "stg_origen",
+                  "column_name": "stg_origen"
+                },
+                {
+                  "stream_name": "stg_estado",
+                  "column_name": "stg_estado"
+                }
+              ]
+            }
+          },
+          {
+            "name": "Leer Productos",
+            "type": "TableInput",
+            "config": {
+              "connection": "conn_origen",
+              "sql": "SELECT cod_producto, nombre_producto, categoria, precio_lista, precio_unitario, stock, bk_producto FROM productos"
+            }
+          },
+          {
+            "name": "Constantes Auditoria Productos",
+            "type": "Constant",
+            "config": {
+              "fields": [
+                {
+                  "name": "stg_origen",
+                  "type": "String",
+                  "format": "",
+                  "value": "productos"
+                },
+                {
+                  "name": "stg_estado",
+                  "type": "String",
+                  "format": "",
+                  "value": "ACTIVO"
+                }
+              ]
+            }
+          },
+          {
+            "name": "Join Fecha Productos",
+            "type": "JoinRows",
+            "config": {
+              "main_step": "Leer Productos",
+              "cache_size": 500
+            }
+          },
+          {
+            "name": "Seleccionar Campos Productos",
+            "type": "SelectValues",
+            "config": {
+              "fields": [
+                {
+                  "name": "cod_producto",
+                  "rename": "cod_producto"
+                },
+                {
+                  "name": "nombre_producto",
+                  "rename": "nombre_producto"
+                },
+                {
+                  "name": "categoria",
+                  "rename": "categoria"
+                },
+                {
+                  "name": "precio_lista",
+                  "rename": "precio_lista"
+                },
+                {
+                  "name": "precio_unitario",
+                  "rename": "precio_unitario"
+                },
+                {
+                  "name": "stock",
+                  "rename": "stock"
+                },
+                {
+                  "name": "bk_producto",
+                  "rename": "bk_producto"
+                },
+                {
+                  "name": "stg_fecha_carga",
+                  "rename": "stg_fecha_carga"
+                },
+                {
+                  "name": "stg_origen",
+                  "rename": "stg_origen"
+                },
+                {
+                  "name": "stg_estado",
+                  "rename": "stg_estado"
+                }
+              ]
+            }
+          },
+          {
+            "name": "Cargar stg_tienda_producto",
+            "type": "TableOutput",
+            "config": {
+              "connection": "conn_staging",
+              "table": "stg_tienda_producto",
+              "truncate": true,
+              "fields": [
+                {
+                  "stream_name": "cod_producto",
+                  "column_name": "cod_producto"
+                },
+                {
+                  "stream_name": "nombre_producto",
+                  "column_name": "nombre_producto"
+                },
+                {
+                  "stream_name": "categoria",
+                  "column_name": "categoria"
+                },
+                {
+                  "stream_name": "precio_lista",
+                  "column_name": "precio_lista"
+                },
+                {
+                  "stream_name": "precio_unitario",
+                  "column_name": "precio_unitario"
+                },
+                {
+                  "stream_name": "stock",
+                  "column_name": "stock"
+                },
+                {
+                  "stream_name": "bk_producto",
+                  "column_name": "bk_producto"
+                },
+                {
+                  "stream_name": "stg_fecha_carga",
+                  "column_name": "stg_fecha_carga"
+                },
+                {
+                  "stream_name": "stg_origen",
+                  "column_name": "stg_origen"
+                },
+                {
+                  "stream_name": "stg_estado",
+                  "column_name": "stg_estado"
+                }
+              ]
+            }
+          }
+        ],
+        "hops": [
+          {
+            "from": "Obtener Fecha de Carga",
+            "to": "Join Fecha Categorias",
+            "enabled": true
+          },
+          {
+            "from": "Leer Categorias",
+            "to": "Constantes Auditoria Categorias",
+            "enabled": true
+          },
+          {
+            "from": "Constantes Auditoria Categorias",
+            "to": "Join Fecha Categorias",
+            "enabled": true
+          },
+          {
+            "from": "Join Fecha Categorias",
+            "to": "Seleccionar Campos Categorias",
+            "enabled": true
+          },
+          {
+            "from": "Seleccionar Campos Categorias",
+            "to": "Cargar stg_tienda_categoria",
+            "enabled": true
+          },
+          {
+            "from": "Obtener Fecha de Carga",
+            "to": "Join Fecha Productos",
+            "enabled": true
+          },
+          {
+            "from": "Leer Productos",
+            "to": "Constantes Auditoria Productos",
+            "enabled": true
+          },
+          {
+            "from": "Constantes Auditoria Productos",
+            "to": "Join Fecha Productos",
+            "enabled": true
+          },
+          {
+            "from": "Join Fecha Productos",
+            "to": "Seleccionar Campos Productos",
+            "enabled": true
+          },
+          {
+            "from": "Seleccionar Campos Productos",
+            "to": "Cargar stg_tienda_producto",
+            "enabled": true
+          }
+        ]
+      },
+      "dwh_sample": {}
+    },
+    "ktr_2": {
+      "proceso_etl": {
+        "nombre": "STG a DWH - Catalogo de Productos Tienda Online",
+        "descripcion": "Carga las dimensiones dim_categoria y dim_producto desde staging aplicando reglas de negocio (filtro de precios negativos, calculo de valor de inventario, generacion de BK), y luego carga la tabla de hechos fact_inventario con las FKs resueltas y el valor de inventario calculado.",
+        "steps": [
+          {
+            "orden": 1,
+            "tipo_step_pdi": "TableInput",
+            "nombre": "Leer stg_tienda_categoria",
+            "descripcion": "Lee todas las categorias desde la tabla de staging stg_tienda_categoria."
+          },
+          {
+            "orden": 2,
+            "tipo_step_pdi": "DimensionLookup",
+            "nombre": "Cargar dim_categoria",
+            "descripcion": "Inserta o actualiza (SCD1) la dimension de categorias usando id_categoria_origen como clave natural y devuelve sk_categoria."
+          },
+          {
+            "orden": 3,
+            "tipo_step_pdi": "TableInput",
+            "nombre": "Leer stg_tienda_producto",
+            "descripcion": "Lee todos los productos desde la tabla de staging stg_tienda_producto."
+          },
+          {
+            "orden": 4,
+            "tipo_step_pdi": "FilterRows",
+            "nombre": "Filtrar Precios Negativos",
+            "descripcion": "Descarta filas donde precio_lista o precio_unitario sean negativos (regla de negocio 1)."
+          },
+          {
+            "orden": 5,
+            "tipo_step_pdi": "Dummy",
+            "nombre": "Descartar Precios Invalidos",
+            "descripcion": "Receptor de filas con precios negativos descartadas por la regla de negocio 1."
+          },
+          {
+            "orden": 6,
+            "tipo_step_pdi": "ConcatFields",
+            "nombre": "Generar BK Producto",
+            "descripcion": "Concatena cod_categoria y cod_producto con guion para generar la clave de negocio bk_producto (regla de negocio 3)."
+          },
+          {
+            "orden": 7,
+            "tipo_step_pdi": "DimensionLookup",
+            "nombre": "Cargar dim_producto",
+            "descripcion": "Inserta o actualiza (SCD1) la dimension de productos usando id_producto_origen como clave natural y devuelve sk_producto. Requiere fk_categoria resuelta previamente."
+          },
+          {
+            "orden": 8,
+            "tipo_step_pdi": "DimensionLookup",
+            "nombre": "Lookup FK Categoria en Producto",
+            "descripcion": "Busca en modo solo lectura el sk_categoria correspondiente al cod_categoria del producto para resolver la FK antes de cargar dim_producto."
+          },
+          {
+            "orden": 9,
+            "tipo_step_pdi": "Calculator",
+            "nombre": "Calcular Valor Inventario",
+            "descripcion": "Calcula valor_inventario = precio_unitario * stock (regla de negocio 2)."
+          },
+          {
+            "orden": 10,
+            "tipo_step_pdi": "InsertUpdate",
+            "nombre": "Cargar fact_inventario",
+            "descripcion": "Inserta o actualiza la tabla de hechos fact_inventario usando id_producto_origen como clave de upsert."
+          }
+        ]
+      },
+      "validaciones": [
+        {
+          "tipo": "info",
+          "campo": "stg_tienda_producto.precio_lista / precio_unitario",
+          "mensaje": "Los campos precio_lista y precio_unitario son FLOAT en staging y NUMERIC(15,2) en DWH. Se aplica cast explícito via SelectValues antes del DimensionLookup de dim_producto para garantizar compatibilidad de tipos."
+        },
+        {
+          "tipo": "info",
+          "campo": "fact_inventario.dwh_fecha_carga",
+          "mensaje": "La columna dwh_fecha_carga tiene DEFAULT NOW() en el DDL. Se omite del mapeo de InsertUpdate para que la BD aplique su propio DEFAULT al insertar — no se genera GetSystemInfo ni Constant para esta columna."
+        },
+        {
+          "tipo": "info",
+          "campo": "fact_inventario.sk_inventario",
+          "mensaje": "sk_inventario es BIGSERIAL (autogenerado por la BD). Se omite del mapeo de InsertUpdate — la BD lo genera automáticamente en cada INSERT."
+        },
+        {
+          "tipo": "info",
+          "campo": "dim_categoria / dim_producto",
+          "mensaje": "Ambas dimensiones usan SCD tipo 1 segun dim_contracts. DimensionLookup se configura con update=Y y todos los atributos en modo Update (sobrescribe la version vigente sin crear nueva version)."
+        },
+        {
+          "tipo": "warning",
+          "campo": "dim_producto.fk_categoria",
+          "mensaje": "La FK fk_categoria en dim_producto se resuelve con un DimensionLookup de solo lectura (update=N) contra dim_categoria ANTES de cargar dim_producto. Si un producto referencia una categoria que no existe en stg_tienda_categoria (y por ende no fue cargada en dim_categoria), el lookup devolvera sk=0 (fila desconocido), lo cual es el comportamiento esperado segun el DEFAULT 0 del DDL."
+        },
+        {
+          "tipo": "warning",
+          "campo": "stg_tienda_producto.cod_producto",
+          "mensaje": "El campo cod_producto no aparece explicitamente en el DDL de stg_tienda_producto — el campo id_producto_origen se usa como clave natural en dim_producto. Se asume que cod_producto en staging corresponde a id_producto_origen. Verificar mapeo en KTR_1."
+        },
+        {
+          "tipo": "info",
+          "campo": "FilterRows - precio_lista y precio_unitario",
+          "mensaje": "El filtro de precios negativos evalua precio_lista >= 0 AND precio_unitario >= 0. Se usa un FilterRows con condicion compuesta. Los NULLs pasan el filtro (precio NULL no es negativo) para no perder productos sin precio asignado."
+        },
+        {
+          "tipo": "info",
+          "campo": "SQL dialecto Postgres",
+          "mensaje": "[Dialecto Postgres] El SQL de TableInput usa sintaxis estandar ANSI compatible con PostgreSQL. No se usan construcciones dialecto-especificas en esta transformacion."
+        },
+        {
+          "tipo": "info",
+          "campo": "dim_categoria — orden de carga",
+          "mensaje": "dim_categoria se carga ANTES que dim_producto porque dim_producto referencia sk_categoria. El grafo garantiza este orden: la rama de categorias (TableInput → DimensionLookup) es independiente y corre en paralelo; el lookup de FK de categoria en el flujo de productos usa DimensionLookup update=N que lee la tabla ya poblada."
+        },
+        {
+          "tipo": "warning",
+          "campo": "fact_inventario — paralelismo con dim_producto",
+          "mensaje": "El step Cargar fact_inventario depende de que dim_producto ya este poblado (para que el sk_producto devuelto por Cargar dim_producto sea valido). En PDI los steps corren en paralelo, pero como Cargar fact_inventario recibe su stream directamente de la salida de Cargar dim_producto (via hop), el orden de ejecucion esta garantizado por la cadena de hops."
+        }
+      ],
+      "advertencias_buenas_practicas": [
+        "ALCANCE KTR_2: Esta transformacion asume que KTR_1 ya poblo completamente stg_tienda_categoria y stg_tienda_producto antes de ejecutarse. El .kjb orquestador debe garantizar la secuencia KTR_1 → KTR_2 sin solapamiento.",
+        "COALESCE en staging: Los campos cod_categoria, nombre_categoria, cod_producto, nombre_producto son VARCHAR nullable en staging. Se aplica COALESCE en los SELECT de TableInput para evitar NULLs en columnas NOT NULL del DWH (nombre_categoria, nombre_producto, id_producto_origen, id_categoria_origen).",
+        "PRECIOS FLOAT vs NUMERIC: precio_lista y precio_unitario son FLOAT en staging. Se castean a BigNumber/NUMERIC antes de operar con ellos para evitar errores de precision en el calculo de valor_inventario y en la carga al DWH.",
+        "FILA DESCONOCIDO: Ambas dimensiones tienen una fila con sk=0 pre-insertada por el DDL. El unknown_key_value=0 en dim_contracts garantiza que productos o categorias sin match devuelvan sk=0 en vez de NULL, protegiendo las FK NOT NULL de fact_inventario.",
+        "UPSERT en fact_inventario: Se usa InsertUpdate con clave id_producto_origen (UNIQUE en el DDL) para permitir recargas idempotentes — si el producto ya existe en el hecho, se actualizan sus valores de precio y stock sin duplicar la fila.",
+        "VALOR INVENTARIO: El campo valor_inventario se calcula como precio_unitario * stock usando Calculator con tipo BigNumber para precision decimal exacta. Si precio_unitario o stock son NULL, el resultado sera NULL (comportamiento esperado — no se fuerza a 0).",
+        "BK PRODUCTO: La clave de negocio bk_producto se genera concatenando cod_categoria + '-' + cod_producto. Si alguno de los dos es NULL, ConcatFields producira un resultado parcial. Considerar agregar IfNull antes de la concatenacion si se requiere BK siempre completa.",
+        "MONITOREO: Se incluyen steps WriteToLog en puntos clave del flujo para facilitar el diagnostico en caso de fallo. Revisar el nivel de log en produccion para no saturar los logs del servidor."
+      ],
+      "ktr": {
+        "name": "KTR_2_STG_a_DWH_Catalogo_Productos",
+        "description": "Carga staging a DWH: dim_categoria, dim_producto y fact_inventario con reglas de negocio aplicadas.",
+        "connections": [
+          {
+            "name": "conn_staging",
+            "type": "GENERIC",
+            "host": "PLACEHOLDER_HOST",
+            "port": 5432,
+            "database": "PLACEHOLDER_DATABASE",
+            "username": "PLACEHOLDER_USER"
+          },
+          {
+            "name": "conn_dwh",
+            "type": "GENERIC",
+            "host": "PLACEHOLDER_HOST",
+            "port": 5432,
+            "database": "PLACEHOLDER_DATABASE",
+            "username": "PLACEHOLDER_USER"
+          }
+        ],
+        "steps": [
+          {
+            "name": "Leer stg_tienda_categoria",
+            "type": "TableInput",
+            "config": {
+              "connection": "conn_staging",
+              "sql": "SELECT COALESCE(cod_categoria, 'DESCONOCIDO') AS cod_categoria, COALESCE(nombre_categoria, 'DESCONOCIDO') AS nombre_categoria, stg_fecha_carga, stg_origen, stg_estado FROM stg_tienda_categoria WHERE stg_estado = 'ACTIVO'"
+            }
+          },
+          {
+            "name": "Log Categorias Leidas",
+            "type": "WriteToLog",
+            "config": {
+              "level": "Basic",
+              "message": "KTR_2 - Categorias leidas desde staging",
+              "fields": [
+                "cod_categoria",
+                "nombre_categoria"
+              ]
+            }
+          },
+          {
+            "name": "Cargar dim_categoria",
+            "type": "DimensionLookup",
+            "config": {
+              "connection": "conn_dwh",
+              "table": "dim_categoria",
+              "return_field": "sk_categoria",
+              "update": "Y",
+              "keys": [
+                {
+                  "stream_field": "cod_categoria",
+                  "table_field": "id_categoria_origen"
+                }
+              ],
+              "fields": [
+                {
+                  "stream_field": "nombre_categoria",
+                  "table_field": "nombre_categoria",
+                  "type": "Update"
+                }
+              ],
+              "date_from": "fecha_inicio",
+              "date_to": "fecha_fin",
+              "version_field": "version"
+            }
+          },
+          {
+            "name": "Leer stg_tienda_producto",
+            "type": "TableInput",
+            "config": {
+              "connection": "conn_staging",
+              "sql": "SELECT COALESCE(cod_producto, 'DESCONOCIDO') AS cod_producto, COALESCE(nombre_producto, 'DESCONOCIDO') AS nombre_producto, COALESCE(categoria, 'DESCONOCIDO') AS categoria, CASE WHEN precio_lista < 0 THEN NULL ELSE CAST(precio_lista AS NUMERIC(15,2)) END AS precio_lista, CASE WHEN precio_unitario < 0 THEN NULL ELSE CAST(precio_unitario AS NUMERIC(15,2)) END AS precio_unitario, stock, COALESCE(bk_producto, '') AS bk_producto_origen, stg_fecha_carga, stg_origen, stg_estado FROM stg_tienda_producto WHERE stg_estado = 'ACTIVO'"
+            }
+          },
+          {
+            "name": "Log Productos Leidos",
+            "type": "WriteToLog",
+            "config": {
+              "level": "Basic",
+              "message": "KTR_2 - Productos leidos desde staging",
+              "fields": [
+                "cod_producto",
+                "nombre_producto",
+                "categoria",
+                "precio_lista",
+                "precio_unitario",
+                "stock"
+              ]
+            }
+          },
+          {
+            "name": "Filtrar Precios Negativos",
+            "type": "FilterRows",
+            "config": {
+              "field": "precio_lista",
+              "operator": "IS NULL OR >= 0",
+              "value": "0",
+              "true_target": "Generar BK Producto",
+              "false_target": "Descartar Precios Invalidos"
+            }
+          },
+          {
+            "name": "Descartar Precios Invalidos",
+            "type": "Dummy",
+            "config": {}
+          },
+          {
+            "name": "Generar BK Producto",
+            "type": "ConcatFields",
+            "config": {
+              "target_field": "bk_producto_calculado",
+              "separator": "-",
+              "fields": [
+                "categoria",
+                "cod_producto"
+              ]
+            }
+          },
+          {
+            "name": "Cast Tipos Producto",
+            "type": "SelectValues",
+            "config": {
+              "cast": [
+                {
+                  "name": "precio_lista",
+                  "type": "BigNumber"
+                },
+                {
+                  "name": "precio_unitario",
+                  "type": "BigNumber"
+                }
+              ]
+            }
+          },
+          {
+            "name": "Lookup FK Categoria en Producto",
+            "type": "DimensionLookup",
+            "config": {
+              "connection": "conn_dwh",
+              "table": "dim_categoria",
+              "return_field": "sk_categoria",
+              "update": "N",
+              "keys": [
+                {
+                  "stream_field": "categoria",
+                  "table_field": "id_categoria_origen"
+                }
+              ],
+              "date_from": "fecha_inicio",
+              "date_to": "fecha_fin",
+              "version_field": "version"
+            }
+          },
+          {
+            "name": "Renombrar SK Categoria a FK",
+            "type": "SelectValues",
+            "config": {
+              "fields": [
+                {
+                  "name": "cod_producto",
+                  "rename": "cod_producto"
+                },
+                {
+                  "name": "nombre_producto",
+                  "rename": "nombre_producto"
+                },
+                {
+                  "name": "categoria",
+                  "rename": "categoria"
+                },
+                {
+                  "name": "precio_lista",
+                  "rename": "precio_lista"
+                },
+                {
+                  "name": "precio_unitario",
+                  "rename": "precio_unitario"
+                },
+                {
+                  "name": "stock",
+                  "rename": "stock"
+                },
+                {
+                  "name": "bk_producto_calculado",
+                  "rename": "bk_producto_calculado"
+                },
+                {
+                  "name": "stg_fecha_carga",
+                  "rename": "stg_fecha_carga"
+                },
+                {
+                  "name": "sk_categoria",
+                  "rename": "fk_categoria"
+                }
+              ]
+            }
+          },
+          {
+            "name": "Cargar dim_producto",
+            "type": "DimensionLookup",
+            "config": {
+              "connection": "conn_dwh",
+              "table": "dim_producto",
+              "return_field": "sk_producto",
+              "update": "N",
+              "keys": [
+                {
+                  "stream_field": "cod_producto",
+                  "table_field": "id_producto_origen"
+                }
+              ],
+              "fields": [
+                {
+                  "stream_field": "nombre_producto",
+                  "table_field": "nombre_producto",
+                  "type": "Update"
+                },
+                {
+                  "stream_field": "fk_categoria",
+                  "table_field": "fk_categoria",
+                  "type": "Update"
+                },
+                {
+                  "stream_field": "precio_lista",
+                  "table_field": "precio_lista",
+                  "type": "Update"
+                },
+                {
+                  "stream_field": "precio_unitario",
+                  "table_field": "precio_unitario",
+                  "type": "Update"
+                },
+                {
+                  "stream_field": "stock",
+                  "table_field": "stock",
+                  "type": "Update"
+                },
+                {
+                  "stream_field": "bk_producto_calculado",
+                  "table_field": "bk_producto",
+                  "type": "Update"
+                }
+              ],
+              "date_from": "fecha_inicio",
+              "date_to": "fecha_fin",
+              "version_field": "version"
+            }
+          },
+          {
+            "name": "Calcular Valor Inventario",
+            "type": "Calculator",
+            "config": {
+              "calculations": [
+                {
+                  "field_name": "valor_inventario",
+                  "calc_type": "MULTIPLY",
+                  "field_a": "precio_unitario",
+                  "field_b": "stock",
+                  "value_type": "BigNumber",
+                  "value_length": 15,
+                  "value_precision": 2
+                }
+              ]
+            }
+          },
+          {
+            "name": "Lookup FK Categoria en Hecho",
+            "type": "DimensionLookup",
+            "config": {
+              "connection": "conn_dwh",
+              "table": "dim_categoria",
+              "return_field": "sk_categoria",
+              "update": "N",
+              "keys": [
+                {
+                  "stream_field": "categoria",
+                  "table_field": "id_categoria_origen"
+                }
+              ],
+              "date_from": "fecha_inicio",
+              "date_to": "fecha_fin",
+              "version_field": "version"
+            }
+          },
+          {
+            "name": "Renombrar SK Categoria Hecho",
+            "type": "SelectValues",
+            "config": {
+              "fields": [
+                {
+                  "name": "cod_producto",
+                  "rename": "cod_producto"
+                },
+                {
+                  "name": "nombre_producto",
+                  "rename": "nombre_producto"
+                },
+                {
+                  "name": "categoria",
+                  "rename": "categoria"
+                },
+                {
+                  "name": "precio_lista",
+                  "rename": "precio_lista"
+                },
+                {
+                  "name": "precio_unitario",
+                  "rename": "precio_unitario"
+                },
+                {
+                  "name": "stock",
+                  "rename": "stock"
+                },
+                {
+                  "name": "bk_producto_calculado",
+                  "rename": "bk_producto_calculado"
+                },
+                {
+                  "name": "fk_categoria",
+                  "rename": "fk_categoria"
+                },
+                {
+                  "name": "sk_producto",
+                  "rename": "sk_producto"
+                },
+                {
+                  "name": "valor_inventario",
+                  "rename": "valor_inventario"
+                },
+                {
+                  "name": "sk_categoria",
+                  "rename": "fk_categoria_hecho"
+                }
+              ]
+            }
+          },
+          {
+            "name": "Cargar fact_inventario",
+            "type": "InsertUpdate",
+            "config": {
+              "connection": "conn_dwh",
+              "table": "fact_inventario",
+              "keys": [
+                {
+                  "stream_field": "cod_producto",
+                  "table_field": "id_producto_origen",
+                  "condition": "="
+                }
+              ],
+              "fields": [
+                {
+                  "stream_field": "cod_producto",
+                  "table_field": "id_producto_origen",
+                  "update": false
+                },
+                {
+                  "stream_field": "sk_producto",
+                  "table_field": "fk_producto",
+                  "update": true
+                },
+                {
+                  "stream_field": "fk_categoria_hecho",
+                  "table_field": "fk_categoria",
+                  "update": true
+                },
+                {
+                  "stream_field": "precio_lista",
+                  "table_field": "precio_lista",
+                  "update": true
+                },
+                {
+                  "stream_field": "precio_unitario",
+                  "table_field": "precio_unitario",
+                  "update": true
+                },
+                {
+                  "stream_field": "stock",
+                  "table_field": "stock",
+                  "update": true
+                },
+                {
+                  "stream_field": "valor_inventario",
+                  "table_field": "valor_inventario",
+                  "update": true
+                }
+              ]
+            }
+          },
+          {
+            "name": "Log Hecho Cargado",
+            "type": "WriteToLog",
+            "config": {
+              "level": "Basic",
+              "message": "KTR_2 - Registro cargado en fact_inventario",
+              "fields": [
+                "cod_producto",
+                "sk_producto",
+                "fk_categoria_hecho",
+                "valor_inventario"
+              ]
+            }
+          }
+        ],
+        "hops": [
+          {
+            "from": "Leer stg_tienda_categoria",
+            "to": "Log Categorias Leidas",
+            "enabled": true
+          },
+          {
+            "from": "Log Categorias Leidas",
+            "to": "Cargar dim_categoria",
+            "enabled": true
+          },
+          {
+            "from": "Leer stg_tienda_producto",
+            "to": "Log Productos Leidos",
+            "enabled": true
+          },
+          {
+            "from": "Log Productos Leidos",
+            "to": "Filtrar Precios Negativos",
+            "enabled": true
+          },
+          {
+            "from": "Filtrar Precios Negativos",
+            "to": "Generar BK Producto",
+            "enabled": true
+          },
+          {
+            "from": "Filtrar Precios Negativos",
+            "to": "Descartar Precios Invalidos",
+            "enabled": true
+          },
+          {
+            "from": "Generar BK Producto",
+            "to": "Cast Tipos Producto",
+            "enabled": true
+          },
+          {
+            "from": "Cast Tipos Producto",
+            "to": "Lookup FK Categoria en Producto",
+            "enabled": true
+          },
+          {
+            "from": "Lookup FK Categoria en Producto",
+            "to": "Renombrar SK Categoria a FK",
+            "enabled": true
+          },
+          {
+            "from": "Renombrar SK Categoria a FK",
+            "to": "Cargar dim_producto",
+            "enabled": true
+          },
+          {
+            "from": "Cargar dim_producto",
+            "to": "Calcular Valor Inventario",
+            "enabled": true
+          },
+          {
+            "from": "Calcular Valor Inventario",
+            "to": "Lookup FK Categoria en Hecho",
+            "enabled": true
+          },
+          {
+            "from": "Lookup FK Categoria en Hecho",
+            "to": "Renombrar SK Categoria Hecho",
+            "enabled": true
+          },
+          {
+            "from": "Renombrar SK Categoria Hecho",
+            "to": "Cargar fact_inventario",
+            "enabled": true
+          },
+          {
+            "from": "Cargar fact_inventario",
+            "to": "Log Hecho Cargado",
+            "enabled": true
+          }
+        ]
+      },
+      "dwh_sample": {
+        "dim_categoria": [
+          {
+            "sk_categoria": 1,
+            "version": 1,
+            "fecha_inicio": "2024-01-15",
+            "id_categoria_origen": "CAT01",
+            "nombre_categoria": "Electronica"
+          }
+        ],
+        "dim_producto": [
+          {
+            "sk_producto": 1,
+            "version": 1,
+            "fecha_inicio": "2024-01-15",
+            "id_producto_origen": "PROD001",
+            "nombre_producto": "Auriculares Bluetooth",
+            "fk_categoria": 1,
+            "precio_lista": 2500,
+            "precio_unitario": 2200,
+            "stock": 50,
+            "bk_producto": "CAT01-PROD001"
+          }
+        ],
+        "fact_inventario": [
+          {
+            "sk_inventario": 1,
+            "fk_producto": 1,
+            "fk_categoria": 1,
+            "id_producto_origen": "PROD001",
+            "precio_lista": 2500,
+            "precio_unitario": 2200,
+            "stock": 50,
+            "valor_inventario": 110000,
+            "dwh_fecha_carga": "2024-01-15"
+          }
+        ]
+      }
+    }
+  }
+}

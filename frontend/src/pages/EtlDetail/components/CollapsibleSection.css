@@ -1,0 +1,44 @@
+.etl-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.etl-section__header .etl-section__title {
+  margin: 0;
+}
+
+.etl-section__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: opacity 0.15s;
+}
+
+.etl-section__toggle:hover {
+  opacity: 0.85;
+}
+
+/* Colapsada: conserva el mismo ancho que tenía expandida (el card completo,
+   no se achica al título) — solo se oculta el body. La flecha queda fija
+   arriba a la derecha, a la altura del título, en ambos estados. */
+.etl-section--collapsed .etl-section__header {
+  margin-bottom: 0;
+}
+
+.etl-section__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}

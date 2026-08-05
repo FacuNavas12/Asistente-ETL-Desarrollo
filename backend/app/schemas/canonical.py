@@ -1,42 +1,35 @@
 from __future__ import annotations
 
-from enum import Enum
 from typing import TYPE_CHECKING, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
+
+# Excepción nombrada a "schemas/ no importa nada del proyecto" (por símbolo,
+# no por paquete — docs/arquitectura-objetivo.md, sección "Mapa capa-objetivo"):
+# CanonicalType/FieldFormat/ColumnRole son value objects puros de stdlib
+# (Enum/Literal), vocabulario de dominio, no contrato de transporte. Viven en
+# domain/ y se reexportan acá para no romper a los consumidores existentes de
+# `from app.schemas.canonical import CanonicalType`. Cualquier ampliación de
+# esta excepción tiene que argumentar contra ese motivo (value object puro de
+# stdlib), no asumirlo por analogía.
+from app.domain.canonical_types import CanonicalType, ColumnRole, FieldFormat
+
+__all__ = [
+    "CanonicalType",
+    "ColumnRole",
+    "FieldFormat",
+    "FieldConstraints",
+    "ForeignKeyRef",
+    "ColumnSemantics",
+    "CanonicalField",
+    "DwhIntent",
+    "TableSemantics",
+    "TableProfile",
+    "CanonicalSchema",
+]
 
 if TYPE_CHECKING:
     from app.schemas.context_schemas import ColumnProfile
-
-
-# ── Tipos canónicos ───────────────────────────────────────────────────────────
-
-class CanonicalType(str, Enum):
-    STRING   = "string"
-    INTEGER  = "integer"
-    NUMBER   = "number"
-    BOOLEAN  = "boolean"
-    DATE     = "date"
-    TIME     = "time"
-    DATETIME = "datetime"
-    OBJECT   = "object"
-    ARRAY    = "array"
-    BINARY   = "binary"
-    UNKNOWN  = "unknown"
-
-
-# ── Formatos (alineados con Frictionless + extensiones propias) ───────────────
-
-FieldFormat = Literal[
-    "default",
-    # date / datetime / time
-    "YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY", "YYYY/MM/DD", "DD-MM-YYYY",
-    "YYYY-MM-DDTHH:MM:SS", "YYYY-MM-DD HH:MM:SS",
-    # string
-    "email", "uri", "phone", "uuid",
-    # number
-    "decimal-comma",
-]
 
 
 # ── Constraints estructurales ─────────────────────────────────────────────────
@@ -60,17 +53,29 @@ class ForeignKeyRef(BaseModel):
     reference_resource: str      # "schema.table"
     reference_fields: list[str]
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_llm_names(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        # fields: accept "columns"
+        if "fields" not in data and "columns" in data:
+            data["fields"] = data.pop("columns")
+        # reference_resource: accept "table"
+        if "reference_resource" not in data and "table" in data:
+            data["reference_resource"] = data.pop("table")
+        # reference_fields: accept "column" (str) or "reference_columns"
+        if "reference_fields" not in data:
+            if "reference_columns" in data:
+                data["reference_fields"] = data.pop("reference_columns")
+            elif "column" in data:
+                val = data.pop("column")
+                data["reference_fields"] = [val] if isinstance(val, str) else val
+        return data
+
 
 # ── Semántica de columna (la llena el usuario) ────────────────────────────────
-
-class ColumnRole(str, Enum):
-    MEASURE             = "measure"
-    DIMENSION_ATTRIBUTE = "dimension_attribute"
-    KEY                 = "key"
-    DATE                = "date"
-    DEGENERATE          = "degenerate"
-    DESCRIPTIVE         = "descriptive"
-
+# ColumnRole vive en domain/canonical_types.py — reexportado arriba.
 
 class ColumnSemantics(BaseModel):
     """Opcional. None por defecto. Nunca inferida por la máquina."""
@@ -94,6 +99,13 @@ class CanonicalField(BaseModel):
     is_foreign_key: bool = False
     references: Optional[ForeignKeyRef] = None
     inferred_by: Literal["database", "frictionless", "ddl", "user"] = "user"
+
+    # Default de columna — estructura, nunca dato. default_kind clasifica
+    # default_expr como "literal" (emitible como constante) o "function"
+    # (NOW(), gen_random_uuid(), nextval(...): la debe aplicar la BD, nunca
+    # el ETL). None cuando la columna no tiene DEFAULT declarado.
+    default_expr: Optional[str] = None
+    default_kind: Optional[Literal["literal", "function"]] = None
 
     # Semántica — llena el usuario
     semantics: ColumnSemantics = ColumnSemantics()

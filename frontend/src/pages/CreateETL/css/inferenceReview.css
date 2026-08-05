@@ -2,28 +2,46 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-  max-width: 900px;
-  margin: 0 auto;
+  width: 100%;
+  min-width: 0;
+  /* Ancho completo alineado al margen izquierdo del logo/acciones (como el
+     mockup), no una columna angosta centrada. */
+  margin: 0;
   padding: 0 0 40px;
 }
 
+/* Los botones (Volver / Respuestas / Guardar / Confirmar) viven ahora en el
+   header de la página (misma fila que el logo Quanam, ver CreateETL.jsx).
+   Acá queda sólo el bloque de título/subtítulo, alineado a la izquierda,
+   arriba de las cards STG/DWH. */
 .infer-review__header {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
   gap: 6px;
 }
 
 .infer-review__title {
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 31.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   color: var(--text-h);
   margin: 0;
+  line-height: 1.1;
+}
+
+.infer-review__title-name {
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62em;
+  font-weight: 700;
 }
 
 .infer-review__subtitle {
-  font-size: 14px;
-  color: var(--text);
-  margin: 0;
+  font-size: 15px;
+  color: var(--text-3);
+  margin: 2px 0 0;
 }
 
 .infer-review__iter-badge {
@@ -41,7 +59,11 @@
 /* Paneles STG + DWH */
 .infer-review__panels {
   display: grid;
-  grid-template-columns: 1fr;
+  /* Dos columnas cuando hay lugar; al achicar la pantalla cada card baja
+     debajo de la otra automáticamente (auto-fit colapsa a 1 columna cuando
+     el track de 420px ya no entra). min(100%, 420px) evita desborde en
+     viewports muy angostos. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
   gap: 16px;
 }
 
@@ -54,6 +76,42 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Sin esto, un DDL con líneas largas expande el grid item más allá del
+     viewport (grid items = min-width:auto). Con min-width:0 el panel respeta
+     el track 1fr y el scroll horizontal queda dentro del <pre>. */
+  min-width: 0;
+}
+
+.infer-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.infer-panel__heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.infer-panel__icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--accent-bg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.infer-panel__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .infer-panel__title {
@@ -63,6 +121,33 @@
   letter-spacing: 0.06em;
   color: var(--text-h);
   margin: 0;
+}
+
+.infer-panel__tables {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.infer-panel__copy-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.infer-panel__copy-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 .infer-panel__ddl {
@@ -81,21 +166,37 @@
   overflow-y: auto;
 }
 
+/* Syntax highlighting básico del DDL */
+.infer-panel__ddl .ddl-kw {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.infer-panel__ddl .ddl-type {
+  color: #5b9dd9;
+}
+
+/* Franja separada dentro del panel (sangra hasta los bordes, contrarrestando
+   el padding de 20px de .infer-panel) en vez de texto suelto en el padding. */
 .infer-panel__rationale {
   font-size: 13px;
   color: var(--text);
   line-height: 1.55;
-  margin: 0;
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: flex-start;
+  margin: 4px -20px -20px;
+  padding: 14px 20px;
+  background: rgba(232, 80, 26, 0.06);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 14px 14px;
 }
 
 .infer-panel__rationale-icon {
   flex-shrink: 0;
 }
 
-/* Corrección */
+/* Corrección — label arriba; textarea + botón en una sola fila abajo. */
 .infer-review__correction {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -108,22 +209,30 @@
 }
 
 .infer-review__correction-label {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--text-h);
 }
 
+.infer-review__correction-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
 .infer-review__correction-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
   line-height: 1.5;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   font-family: inherit;
 }
 
@@ -136,10 +245,8 @@
   opacity: 0.6;
 }
 
-.infer-review__actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+.infer-review__correction-btn {
+  flex: 0 0 auto;
 }
 
 /* Botones */
@@ -168,6 +275,22 @@
   background: var(--accent);
   color: #fff;
   border: 1.5px solid var(--accent);
+  box-shadow: 0 8px 24px -8px rgba(232, 80, 26, 0.6);
+}
+
+.infer-btn--primary:disabled {
+  box-shadow: none;
+}
+
+.infer-btn--back {
+  background: var(--bg);
+  color: var(--text);
+  border: 1.5px solid var(--border);
+}
+
+.infer-btn--back:not(:disabled):hover {
+  border-color: var(--text);
+  opacity: 0.8;
 }
 
 .infer-btn--secondary:not(:disabled):hover,

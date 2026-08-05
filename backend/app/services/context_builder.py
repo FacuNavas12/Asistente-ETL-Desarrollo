@@ -23,6 +23,7 @@ from app.schemas.context_schemas import ModelContext, ModelTableContext
 from app.services import profiler as profiler_svc
 from app.services.adapters import db_adapter
 from app.services.adapters.schema_to_context import canonical_to_model_context
+from app.services.sql_defaults import classify_default_expr
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,6 @@ logger = logging.getLogger(__name__)
 # dos bloques "if _DEBUG_CONTEXT_FILTER" dentro de la función de abajo.
 # 
 # ─────────────────────────────────────────────────────────────────────────────
-_DEBUG_CONTEXT_FILTER = True
 
 # Frontend dataType strings → CanonicalType.
 # Used in the formulario path and the DB fallback.
@@ -66,7 +66,7 @@ def _profile_from_db(table, db: Session) -> CanonicalSchema:
     Falls back to _schema_from_columnas_origen() on any connectivity or query error.
     """
     from app.models.connection import Connection
-    from app.services.db_connector import get_columns, get_foreign_keys, get_sample_rows
+    from app.services.db_connector import get_columns, get_foreign_keys, get_sample_rows, qualify
 
     try:
         conn_uuid = uuid.UUID(table.connection_id)
@@ -79,12 +79,13 @@ def _profile_from_db(table, db: Session) -> CanonicalSchema:
         logger.warning("Connection %s not found; using formulario fallback", table.connection_id)
         return _schema_from_columnas_origen(table, source_type="database")
 
-    schema = table.schema_name or ""
-    tname  = table.tableName
-    if "." in tname and not schema:
-        schema, _, tname = tname.partition(".")
-
-    qualified = f"{schema}.{tname}" if schema else tname
+    qualified = qualify(table.tableName, table.schema_name or "")
+    if "." in qualified:
+        # First dot only — the table segment may itself contain a literal dot
+        # (was quoted, e.g. "my.table"); schema never does. Mirrors get_columns().
+        schema, _, tname = qualified.partition(".")
+    else:
+        schema, tname = "", qualified
 
     try:
         col_infos = get_columns(conn, qualified)
@@ -96,6 +97,15 @@ def _profile_from_db(table, db: Session) -> CanonicalSchema:
         sample_result = get_sample_rows(conn, schema, tname, limit=20)
         logger.debug("sample bias for %s: %s", qualified, sample_result.bias)
         profiles = profiler_svc.profile_columns(col_names, stats, sample_result.rows)
+
+        # Enriquecer con estructura (NOT NULL / DEFAULT) que profile_columns no conoce
+        # — viene de information_schema.columns (get_columns), no de la muestra de filas.
+        col_info_by_name = {ci.name: ci for ci in col_infos}
+        for p in profiles:
+            ci = col_info_by_name.get(p.name)
+            if ci is not None:
+                p.required = not ci.nullable
+                p.default_kind = classify_default_expr(ci.default)
 
         return db_adapter.build(
             col_infos,
@@ -143,24 +153,37 @@ def _schema_from_columnas_origen(
 
 # ─── ModelContext builder ─────────────────────────────────────────────────────
 
-def build_model_context(tables: list, db: Optional[Session] = None) -> ModelContext:
+def resolve_canonical_schemas(tables: list, db: Optional[Session] = None) -> list[CanonicalSchema]:
     """
-    Routes each table to the appropriate CanonicalSchema builder, then converts
-    to ModelContext via canonical_to_model_context().
+    Routes each table to the appropriate CanonicalSchema builder, sin convertir
+    a ModelContext — build_model_context() usa esto y descarta lo que el
+    whitelist de prompt no necesita (primary_key, foreign_keys,
+    semantics.dwh_intent). El pre-check SCD (D37, domain/scd.py) sí necesita
+    esos campos, así que reusa esta función para no volver a perfilar contra
+    la BD (misma resolución, dos consumidores).
 
     DB path          (connection_id set)    → _profile_from_db()
     File/DDL path    (canonical_schema set) → canonical_schema used directly
     Formulario path  (neither)              → _schema_from_columnas_origen()
     """
-    model_tables: list[ModelTableContext] = []
+    schemas: list[CanonicalSchema] = []
     for table in tables:
         if getattr(table, "connection_id", None) and db is not None:
-            canonical = _profile_from_db(table, db)
+            schemas.append(_profile_from_db(table, db))
         elif getattr(table, "canonical_schema", None) is not None:
-            canonical = table.canonical_schema
+            schemas.append(table.canonical_schema)
         else:
-            canonical = _schema_from_columnas_origen(table)
+            schemas.append(_schema_from_columnas_origen(table))
+    return schemas
 
+
+def build_model_context(tables: list, db: Optional[Session] = None) -> ModelContext:
+    """
+    Routes each table to the appropriate CanonicalSchema builder, then converts
+    to ModelContext via canonical_to_model_context().
+    """
+    model_tables: list[ModelTableContext] = []
+    for canonical in resolve_canonical_schemas(tables, db):
         ctx = canonical_to_model_context([canonical])
         model_tables.extend(ctx.source_tables)
 
@@ -176,15 +199,11 @@ def format_model_context_for_prompt(ctx: ModelContext) -> str:
     WHITELIST — only these ColumnProfile fields are written:
       name, inferred_type, null_pct, distinct_count,
       leading_trailing_spaces_pct, casing_distribution,
-      min_length, max_length, format_hint, masked_examples.
+      min_length, max_length, minimum, maximum, enum,
+      format_hint, masked_examples, required, default_kind.
 
     Absent: connection_id, raw data values, InternalTableRef, InternalContext.
     """
-    # ───────────────────────────────── DEBUG: log completo vs filtrado ─────────────────────────────────
-    if _DEBUG_CONTEXT_FILTER:
-       logger.debug("[CTX FILTER] Received (ModelContext completo):\n%s", ctx.model_dump_json(indent=2))
-    # ─────────────────────────────────                                 ─────────────────────────────────
-
 
     lines: list[str] = []
     for t in ctx.source_tables:
@@ -203,17 +222,25 @@ def format_model_context_for_prompt(ctx: ModelContext) -> str:
                 parts.append(f"casing: {casing_str}")
             if col.min_length is not None and col.max_length is not None:
                 parts.append(f"largo: {col.min_length}–{col.max_length} chars")
+            if col.minimum is not None or col.maximum is not None:
+                if col.minimum is not None and col.maximum is not None:
+                    parts.append(f"rango válido (CHECK del DDL): {col.minimum}–{col.maximum}")
+                elif col.minimum is not None:
+                    parts.append(f"rango válido (CHECK del DDL): >= {col.minimum}")
+                else:
+                    parts.append(f"rango válido (CHECK del DDL): <= {col.maximum}")
+            if col.enum:
+                parts.append(f"valores válidos (CHECK del DDL): {', '.join(col.enum)}")
             if col.format_hint:
                 parts.append(f"formato: {col.format_hint}")
             if col.masked_examples:
                 parts.append(f"ejemplos: {', '.join(col.masked_examples)}")
+            if col.default_kind == "function":
+                parts.append("default: FUNCIÓN/EXPRESIÓN DE BD — NUNCA emitir su valor, omitir columna y dejar que la BD la calcule")
+            elif col.default_kind == "literal":
+                parts.append("default: literal de BD (puede omitirse o emitirse como constante)")
+            elif col.required:
+                parts.append("NOT NULL sin default — el ETL DEBE proveer este valor")
             lines.append(" | ".join(parts))
 
-    # ───────────────────────────────── DEBUG: log completo vs filtrado ─────────────────────────────────
-    if _DEBUG_CONTEXT_FILTER:
-        result = "\n".join(lines)
-        logger.debug("[CTX FILTER] Output (lo que va al prompt):\n%s", result)
-        return result
-    # ─────────────────────────────────                                 ─────────────────────────────────
-    
     return "\n".join(lines)

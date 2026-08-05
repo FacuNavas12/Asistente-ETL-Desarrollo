@@ -37,11 +37,30 @@
   margin: 0 0 28px;
 }
 
-/* ── Ícono decorativo ── */
+/* ── Ícono decorativo / Logo ── */
 .login-icon {
-  font-size: 40px;
-  color: var(--accent);
-  margin-bottom: 12px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.login-logo-wrap {
+  background: #1e293b;
+  border-radius: 14px;
+  padding: 16px 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-light .login-logo-wrap {
+  background: #334155;
+}
+
+.login-logo {
+  width: 160px;
+  max-width: 100%;
+  object-fit: contain;
 }
 
 /* ── Botón toggle tema ── */

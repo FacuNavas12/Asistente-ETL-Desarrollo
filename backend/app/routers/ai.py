@@ -1,31 +1,50 @@
+import asyncio
 import json
 import logging
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.auth import get_current_owner, require_auth
+from app.core.database import get_db, get_session_factory
 from app.core.dependencies import get_main_llm, get_secondary_llm
 from app.models.llm_base import BaseLLM
+from app.models.ktr_build_job import KtrBuildJob, ModelStatus
 from app.schemas.etl_schemas import (
+    BuildFromRawRequest,
+    ConnectionsMapRequest,
     ETLDocumentRequest,
     ETLDocumentResponse,
     ETLFromInferenceRequest,
     ETLGenerateResponse,
-    ETLRequest,
     ETLValidateRequest,
     ETLValidateResponse,
+    GenerateAsyncResponse,
     InferRequest,
     InferResponse,
+    KtrJobStatusResponse,
+    ProgressEvent,
     RefineRequest,
+    StageRawInfo,
 )
-from app.services.etl_generator import generate_etl, generate_etl_from_inference
+from app.services.etl_generator import (
+    build_etl_from_raw,
+    generate_etl_async,
+    generate_etl_from_inference,
+    KtrBuildError,
+    _try_build,
+)
+from app.services.job_progress import ProgressSink
+from app.services.ktr_builder import missing_layer_warnings, resolve_real_connections
 from app.services.validator import validate_etl
 from app.services.documenter import document_etl
 from app.services.structure_inferrer import infer_structures, refine_structures
-from app.services.lineage_builder import build_lineage_from_xml
+from app.services.lineage_builder import build_lineage_from_xml, stitch_lineage_from_xml
 from app.schemas.lineage import Lineage
 from app.schemas.job_schemas import (
     JobAnalyzeResponse,
@@ -35,13 +54,32 @@ from app.schemas.job_schemas import (
 )
 from app.services import job_analyzer
 
-router = APIRouter(tags=["ETL"])
+router = APIRouter(tags=["ETL"], dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 
+class _KtrLogHandler(logging.Handler):
+    """Forwards ktr_builder log messages into an asyncio queue for SSE streaming."""
+    def __init__(self, queue: asyncio.Queue):
+        super().__init__()
+        self.queue = queue
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.queue.put_nowait({"type": "ktr_log", "message": self.format(record)})
+        except asyncio.QueueFull:
+            pass
+
+#TODO: modelo anthropic devuelve algo que da error 502 mal manejado de nuestro lado.
 async def _handle(fn, *args):
     try:
         return await fn(*args)
+    except KtrBuildError as e:
+        logger.error("build_ktr failed: %s", str(e.original_error))
+        raise HTTPException(status_code=502, detail={
+            "message": f"El modelo respondió pero falló la construcción del .ktr: {e.original_error}",
+            "raw_llm_data": e.raw_data,
+        })
     except json.JSONDecodeError as e:
         logger.error("JSON parse error: %s", str(e))
         raise HTTPException(status_code=502, detail="El modelo devolvió una respuesta con formato inválido.")
@@ -50,38 +88,8 @@ async def _handle(fn, *args):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _validate_etl_request(req: ETLRequest):
-    if not req.origenTables:
-        raise HTTPException(status_code=422, detail="origenTables no puede estar vacío.")
-    if not req.stagingDef:
-        raise HTTPException(status_code=422, detail="stagingDef no puede estar vacío.")
-    if not req.dwhModel.tables:
-        raise HTTPException(status_code=422, detail="dwhModel.tables no puede estar vacío.")
-
 
 # ── ETL — endpoints principales ───────────────────────────────────────────────
-
-@router.post("/api/ai/etl", response_model=ETLGenerateResponse)
-async def etl_from_frontend(
-    req: ETLRequest,
-    llm: BaseLLM = Depends(get_main_llm),
-    db:  Session = Depends(get_db),
-):
-    """Recibe el payload del formulario y genera el proceso ETL completo."""
-    _validate_etl_request(req)
-    return await _handle(generate_etl, req, llm, db)
-
-
-@router.post("/api/v1/etl/generate", response_model=ETLGenerateResponse)
-async def generate(
-    req: ETLRequest,
-    llm: BaseLLM = Depends(get_main_llm),
-    db:  Session = Depends(get_db),
-):
-    """RF5, RF6, RF7, RF14 — Genera el proceso ETL completo."""
-    _validate_etl_request(req)
-    return await _handle(generate_etl, req, llm, db)
-
 
 @router.post("/api/v1/etl/validate", response_model=ETLValidateResponse)
 async def validate(
@@ -133,16 +141,353 @@ async def generate_from_inference(
     return await _handle(generate_etl_from_inference, req, llm, db)
 
 
+@router.post("/api/v1/etl/build-from-raw", response_model=ETLGenerateResponse)
+async def build_from_raw(
+    req: BuildFromRawRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
+):
+    """Reconstruye el .ktr a partir de una respuesta cruda del modelo guardada previamente
+    por el frontend (descargada tras un fallo de build_ktr, o "Reutilizar respuesta" del
+    drawer de respuestas).
+
+    Repair SÍ llama al LLM acá (decisión tomada, 2026-08-02 — antes desconectado
+    a propósito, ver git blame de esta línea): repair_ktr_steps() (config
+    incompleto, por step) corre igual que en el flujo de generación normal.
+    Llamadas acotadas a un step por vez, no una regeneración completa — el
+    punto de "reutilizar respuesta" (evitar 2 llamadas grandes al modelo) se
+    preserva; lo que se habilita son reparaciones puntuales y baratas.
+    repair_integrity_gaps() y apply_dimension_contracts() ya corrían acá sin
+    depender de esto (el primero por fallback determinístico, el segundo
+    porque nunca llama al modelo — O3, docs/refactor/30-decision-python-llm.md)
+    — ver build_etl_from_raw().
+
+    connections_map (opcional): antes este endpoint no tenía forma de recibir
+    conexiones y "Reutilizar respuesta" siempre entregaba el .ktr con
+    placeholder aunque el usuario ya las hubiera completado en el formulario
+    (docs/refactor/02-decisiones.md). Resuelto acá con el mismo par de
+    llamadas que _try_build (etl_generator.py) y POST /api/etls/{id}/connections
+    (etl.py) — no se reescribe la lógica de resolución, se reusa."""
+    real_connections: dict[str, dict] = {}
+    conn_warnings: list[str] = []
+    if req.connections_map is not None:
+        real_connections, conn_warnings = resolve_real_connections(
+            req.connections_map.model_dump(exclude_none=True), db, owner=get_current_owner(payload)
+        )
+        conn_warnings = [*conn_warnings, *missing_layer_warnings(real_connections)]
+    return await _handle(
+        build_etl_from_raw, req.raw_llm_data, llm, req.dim_contracts,
+        real_connections or None, conn_warnings or None,
+        req.stg_ddl, req.dwh_ddl,
+    )
+
+
+# ── Flujo async: modelo + conexiones destino en paralelo ─────────────────────
+# generate-async dispara el modelo en background y devuelve job_id de inmediato.
+# El cliente arranca el formulario de conexiones (staging/DWH) al mismo tiempo,
+# sin esperar al modelo. build_ktr() es una barrera: se dispara en cuanto ambos
+# lados (JSON del modelo + connections_map) están listos, sin importar el orden.
+
+_JOB_TTL_MINUTES = 30
+
+
+def _job_or_404(job_id: str, db: Session, owner: Optional[str] = None) -> KtrBuildJob:
+    """
+    owner: owner_id del caller autenticado (None en modo AUTH_REQUIRED=false,
+    salta el chequeo). Un job ajeno se trata igual que "no encontrado" — mismo
+    404 que un job_id inválido o inexistente, sin distinción — de lo contrario
+    alguien podría leer /status de un job de otro usuario (y el .ktr con
+    passwords resueltos que ese status devuelve) con solo adivinar el UUID.
+    """
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="job_id inválido.")
+
+    job = db.get(KtrBuildJob, job_uuid)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job no encontrado.")
+    if owner is not None and job.owner_id != owner:
+        raise HTTPException(status_code=404, detail="Job no encontrado.")
+
+    # SQLite no preserva tzinfo en columnas DateTime(timezone=True) — expires_at
+    # vuelve naive al leerlo. Siempre se escribe en UTC, así que asumirlo es seguro.
+    expires_at = job.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at < datetime.now(timezone.utc):
+        db.delete(job)
+        db.commit()
+        raise HTTPException(status_code=410, detail="El job expiró (30 min). Generá el ETL de nuevo.")
+
+    return job
+
+
+_STAGE_KEYS = (("origen_stg", "raw_data_1"), ("stg_dwh", "raw_data_2"))
+
+
+def _status_response(job: KtrBuildJob) -> KtrJobStatusResponse:
+    # build_status == "failed": el modelo ya respondió (job.model_json quedó
+    # poblado en generate_etl_async) pero build_ktr() falló en _try_build.
+    # Devolvemos esa respuesta cruda para que el frontend no la pierda.
+    # También se puebla en "built" (no solo "failed") — el frontend lo persiste
+    # junto con el ETL guardado (formData.rawLlmData) porque KtrBuildJob tiene
+    # TTL de _JOB_TTL_MINUTES: sin esto, una vez expirado el job no queda
+    # forma de reconstruir el .ktr con una conexión destino distinta (ver
+    # POST /api/v1/etl/{etl_id}/connections, que lee justo ese raw data).
+    #
+    # D32 (docs/refactor/02-decisiones.md): raw_llm_data NUNCA lleva una etapa
+    # en null — build_etl_from_raw() (etl_generator.py:758) discrimina el shape
+    # por presencia de clave, no de valor; un {"ktr_2": null} pasaría ese
+    # chequeo y explotaría con TypeError más abajo. La info parcial va en
+    # `stages`, campo separado.
+    mj = job.model_json or {}
+    raw_llm_data = None
+    if job.build_status.value in ("failed", "built"):
+        data_1 = mj.get("raw_data_1")
+        data_2 = mj.get("raw_data_2")
+        if data_1 is not None and data_2 is not None:
+            raw_llm_data = {"ktr_1": data_1, "ktr_2": data_2}
+
+    # D30/D32: stages siempre las 2 entradas, en orden D28. `data` solo en
+    # estado terminal del job — mandarlo en cada tick del polling activo
+    # (cada 1.2s, payloads de cientos de KB) sería del orden de 10 MB por
+    # generación.
+    terminal = job.build_status.value in ("failed", "built") or job.model_status.value == "failed"
+    stage_book = mj.get("stages") or {}
+    stages = [
+        StageRawInfo(
+            nombre=nombre,
+            status=(stage_book.get(nombre) or {}).get("status", "pending"),
+            error=(stage_book.get(nombre) or {}).get("error"),
+            data=mj.get(data_key) if terminal else None,
+        )
+        for nombre, data_key in _STAGE_KEYS
+    ]
+
+    prog_events = (job.progress_json or {}).get("events", [])
+
+    return KtrJobStatusResponse(
+        model_status=job.model_status.value,
+        build_status=job.build_status.value,
+        error=job.model_error,
+        result=ETLGenerateResponse(**job.result_json) if job.result_json else None,
+        raw_llm_data=raw_llm_data,
+        progress=[ProgressEvent(**e) for e in prog_events],
+        stages=stages,
+    )
+
+
+@router.post("/api/v1/etl/generate-async", response_model=GenerateAsyncResponse)
+async def generate_async(
+    req: ETLFromInferenceRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+    session_factory = Depends(get_session_factory),
+    payload: Optional[dict] = Depends(require_auth),
+):
+    """Crea el job y dispara la llamada al modelo en background — responde con
+    job_id sin esperar al modelo, para que el cliente arranque el formulario de
+    conexiones en paralelo."""
+    job = KtrBuildJob(
+        owner_id=get_current_owner(payload),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=_JOB_TTL_MINUTES),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    asyncio.create_task(generate_etl_async(job.id, req, llm, session_factory))
+
+    return GenerateAsyncResponse(job_id=str(job.id))
+
+
+@router.post("/api/v1/etl/{job_id}/connections", response_model=KtrJobStatusResponse)
+async def submit_job_connections(
+    job_id: str,
+    body: ConnectionsMapRequest,
+    db: Session = Depends(get_db),
+    session_factory = Depends(get_session_factory),
+    payload: Optional[dict] = Depends(require_auth),
+):
+    """Ata connection_id ya creados (vía POST /api/connections, mismo formulario
+    reusado del frontend) al job. No pide datos de conexión — eso ya ocurrió
+    en el navegador antes de esta llamada.
+
+    El frontend dispara una llamada fire-and-forget por cada conexión (origen,
+    staging, dwh) apenas queda lista, sin esperar a las anteriores — nada
+    garantiza que lleguen acá en el mismo orden en que se enviaron. Mergear
+    (en vez de reemplazar el dict entero) hace que el orden de llegada no
+    importe: una request más chica que llega tarde ya no puede pisar una
+    conexión que otra request más nueva escribió antes. Reemplazar el dict
+    entero perdía en silencio la conexión que no venía en el último payload
+    en llegar — build_ktr() terminaba con esa capa en placeholder sin que
+    nada lo señalara como error de este paso."""
+    job = _job_or_404(job_id, db, get_current_owner(payload))
+    job.connections_map = {**(job.connections_map or {}), **body.model_dump(exclude_none=True)}
+    db.commit()
+    # D29: esta request no corre dentro del ContextVar que generate_etl_async
+    # setea (es un codepath distinto, sin active_sink activo) — se arma un
+    # ProgressSink propio con el mismo session_factory que ya inyecta el
+    # router, para que _try_build() pueda seguir emitiendo build.* acá
+    # también (es, de hecho, el disparador más común del build real: el
+    # modelo suele terminar antes de que el usuario complete el formulario
+    # de conexiones).
+    _try_build(job.id, db, sink=ProgressSink(job.id, session_factory))
+    db.refresh(job)
+    return _status_response(job)
+
+
+@router.get("/api/v1/etl/{job_id}/status", response_model=KtrJobStatusResponse)
+async def get_job_status(
+    job_id: str,
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(require_auth),
+):
+    """Poleado por el cliente hasta build_status == 'built' (o 'failed')."""
+    job = _job_or_404(job_id, db, get_current_owner(payload))
+    return _status_response(job)
+
+
+@router.post("/api/v1/etl/generate-from-inference/stream")
+async def generate_from_inference_sse(
+    req: ETLFromInferenceRequest,
+    llm: BaseLLM = Depends(get_main_llm),
+    db:  Session = Depends(get_db),
+):
+    """SSE stream: emite llm_done → ktr_log* → result (o error)."""
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue(maxsize=200)
+
+        ktr_logger = logging.getLogger("app.services.ktr_builder")
+        handler = _KtrLogHandler(queue)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        handler.setLevel(logging.DEBUG)
+        ktr_logger.addHandler(handler)
+
+        result_box: list = []
+        error_box:  list = []
+
+        async def on_llm_done():
+            await queue.put({"type": "llm_done"})
+
+        async def run():
+            try:
+                result = await generate_etl_from_inference(req, llm, db, on_llm_done=on_llm_done)
+                result_box.append(result)
+            except Exception as exc:
+                error_box.append(exc)
+            finally:
+                await queue.put({"type": "done"})
+
+        task = asyncio.create_task(run())
+
+        try:
+            while True:
+                msg = await queue.get()
+                if msg["type"] == "done":
+                    if error_box:
+                        exc = error_box[0]
+                        if isinstance(exc, KtrBuildError):
+                            payload = json.dumps({
+                                "type": "error",
+                                "message": f"El modelo respondió pero falló la construcción del .ktr: {exc.original_error}",
+                                "raw_llm_data": exc.raw_data,
+                            })
+                        else:
+                            payload = json.dumps({"type": "error", "message": str(exc)})
+                    else:
+                        data = result_box[0].model_dump() if hasattr(result_box[0], "model_dump") else result_box[0].dict()
+                        payload = json.dumps({"type": "result", "data": data})
+                    yield f"data: {payload}\n\n"
+                    break
+                elif msg["type"] == "ktr_log":
+                    yield f"data: {json.dumps(msg)}\n\n"
+                    await asyncio.sleep(0.12)
+                else:
+                    yield f"data: {json.dumps(msg)}\n\n"
+        finally:
+            ktr_logger.removeHandler(handler)
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Integración Superset ─────────────────────────────────────────────────────
+# El backend ya no persiste passwords de conexión (ver decisión de diseño),
+# así que no hay forma de abrir una conexión real a conn_dwh para verificar
+# datos en vivo ni para auto-configurar la URI real en Superset — ambos
+# necesitaban decryptar un password que ya no existe. La conexión ETL_DWH en
+# Superset se configura a mano, una sola vez, en Superset → Configuración →
+# Conexiones a bases de datos (ver get_or_create_database, que ya crea la
+# entrada con una URI placeholder cuando no hay real_uri — ese fallback ya
+# existía y sigue siendo el camino permanente, no uno transitorio).
+
+@router.post("/api/v1/etl/{etl_id}/superset/export")
+async def superset_export(etl_id: str, db: Session = Depends(get_db)):
+    """Arma el ZIP de dashboard de Superset para este ETL (backend, sin upload) y lo
+    importa. Reemplaza al viejo POST /api/v1/superset/import — el frontend ya no
+    construye el ZIP, solo pide con el etl_id.
+
+    Nunca intenta resolver ni alinear la conexión real del DWH — eso se
+    configura a mano en Superset. La importación siempre usa el placeholder/
+    URI ya configurada manualmente en Superset (ver get_or_create_database)."""
+    from app.models.etl import Etl
+    from app.services.superset_client import SupersetClient, SupersetError
+    from app.services.superset_export import build as build_export_zip
+    from app.core.config import settings as _settings
+
+    etl = db.get(Etl, etl_id)
+    if etl is None:
+        raise HTTPException(status_code=404, detail="ETL no encontrado.")
+
+    try:
+        zip_bytes, dwh_sample = build_export_zip(etl)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    client = SupersetClient(
+        _settings.superset_url,
+        _settings.superset_username,
+        _settings.superset_password,
+    )
+    try:
+        url = await client.import_dashboard(zip_bytes, dwh_sample=dwh_sample)
+        return {"dashboard_url": url}
+    except SupersetError as e:
+        logger.error("Superset import error: %s", str(e))
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.error("Superset import unexpected error: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Linaje de datos ───────────────────────────────────────────────────────────
 
 class _KtrXmlBody(BaseModel):
     ktr_xml: str
+    ktr2_xml: Optional[str] = None
 
 @router.post("/api/ai/lineage-from-ktr", response_model=Lineage)
 async def lineage_from_ktr(body: _KtrXmlBody):
-    """Parsea un .ktr XML ya serializado y devuelve el grafo de linaje. Sin llamada al modelo."""
+    """Parsea 1 o 2 .ktr XML ya serializados y devuelve el grafo de linaje. Sin llamada al modelo.
+
+    ktr2_xml es opcional: si viene (flujo de 2 KTR + 1 .kjb), cose origen→STG→DWH
+    con stitch_lineage_from_xml(). El orden es fijo por convención de nuestro propio
+    flujo de generación (ktr_xml = KTR_1 origen→STG, ktr2_xml = KTR_2 STG→DWH) —
+    no depende del .kjb para deducirlo.
+    """
     if not body.ktr_xml:
         raise HTTPException(status_code=422, detail="ktr_xml no puede estar vacío.")
+    if body.ktr2_xml:
+        return stitch_lineage_from_xml(body.ktr_xml, body.ktr2_xml)
     return build_lineage_from_xml(body.ktr_xml)
 
 

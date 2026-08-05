@@ -2,24 +2,26 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
-import { useEtl } from "@/context/EtlContext";
-import { ETL_STATUS } from "@/constants/status";
-import PendingModal from "./PendingModal";
+import { useToast } from "@/components/ui/Toast";
 import "./navbar.css";
+import logo from "@/assets/Logo_blanco_esp.png";
 
-export default function Navbar() {
+function formatMsgTime(ts) {
+  return new Date(ts).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+}
+
+export default function Navbar({ guardNavigation }) {
   const { user, logout } = useAuth0();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
-  const { etls, jobs } = useEtl();
+  const { systemMessages, removeSystemMessage, clearSystemMessages } = useToast();
 
   const [avatarOpen, setAvatarOpen] = useState(false);
-  // 'etl' | 'job' | null — which pending modal is open
-  const [pendingModalType, setPendingModalType] = useState(null);
+  const [msgHover, setMsgHover] = useState(false);
+  const [msgPinned, setMsgPinned] = useState(false);
+  const msgOpen = msgHover || msgPinned;
   const avatarRef = useRef(null);
-
-  const pendingEtl = etls.find(e => e.status === ETL_STATUS.pending.key);
-  const pendingJob = jobs?.find(j => j.status === ETL_STATUS.pending.key);
+  const msgRef = useRef(null);
 
   const initials = user?.name
     ? user.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
@@ -36,23 +38,22 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handler);
   }, [avatarOpen]);
 
-  const handleNewEtl = () => {
-    if (pendingEtl) {
-      setPendingModalType("etl");
-    } else {
-      navigate("/etl-create");
-    }
-  };
+  useEffect(() => {
+    if (!msgPinned) return;
+    const handler = e => {
+      if (msgRef.current && !msgRef.current.contains(e.target)) {
+        setMsgPinned(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [msgPinned]);
 
-  const handleNewJob = () => {
-    if (pendingJob) {
-      setPendingModalType("job");
-    } else {
-      navigate("/job-create");
-    }
+  // Route all navigation through the guard when one is provided (e.g. dirty form)
+  const go = (path, opts) => {
+    const doIt = () => navigate(path, opts);
+    guardNavigation ? guardNavigation(doIt) : doIt();
   };
-
-  const closeModal = () => setPendingModalType(null);
 
   const handleLogout = () =>
     logout({ logoutParams: { returnTo: window.location.origin } });
@@ -63,10 +64,13 @@ export default function Navbar() {
         {/* Logo */}
         <button
           className="sidebar__logo"
-          onClick={() => navigate("/home")}
+          onClick={() => go("/home")}
           data-tooltip="Home"
         >
-          H
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
         </button>
 
         {/* Avatar */}
@@ -88,7 +92,7 @@ export default function Navbar() {
               <span className="sidebar__popover-email">{user?.email}</span>
               <button
                 className="sidebar__popover-link"
-                onClick={() => { navigate("/profile"); setAvatarOpen(false); }}
+                onClick={() => { setAvatarOpen(false); go("/profile"); }}
               >
                 Ver Perfil
               </button>
@@ -99,11 +103,11 @@ export default function Navbar() {
         {/* Separator */}
         <div className="sidebar__sep" />
 
-        {/* Nuevo ETL */}
+        {/* Nuevo ETL — siempre abre formulario limpio */}
         <button
           className="sidebar__btn sidebar__btn--new"
-          onClick={handleNewEtl}
-          data-tooltip="Nueva Transformación"
+          onClick={() => go("/etl-create", { state: { fresh: true } })}
+          data-tooltip="Nuevo ETL"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -111,19 +115,62 @@ export default function Navbar() {
           </svg>
         </button>
 
-        {/* Nuevo Job */}
-        <button
-          className="sidebar__btn sidebar__btn--new"
-          onClick={handleNewJob}
-          data-tooltip="Nuevo Job"
+        {/* Separator */}
+        <div className="sidebar__sep" />
+
+        {/* Mensajes */}
+        <div
+          className="sidebar__msg-wrap"
+          ref={msgRef}
+          onMouseEnter={() => setMsgHover(true)}
+          onMouseLeave={() => setMsgHover(false)}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="7" width="20" height="14" rx="2" />
-            <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-            <line x1="12" y1="12" x2="12" y2="16" />
-            <line x1="10" y1="14" x2="14" y2="14" />
-          </svg>
-        </button>
+          <button
+            className="sidebar__btn"
+            onClick={() => setMsgPinned(p => !p)}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 4h16v16H4z" />
+              <path d="M4 6l8 7 8-7" />
+            </svg>
+            {systemMessages.length > 0 && (
+              <span className="sidebar__msg-badge">{systemMessages.length}</span>
+            )}
+          </button>
+
+          {msgOpen && (
+            <div className="sidebar__msg-panel">
+              <div className="sidebar__msg-panel-header">
+                <span>Mensajes</span>
+                {systemMessages.length > 0 && (
+                  <button className="sidebar__msg-clear" onClick={clearSystemMessages}>
+                    Limpiar todo
+                  </button>
+                )}
+              </div>
+              {systemMessages.length === 0 ? (
+                <p className="sidebar__msg-empty">Sin mensajes de sistema</p>
+              ) : (
+                <ul className="sidebar__msg-list">
+                  {systemMessages.map((m) => (
+                    <li key={m.id} className="sidebar__msg-item">
+                      <span className="sidebar__msg-text">{m.text}</span>
+                      <div className="sidebar__msg-item-footer">
+                        <span className="sidebar__msg-time">{formatMsgTime(m.ts)}</span>
+                        <button
+                          className="sidebar__msg-remove"
+                          onClick={() => removeSystemMessage(m.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Spacer */}
         <div className="sidebar__spacer" />
@@ -156,7 +203,7 @@ export default function Navbar() {
         {/* Configuración */}
         <button
           className="sidebar__btn"
-          onClick={() => navigate("/settings")}
+          onClick={() => go("/settings")}
           data-tooltip="Configuración"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -179,25 +226,6 @@ export default function Navbar() {
         </button>
       </aside>
 
-      {pendingModalType === "etl" && pendingEtl && (
-        <PendingModal
-          type="etl"
-          pendingItem={pendingEtl}
-          onGoTo={() => { navigate("/home"); closeModal(); }}
-          onCreateNew={() => { navigate("/etl-create"); closeModal(); }}
-          onClose={closeModal}
-        />
-      )}
-
-      {pendingModalType === "job" && pendingJob && (
-        <PendingModal
-          type="job"
-          pendingItem={pendingJob}
-          onGoTo={() => { navigate("/home"); closeModal(); }}
-          onCreateNew={() => { navigate("/job-create"); closeModal(); }}
-          onClose={closeModal}
-        />
-      )}
     </>
   );
 }

@@ -10,6 +10,7 @@ import {
   useNodesState,
   useEdgesState,
 } from "@xyflow/react";
+
 import "@xyflow/react/dist/style.css";
 import "./LineageView.css";
 
@@ -17,6 +18,10 @@ const NODE_W  = 220;
 const NODE_H  = 94;
 const ROW_GAP = 48;
 const COL_GAP = 120;
+
+// Encuadre fijo al entrar y al centrar/restablecer — un solo lugar para
+// ajustar zoom/posición en vez de repetirlo en cada callback.
+const DEFAULT_VIEWPORT = { x: 100, y: 30, zoom: 1 };
 
 const CAPA_ORDER = ["origen", "staging", "dwh"];
 const CAPA_LABEL = { origen: "Origen", staging: "Staging", dwh: "DWH" };
@@ -95,30 +100,52 @@ export default function LineageView({ lineage, steps = [] }) {
   );
   const [hoveredStep, setHoveredStep] = useState(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
   const flowData = useMemo(() => buildFlowData(lineage, stepsMap), [lineage, stepsMap]);
   const [nodes, setNodes, onNodesChange] = useNodesState(flowData.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowData.edges);
   const rfInstance = useRef(null);
+  const canvasRef   = useRef(null);
 
   useEffect(() => {
     setNodes(flowData.nodes);
     setEdges(flowData.edges);
   }, [flowData, setNodes, setEdges]);
 
-  // Canvas height derived from node positions so the page doesn't scroll unnecessarily
-  const canvasHeight = useMemo(() => {
-    if (flowData.nodes.length === 0) return 300;
-    const maxY = Math.max(...flowData.nodes.map(n => n.position.y)) + NODE_H;
-    return Math.max(maxY + 80, 300);
-  }, [flowData.nodes]);
+  // El contenedor se dimensiona vía flex (llena el alto disponible de la
+  // página) — puede medir 0 en el instante exacto en que React Flow monta
+  // (bug de layout ya resuelto en CSS, esto queda como red defensiva). Si el
+  // canvas cambia de tamaño, reaplicamos el viewport fijo en vez de dejarlo
+  // en lo que haya quedado.
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      rfInstance.current?.setViewport(DEFAULT_VIEWPORT);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Único lugar que aplica el encuadre fijo — lo usan el botón "Centrar",
+  // el ResizeObserver de arriba y handleReset.
+  const handleCenter = () => {
+    rfInstance.current?.setViewport(DEFAULT_VIEWPORT);
+  };
 
   const handleReset = () => {
     const { nodes: freshNodes, edges: freshEdges } = buildFlowData(lineage, stepsMap);
     setNodes(freshNodes);
     setEdges(freshEdges);
-    setTimeout(() => {
-      rfInstance.current?.fitView({ padding: 0.2 });
-    }, 50);
+    handleCenter();
+  };
+
+  // Helper temporal: paneá/zoomeá a mano hasta encontrar el encuadre que
+  // quieras y quedan los valores en pantalla + consola para copiar y fijar
+  // como defaultViewport={{ x, y, zoom }} en <ReactFlow>.
+  const handleMoveEnd = (_, vp) => {
+    setViewport(vp);
+    console.log("[Lineage] viewport:", vp);
   };
 
   return (
@@ -127,24 +154,33 @@ export default function LineageView({ lineage, steps = [] }) {
       onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
     >
       <div className="ln-toolbar">
-        <button className="ln-reset-btn" onClick={handleReset}>
-          Restablecer orden
-        </button>
+        <span className="ln-viewport-readout">
+          x: {viewport.x.toFixed(1)} · y: {viewport.y.toFixed(1)} · zoom: {viewport.zoom.toFixed(2)}
+        </span>
+        <div className="ln-toolbar__actions">
+          <button className="ln-reset-btn" onClick={handleCenter}>
+            Centrar
+          </button>
+          <button className="ln-reset-btn" onClick={handleReset}>
+            Restablecer orden
+          </button>
+        </div>
       </div>
-      <div className="lineage-view" style={{ height: canvasHeight }}>
+      <div className="lineage-view" ref={canvasRef}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.18 }}
+          defaultViewport={DEFAULT_VIEWPORT}
+          fitView={false}
           proOptions={{ hideAttribution: true }}
           nodesDraggable={true}
           nodesConnectable={false}
           elementsSelectable={true}
-          onInit={(instance) => { rfInstance.current = instance; }}
+          onInit={(instance) => { rfInstance.current = instance; setViewport(instance.getViewport()); }}
+          onMoveEnd={handleMoveEnd}
           onNodeMouseEnter={(_, node) => setHoveredStep(node.data.stepInfo ?? null)}
           onNodeMouseLeave={() => setHoveredStep(null)}
         >

@@ -31,6 +31,32 @@
 
 .etl-detail__actions {
   margin-left: auto;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.superset-export-btn {
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.superset-export-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.superset-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .ktr-download-btn {
@@ -129,25 +155,36 @@
   font-style: italic;
 }
 
+/* ── Fill-viewport mode (pestaña Linaje: sin scroll de página) ───────────── */
+.etl-detail--fill {
+  /* .etl-detail (arriba) trae flex:1 → flex-basis:0%, que pisa el height de
+     acá para el cálculo de layout. .layout__content solo tiene min-height
+     (auto-sizing), así que con basis:0% este contenedor terminaba colapsando
+     a ~0 de alto — React Flow, adentro, medía 0×0 y no dibujaba los nodos.
+     flex:none desactiva grow/shrink y usa el height de forma literal. */
+  flex: none;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.etl-detail--fill .etl-detail__header,
+.etl-detail--fill .etl-page-tabs {
+  flex-shrink: 0;
+}
+
 /* ── Lineage tab body ────────────────────────────────────────────────────── */
 .etl-lineage-body {
   padding-bottom: 40px;
 }
 
-.etl-lineage-loading {
-  padding: 60px 0;
-  text-align: center;
-  color: var(--text-3);
-  font-size: 14px;
-}
-
-.etl-lineage-error {
-  padding: 24px 20px;
-  border-radius: 10px;
-  background: #ef444418;
-  border: 1px solid #ef444440;
-  color: #ef4444;
-  font-size: 14px;
+.etl-detail--fill .etl-lineage-body {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Generic section card (Result + futuras pestañas) ────────────────────── */
@@ -163,7 +200,7 @@
   font-size: 15px;
   font-weight: 700;
   color: var(--text-h);
-  margin: 0 0 16px;
+  margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -180,4 +217,28 @@
 }
 .etl-doc p:last-child {
   margin-bottom: 0;
+}
+
+/* ── Botón flotante: subir al inicio de la página ─────────────────────────── */
+.etl-scroll-top {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  z-index: 50;
+  transition: opacity 0.15s;
+}
+
+.etl-scroll-top:hover {
+  opacity: 0.85;
 }

@@ -5,13 +5,12 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
-from app.core.crypto import decrypt_password
 from app.core.sanitize import sanitize_error
 from app.models.connection import Connection, DbType
 from app.schemas.connection import ColumnInfo, ConnectionTestResult, TableDataResponse
@@ -39,6 +38,10 @@ _SYSTEM_SCHEMAS: frozenset[str] = frozenset({
     "db_owner", "db_accessadmin", "db_securityadmin", "db_ddladmin",
     "db_backupoperator", "db_datareader", "db_datawriter",
     "db_denydatareader", "db_denydatawriter",
+    # Supabase (Postgres gestionado — schemas internos de la plataforma, no de usuario)
+    "auth", "storage", "realtime", "vault", "extensions",
+    "graphql", "graphql_public", "pgbouncer", "pgsodium", "pgsodium_masks",
+    "supabase_functions", "supabase_migrations", "cron", "net",
 })
 
 
@@ -56,6 +59,78 @@ def _quote_mssql(identifier: str) -> str:
 
 def _quote_identifier(identifier: str, db_type: DbType) -> str:
     return _quote_pg(identifier) if db_type == DbType.postgresql else _quote_mssql(identifier)
+
+
+def _split_dotted(s: str) -> list[str]:
+    """Split on top-level dots, respecting double-quoted segments (dots inside
+    a quoted identifier, e.g. "my.table", are literal and not a separator)."""
+    parts: list[str] = []
+    buf: list[str] = []
+    in_quotes = False
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch == '"':
+            if in_quotes and i + 1 < len(s) and s[i + 1] == '"':
+                buf.append('"')
+                i += 2
+                continue
+            in_quotes = not in_quotes
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == "." and not in_quotes:
+            parts.append("".join(buf))
+            buf = []
+            i += 1
+            continue
+        buf.append(ch)
+        i += 1
+    parts.append("".join(buf))
+    return parts
+
+
+def _unquote_identifier(part: str) -> str:
+    if len(part) >= 2 and part[0] == '"' and part[-1] == '"':
+        return part[1:-1].replace('""', '"')
+    return part
+
+
+def qualify(tname: str, schema: str = "") -> str:
+    """
+    Builds 'schema.table' from a table name that may or may not already be
+    qualified — single source of truth so callers stop gluing schema +
+    tname themselves (that's how 'public.public.ventas' happened).
+
+    Contract: if tname already carries a schema prefix, that prefix wins —
+    schema_name is a hint, not a second source of truth. Dots inside a
+    double-quoted identifier (e.g. "my.table") are literal, not a separator.
+
+    Case note: unquoted Postgres identifiers are catalog-folded to lowercase;
+    this function does not fold — callers must pass names as they appear in
+    information_schema, or the catalog lookup simply won't match.
+    """
+    tname = tname.strip()
+    schema = (schema or "").strip()
+
+    if "." in tname:
+        parts = _split_dotted(tname)
+        if len(parts) >= 2:
+            embedded_schema = _unquote_identifier(parts[-2])
+            table = _unquote_identifier(parts[-1])
+            if schema and schema != embedded_schema:
+                logger.warning(
+                    "qualify(): tname '%s' ya trae schema embebido '%s', "
+                    "distinto de schema_name '%s'; se usa el embebido",
+                    tname, embedded_schema, schema,
+                )
+            return f"{embedded_schema}.{table}"
+        # single quoted segment with a literal dot inside, e.g. "my.table"
+        table = _unquote_identifier(parts[0])
+        return f"{schema}.{table}" if schema else table
+
+    tname = _unquote_identifier(tname)
+    return f"{schema}.{tname}" if schema else tname
 
 
 # ─── Row serialization ────────────────────────────────────────────────────────
@@ -142,13 +217,15 @@ def _connect_args(db_type: DbType, *, read_only: bool = False) -> dict[str, Any]
     return {"timeout": _TIMEOUT_SECONDS}  # pyodbc
 
 
-def _build_url(conn: Connection, *, read_only: bool = False) -> str:
-    """Construye la URL de conexión SQLAlchemy. Password se descifra aquí."""
-    password = decrypt_password(conn.encrypted_password)
+def _build_url(conn: Connection, password: str, *, read_only: bool = False) -> str:
+    """Construye la URL de conexión SQLAlchemy. password llega por parámetro
+    en cada llamada — el backend no lo persiste (ver decisión de diseño)."""
+    safe_user = quote(conn.username, safe="")
+    safe_pass = quote(password, safe="")
 
     if conn.db_type == DbType.postgresql:
         base = (
-            f"postgresql+psycopg://{conn.username}:{password}"
+            f"postgresql+psycopg://{safe_user}:{safe_pass}"
             f"@{conn.host}:{conn.port}/{conn.database}"
         )
         params: dict[str, str] = {}
@@ -166,15 +243,19 @@ def _build_url(conn: Connection, *, read_only: bool = False) -> str:
 
     else:  # sqlserver
         base = (
-            f"mssql+pyodbc://{conn.username}:{password}"
+            f"mssql+pyodbc://{safe_user}:{safe_pass}"
             f"@{conn.host}:{conn.port}/{conn.database}"
         )
         params = {"driver": settings.mssql_odbc_driver}
 
-        # ssl_mode → Encrypt
+        # ssl_mode → Encrypt. SqlServerConnectionCreate ya defaultea a "require"
+        # (antes no tenía el campo y esto quedaba siempre en "no" — ver hallazgo
+        # de seguridad C). "disable" sigue siendo una elección explícita del
+        # usuario para SQL Server local sin TLS; None (filas legacy previas a
+        # este fix) ahora también cifra por default en vez de asumir "no".
         if conn.ssl_mode == "disable":
             params["Encrypt"] = "no"
-        elif conn.ssl_mode is not None:
+        else:
             params["Encrypt"] = "yes"
 
         # extra_options: trust_server_certificate + pares string
@@ -201,13 +282,14 @@ def _build_url(conn: Connection, *, read_only: bool = False) -> str:
         return base + "?" + urlencode(params)
 
 
-def build_engine(conn: Connection, *, read_only: bool = False):
-    """Construye un SQLAlchemy Engine para la conexión dada."""
+def build_engine(conn: Connection, password: str, *, read_only: bool = False):
+    """Construye un SQLAlchemy Engine para la conexión dada. password nunca
+    viene de un campo persistido — la pasa el caller en cada request."""
     logger.debug(
         "build_engine: db_type=%s host=%s port=%s user=%s db=%s read_only=%s",
         conn.db_type, conn.host, conn.port, conn.username, conn.database, read_only,
     )
-    url = _build_url(conn, read_only=read_only)
+    url = _build_url(conn, password, read_only=read_only)
     logger.debug("SQLAlchemy URL (masked): %s", _mask_url(url))
     return create_engine(
         url,
@@ -220,10 +302,10 @@ def build_engine(conn: Connection, *, read_only: bool = False):
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
-def test_connection(conn: Connection) -> ConnectionTestResult:
+def test_connection(conn: Connection, password: str) -> ConnectionTestResult:
     """Intenta conectar y ejecuta SELECT 1. Devuelve resultado saneado."""
     try:
-        engine = build_engine(conn, read_only=True)
+        engine = build_engine(conn, password, read_only=True)
         with engine.connect() as session:
             session.execute(text("SELECT 1"))
         engine.dispose()
@@ -238,13 +320,13 @@ def test_connection(conn: Connection) -> ConnectionTestResult:
         return ConnectionTestResult(success=False, message=f"Error inesperado: {msg}")
 
 
-def list_tables(conn: Connection) -> list[str]:
+def list_tables(conn: Connection, password: str) -> list[str]:
     """
     Devuelve 'schema.tabla' para todos los schemas no-sistema.
     Usa information_schema.tables (ANSI SQL, compatible con PG y SQL Server).
     Ordenado alfabéticamente.
     """
-    engine = build_engine(conn, read_only=True)
+    engine = build_engine(conn, password, read_only=True)
     try:
         with engine.connect() as c:
             rows = c.execute(
@@ -312,7 +394,7 @@ def _format_type(r) -> str:
     return t
 
 
-def get_columns(conn: Connection, table_name: str) -> list[ColumnInfo]:
+def get_columns(conn: Connection, table_name: str, password: str) -> list[ColumnInfo]:
     """
     Columnas de 'schema.tabla' (o 'tabla', resolviendo el schema).
     Usa information_schema.columns — NO reflexión — para no tocar catálogos
@@ -323,7 +405,7 @@ def get_columns(conn: Connection, table_name: str) -> list[ColumnInfo]:
     else:
         schema, table = None, table_name
 
-    engine = build_engine(conn, read_only=True)
+    engine = build_engine(conn, password, read_only=True)
     try:
         with engine.connect() as c:
             if schema is None:
@@ -360,6 +442,7 @@ def get_columns(conn: Connection, table_name: str) -> list[ColumnInfo]:
 def get_foreign_keys(
     conn: Connection,
     tables: list[str],
+    password: str,
 ) -> dict[str, list]:
     """
     Retrieves FK relationships for the given tables.
@@ -380,7 +463,7 @@ def get_foreign_keys(
     if not tables:
         return result
 
-    engine = build_engine(conn, read_only=True)
+    engine = build_engine(conn, password, read_only=True)
     try:
         with engine.connect() as c:
             for qualified_name in tables:
@@ -450,6 +533,7 @@ def get_sample_rows(
     conn: Connection,
     schema: str,
     table: str,
+    password: str,
     limit: int = 20,
 ) -> SampleResult:
     """
@@ -462,7 +546,7 @@ def get_sample_rows(
     Raw rows are returned to the profiler only. They must not leave the backend.
     """
     dialect   = get_dialect(conn.db_type)
-    engine    = build_engine(conn, read_only=True)
+    engine    = build_engine(conn, password, read_only=True)
     qualified = f"{_quote_identifier(schema, conn.db_type)}.{_quote_identifier(table, conn.db_type)}"
 
     primary  = dialect.primary_sample(qualified, limit)
@@ -494,6 +578,7 @@ def get_table_data(
     table: str,
     page: int,
     page_size: int,
+    password: str,
     exact_count: bool = False,
 ) -> TableDataResponse:
     """
@@ -503,7 +588,7 @@ def get_table_data(
     - Conteo estimado por defecto; exacto solo si exact_count=True.
     """
     offset = (page - 1) * page_size
-    engine = build_engine(conn, read_only=True)
+    engine = build_engine(conn, password, read_only=True)
     try:
         with engine.connect() as c:
             _validate_table_exists(c, schema, table)

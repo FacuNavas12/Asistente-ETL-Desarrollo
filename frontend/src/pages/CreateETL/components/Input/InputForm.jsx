@@ -6,7 +6,6 @@ import OrigenInputCSV        from "./InputCSV";
 import OrigenInputExcel      from "./InputExcel";
 import InputConection        from "./InputConnection";
 import InputDDL              from "./InputDDL";
-import ConfirmedTablesList   from "../Tables/TableManagement/ConfirmedTablesList";
 
 const MODOS = [
   { id: "formulario",  label: "Formulario" },
@@ -17,9 +16,10 @@ const MODOS = [
 ];
 
 export default function OrigenInput({ value, onChange }) {
-  const [modo, setModo]   = useState("formulario");
-  const [open, setOpen]   = useState(false);
-  const menuRef           = useRef();
+  const [modo, setModo]         = useState("formulario");
+  const [open, setOpen]         = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const menuRef                 = useRef();
 
   useEffect(() => {
     const handler = (e) => {
@@ -39,54 +39,68 @@ export default function OrigenInput({ value, onChange }) {
   return (
     <div className="form-section">
       <div className="origen-header">
-        <h2 className="form-section__title">Datos de origen</h2>
-
-        <div className="origen-modo-dropdown" ref={menuRef}>
+        <div className="origen-title-row">
+          <h2 className="form-section__title">Datos de origen</h2>
           <button
-            className="origen-modo-btn"
-            onClick={() => setOpen((o) => !o)}
-            aria-haspopup="listbox"
-            aria-expanded={open}
+            className="origen-collapse-btn"
+            onClick={() => setCollapsed((c) => !c)}
+            title={collapsed ? "Abrir" : "Cerrar"}
+            aria-expanded={!collapsed}
           >
-            {modoActual.label}
-            <span className="origen-modo-arrow">{open ? "▲" : "▼"}</span>
+            {collapsed ? "▼" : "▲"}
           </button>
-
-          {open && (
-            <ul className="origen-modo-menu" role="listbox">
-              {MODOS.map((m) => (
-                <li
-                  key={m.id}
-                  role="option"
-                  aria-selected={modo === m.id}
-                  className={`origen-modo-option${modo === m.id ? " origen-modo-option--active" : ""}`}
-                  onClick={() => switchMode(m.id)}
-                >
-                  {m.label}
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
+
+        {!collapsed && (
+          <div className="origen-modo-dropdown" ref={menuRef}>
+            <button
+              className="origen-modo-btn"
+              onClick={() => setOpen((o) => !o)}
+              aria-haspopup="listbox"
+              aria-expanded={open}
+            >
+              {modoActual.label}
+              <span className="origen-modo-arrow">{open ? "▲" : "▼"}</span>
+            </button>
+
+            {open && (
+              <ul className="origen-modo-menu" role="listbox">
+                {MODOS.map((m) => (
+                  <li
+                    key={m.id}
+                    role="option"
+                    aria-selected={modo === m.id}
+                    className={`origen-modo-option${modo === m.id ? " origen-modo-option--active" : ""}`}
+                    onClick={() => switchMode(m.id)}
+                  >
+                    {m.label}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
-      {modo === "formulario" && (
-        <OrigenInputFormulario value={value} onChange={onChange} />
-      )}
-      {modo === "csv" && (
-        <OrigenInputCSV value={value} onChange={onChange} onSwitchMode={switchMode} />
-      )}
-      {modo === "excel" && (
-        <OrigenInputExcel value={value} onChange={onChange} onSwitchMode={switchMode} />
-      )}
-      {modo === "connections" && (
-        <InputConection value={value} onChange={onChange} />
-      )}
-      {modo === "ddl" && (
-        <InputDDL value={value} onChange={onChange} />
-      )}
-
-      <ConfirmedTablesList tables={Array.isArray(value) ? value : []} onChange={onChange} />
+      {/* display:none en vez de desmontar — colapsar/expandir no debe perder el
+          estado local del modo activo (ej. la conexión a BD abierta en "connections") */}
+      <div style={collapsed ? { display: "none" } : undefined}>
+        {modo === "formulario" && (
+          <OrigenInputFormulario value={value} onChange={onChange} />
+        )}
+        {modo === "csv" && (
+          <OrigenInputCSV value={value} onChange={onChange} onSwitchMode={switchMode} />
+        )}
+        {modo === "excel" && (
+          <OrigenInputExcel value={value} onChange={onChange} onSwitchMode={switchMode} />
+        )}
+        {modo === "connections" && (
+          <InputConection value={value} onChange={onChange} />
+        )}
+        {modo === "ddl" && (
+          <InputDDL value={value} onChange={onChange} />
+        )}
+      </div>
     </div>
   );
 }

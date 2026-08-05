@@ -1,0 +1,79 @@
+"""
+KTR builder — paquete que serializa el ktr JSON del LLM a XML .ktr para Pentaho PDI.
+
+Reexporta la API pública (y los símbolos privados que ya cubren tests/otros
+servicios) para que `from app.services.ktr_builder import X` siga funcionando
+igual que cuando este era un único módulo.
+
+Ver build.py para el orquestador, step_types.py para identidad/completitud de
+tipo de step (dominio), step_emitters.py para el mapeo tipo→builder XML e
+fidelidad de config (infra), connection.py para resolución/serialización de
+conexiones, steps/ para los builders de cada familia de step, layout.py para
+el auto-layout y validate.py para la validación de estructura pre-XML.
+"""
+from app.services.ktr_builder.build import build_ktr
+from app.services.ktr_builder.contracts import ConfigParseError, normalize_step_configs
+from app.services.ktr_builder.contract_validate import CONTRACT_PREFIX, validate_ktr_contracts
+from app.services.ktr_builder.connection import (
+    _build_connection,
+    _DB_TYPE_TO_KETTLE,
+    _GENERIC_DRIVER_CLASS,
+    _resolve_connection,
+    missing_layer_warnings,
+    resolve_real_connections,
+)
+from app.services.ktr_builder.dimension_step_policy import (
+    ATTRIBUTE_UPDATE_TYPE_CODES,
+    OVERRIDE_STEP_PREFIX,
+    apply_dimension_contracts,
+    derive_attribute_update_mode,
+    derive_dimension_loader_step,
+    derive_fact_lookup_step,
+    has_registered_override,
+)
+from app.services.ktr_builder.fragmentation import compute_cut, split_ktr_by_cut, validate_stage_contract
+from app.services.ktr_builder.layout import _auto_layout
+from app.services.ktr_builder.step_emitters import STEP_BUILDERS
+from app.services.ktr_builder.step_types import STEP_TYPE_ALIASES
+from app.services.ktr_builder.repair import repair_integrity_gaps, repair_ktr_steps
+from app.services.ktr_builder.validate import _validate_ktr
+from app.services.ktr_builder.validators import (
+    PRE_EMIT_ERROR_PREFIX,
+    TABLE_KEY_PREFIX,
+    TABLE_RECOVERY_PASSES,
+    VERIFY_PASSES,
+    ValidationContext,
+    run_passes,
+    split_findings_by_severity,
+)
+
+__all__ = [
+    "build_ktr",
+    "resolve_real_connections",
+    "missing_layer_warnings",
+    "STEP_TYPE_ALIASES",
+    "STEP_BUILDERS",
+    "repair_ktr_steps",
+    "repair_integrity_gaps",
+    "derive_dimension_loader_step",
+    "derive_fact_lookup_step",
+    "derive_attribute_update_mode",
+    "ATTRIBUTE_UPDATE_TYPE_CODES",
+    "apply_dimension_contracts",
+    "has_registered_override",
+    "OVERRIDE_STEP_PREFIX",
+    "normalize_step_configs",
+    "ConfigParseError",
+    "compute_cut",
+    "split_ktr_by_cut",
+    "validate_stage_contract",
+    "validate_ktr_contracts",
+    "CONTRACT_PREFIX",
+    "run_passes",
+    "ValidationContext",
+    "TABLE_KEY_PREFIX",
+    "TABLE_RECOVERY_PASSES",
+    "VERIFY_PASSES",
+    "PRE_EMIT_ERROR_PREFIX",
+    "split_findings_by_severity",
+]

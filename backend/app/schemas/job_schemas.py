@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel
 
 
@@ -41,9 +41,18 @@ class JobLoop(BaseModel):
 
 class JobEntry(BaseModel):
     order: int
+    # Nombre a mostrar en el canvas del .kjb — a pesar del nombre del campo
+    # (histórico, previo a F2.5/H7), vale para ambos entry_type: es el
+    # nombre de la transformación O del job hijo que esta entry invoca.
     transformation_name: str
+    # Archivo que la entry ejecuta: un .ktr (entry_type="trans") o un .kjb
+    # (entry_type="job", ver H7 en 01-hallazgos.md/kettle-jobentryjob-xml-spec.md).
     filename: str
     rationale: str
+    # "trans" (default, comportamiento histórico) = JobEntryTrans, invoca un
+    # .ktr. "job" = JobEntryJob, invoca otro .kjb — necesario para la
+    # jerarquía de 3 niveles (job_master -> job_origen_stg/job_stg_dwh -> ktrs).
+    entry_type: Literal["trans", "job"] = "trans"
 
 
 class JobPlan(BaseModel):

@@ -10,6 +10,11 @@ Flujo:
 3. generate_job — toma el JobPlan confirmado, construye el XML .kjb y genera la
                   explicación en lenguaje natural. Limpia los archivos temporales.
 """
+"""
+Ante cambios de hueristica, validar si se mantiene manejo de capas por nostoros y como lo interpreta Pentaho
+"""
+#TODO: Validar si se mantiene el manejo de capas por nosotros y como lo interpreta Pentaho
+
 import json
 import logging
 import re
@@ -23,7 +28,7 @@ from xml.etree import ElementTree as ET
 
 from fastapi import UploadFile
 
-from app.models.llm_base import BaseLLM
+from app.models.llm_base import BaseLLM, LLMResponse
 from app.schemas.job_schemas import (
     JobAnalyzeResponse,
     JobEntry,
@@ -32,6 +37,8 @@ from app.schemas.job_schemas import (
     JobRefineRequest,
     KTRMetadata,
 )
+from app.schemas.llm_output_schemas import JOB_PLAN_OUTPUT_SCHEMA, JOB_EXPLAIN_OUTPUT_SCHEMA
+from app.services.kjb_xml_validator import validate_kjb_xml
 
 logger = logging.getLogger(__name__)
 
@@ -202,8 +209,10 @@ Respondé ÚNICAMENTE con el JSON de explicación indicado en el system prompt."
 
 # ─── Response parser ──────────────────────────────────────────────────────────
 
-def _parse_job_plan(raw: str) -> JobPlan:
-    data = json.loads(raw)
+def _parse_job_plan(resp: LLMResponse) -> JobPlan:
+    data = resp.json_data
+    if data is None:
+        raise ValueError("LLM returned no structured data — json_data is None")
     if "execution_order" not in data:
         raise ValueError("La respuesta del modelo no contiene execution_order.")
     if not data["execution_order"]:
@@ -256,13 +265,16 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "      <dummy>N</dummy>",
         "      <repeat>N</repeat>",
         "      <schedulerType>0</schedulerType>",
-        "      <GUI><xloc>100</xloc><yloc>200</yloc><draw>Y</draw></GUI>",
+        *_entry_coords(100, 200),
         "    </entry>",
     ]
 
     for i, entry in enumerate(entries):
         x = 300 + i * 200
-        lines += _trans_entry(entry, x, 200)
+        if entry.entry_type == "job":
+            lines += _job_entry(entry, x, 200)
+        else:
+            lines += _trans_entry(entry, x, 200)
         if entry.transformation_name in checkpoint_names:
             cp = next(
                 (c for c in job_plan.checkpoints if c.after_transformation == entry.transformation_name),
@@ -277,7 +289,7 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "      <name>Abort job</name>",
         "      <type>ABORT</type>",
         "      <always_log_rows>N</always_log_rows>",
-        f"      <GUI><xloc>{abort_x}</xloc><yloc>400</yloc><draw>Y</draw></GUI>",
+        *_entry_coords(abort_x, 400),
         "    </entry>",
     ]
 
@@ -290,7 +302,7 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "      <dummy>N</dummy>",
         "      <repeat>N</repeat>",
         "      <schedulerType>0</schedulerType>",
-        f"      <GUI><xloc>{success_x}</xloc><yloc>200</yloc><draw>Y</draw></GUI>",
+        *_entry_coords(success_x, 200),
         "    </entry>",
     ]
 
@@ -322,7 +334,29 @@ def build_kjb_xml(job_plan: JobPlan) -> str:
         "</job>",
     ]
 
-    return "\n".join(lines)
+    kjb_xml = "\n".join(lines)
+    # Última barrera: mismo criterio que ktr_xml_validator para .ktr — rechazar
+    # acá con un mensaje claro en vez de entregar un .kjb que Spoon abre con el
+    # canvas vacío o un job que nunca llega a SUCCESS.
+    validate_kjb_xml(kjb_xml)
+    return kjb_xml
+
+
+def _entry_coords(x: int, y: int) -> List[str]:
+    """Posición de un <entry> de JOB. A diferencia de los steps de un .ktr
+    (StepMeta, que anidan xloc/yloc/draw dentro de <GUI>), JobEntryCopy.getXML()
+    escribe xloc/yloc/draw (+ nr/parallel) como HIJOS DIRECTOS de <entry>, sin
+    envoltorio <GUI>. Con <GUI> (formato de .ktr, no de .kjb) Spoon no encuentra
+    las coordenadas al leer el job, las pone todas en (0,0) apiladas en la
+    esquina, y el canvas parece vacío aunque la orquestación lógica (hops,
+    orden) sea correcta."""
+    return [
+        "      <parallel>N</parallel>",
+        "      <draw>Y</draw>",
+        "      <nr>0</nr>",
+        f"      <xloc>{x}</xloc>",
+        f"      <yloc>{y}</yloc>",
+    ]
 
 
 def _trans_entry(entry: JobEntry, x: int, y: int) -> List[str]:
@@ -333,7 +367,11 @@ def _trans_entry(entry: JobEntry, x: int, y: int) -> List[str]:
         f"      <description>{_esc(entry.rationale)}</description>",
         "      <specification_method>filename</specification_method>",
         "      <trans_object_id/>",
-        f"      <filename>./{_esc(entry.filename)}</filename>",
+        # ${Internal.Job.Filename.Directory} resuelve al directorio del propio
+        # .kjb en runtime, sin importar desde dónde se invoque Kitchen/Pan —
+        # "./nombre.ktr" depende del cwd del proceso que lanza el job y rompe
+        # apenas se ejecuta desde un directorio distinto al del .kjb.
+        f"      <filename>${{Internal.Job.Filename.Directory}}/{_esc(entry.filename)}</filename>",
         "      <transname/>",
         "      <set_logfile>N</set_logfile>",
         "      <logfile/>",
@@ -348,7 +386,51 @@ def _trans_entry(entry: JobEntry, x: int, y: int) -> List[str]:
         "      <follow_abort_remote>N</follow_abort_remote>",
         "      <create_parent_folder>N</create_parent_folder>",
         "      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>",
-        f"      <GUI><xloc>{x}</xloc><yloc>{y}</yloc><draw>Y</draw></GUI>",
+        *_entry_coords(x, y),
+        "    </entry>",
+    ]
+
+
+def _job_entry(entry: JobEntry, x: int, y: int) -> List[str]:
+    """JobEntryJob (H7/F2.5) — invoca otro .kjb, no un .ktr. Shape verificado
+    contra JobEntryJob.getXML() (pentaho-kettle) en kettle-jobentryjob-xml-spec.md:
+    <type> debe ser JOB (JobEntryTrans no lee estos tags — Spoon fallaría al
+    abrir/ejecutar aunque filename apunte al .kjb correcto), y
+    <specification_method>filename</specification_method> es obligatorio: sin
+    él, checkObjectLocationSpecificationMethod() cae a compatibilidad hacia
+    atrás y puede resolver contra un repositorio conectado en vez del archivo
+    en disco. Con specification_method=filename, <jobname>/<directory> quedan
+    vacíos (son solo para métodos de repositorio) y <job_object_id/> también
+    (solo aplica a rep_ref)."""
+    return [
+        "    <entry>",
+        f"      <name>{_esc(entry.transformation_name)}</name>",
+        f"      <description>{_esc(entry.rationale)}</description>",
+        "      <type>JOB</type>",
+        "      <specification_method>filename</specification_method>",
+        "      <job_object_id/>",
+        f"      <filename>${{Internal.Job.Filename.Directory}}/{_esc(entry.filename)}</filename>",
+        "      <jobname/>",
+        "      <directory/>",
+        "      <arg_from_previous>N</arg_from_previous>",
+        "      <params_from_previous>N</params_from_previous>",
+        "      <exec_per_row>N</exec_per_row>",
+        "      <set_logfile>N</set_logfile>",
+        "      <logfile/>",
+        "      <logext/>",
+        "      <add_date>N</add_date>",
+        "      <add_time>N</add_time>",
+        "      <loglevel>Basic</loglevel>",
+        "      <slave_server_name/>",
+        "      <wait_until_finished>Y</wait_until_finished>",
+        "      <follow_abort_remote>N</follow_abort_remote>",
+        "      <expand_remote_job>N</expand_remote_job>",
+        "      <create_parent_folder>N</create_parent_folder>",
+        "      <pass_export>N</pass_export>",
+        "      <run_configuration/>",
+        "      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>",
+        "      <set_append_logfile>N</set_append_logfile>",
+        *_entry_coords(x, y),
         "    </entry>",
     ]
 
@@ -360,7 +442,7 @@ def _log_entry(name: str, message: str, x: int, y: int) -> List[str]:
         "      <type>WRITE_TO_LOG</type>",
         f"      <logmessage>{_esc(message)}</logmessage>",
         "      <loglevel>Basic</loglevel>",
-        f"      <GUI><xloc>{x}</xloc><yloc>{y}</yloc><draw>Y</draw></GUI>",
+        *_entry_coords(x, y),
         "    </entry>",
     ]
 
@@ -421,14 +503,8 @@ async def analyze_job(
     session_id = _save_ktr_files(files_content)
     system = _load_system_prompt(_SYSTEM_ANALYZE)
     prompt = _build_analyze_prompt(metas, job_description, business_rules)
-    resp = await main_llm.complete(prompt, system)
-
-    try:
-        job_plan = _parse_job_plan(resp.content)
-    except (ValueError, KeyError) as e:
-        logger.warning("Primer intento de análisis de job inválido (%s), reintentando...", e)
-        resp = await main_llm.complete(prompt, system)
-        job_plan = _parse_job_plan(resp.content)
+    resp = await main_llm.complete(prompt, system, schema=JOB_PLAN_OUTPUT_SCHEMA)
+    job_plan = _parse_job_plan(resp)
 
     return JobAnalyzeResponse(
         job_plan=job_plan,
@@ -441,14 +517,8 @@ async def analyze_job(
 async def refine_job(request: JobRefineRequest, main_llm: BaseLLM) -> JobAnalyzeResponse:
     system = _load_system_prompt(_SYSTEM_ANALYZE)
     prompt = _build_refine_prompt(request)
-    resp = await main_llm.complete(prompt, system)
-
-    try:
-        job_plan = _parse_job_plan(resp.content)
-    except (ValueError, KeyError) as e:
-        logger.warning("Primer intento de refinamiento de job inválido (%s), reintentando...", e)
-        resp = await main_llm.complete(prompt, system)
-        job_plan = _parse_job_plan(resp.content)
+    resp = await main_llm.complete(prompt, system, schema=JOB_PLAN_OUTPUT_SCHEMA)
+    job_plan = _parse_job_plan(resp)
 
     return JobAnalyzeResponse(
         job_plan=job_plan,
@@ -462,11 +532,10 @@ async def generate_job(session_id: str, job_plan: JobPlan, secondary_llm: BaseLL
     kjb_xml = build_kjb_xml(job_plan)
 
     explain_prompt = _build_explain_prompt(job_plan)
-    resp = await secondary_llm.complete(explain_prompt, _load_system_prompt(_SYSTEM_EXPLAIN))
-    try:
-        explanation = json.loads(resp.content).get("explanation", resp.content)
-    except (json.JSONDecodeError, AttributeError):
-        explanation = resp.content or ""
+    resp = await secondary_llm.complete(
+        explain_prompt, _load_system_prompt(_SYSTEM_EXPLAIN), schema=JOB_EXPLAIN_OUTPUT_SCHEMA
+    )
+    explanation = resp.json_data.get("explanation", "") if resp.json_data else ""
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     kjb_filename = f"{_sanitize_filename(job_plan.job_name)}_{ts}.kjb"
