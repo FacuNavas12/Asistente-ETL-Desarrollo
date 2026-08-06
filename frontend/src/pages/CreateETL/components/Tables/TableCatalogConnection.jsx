@@ -26,7 +26,6 @@ function mapCanonicalType(canonicalType) {
 
 export default function TableCatalogConnection({ tables, connId, password, value, onChange }) {
   const [open, setOpen]                       = useState(false);
-  const [tableStructure, setTableStructure]   = useState({});
   const [selectedTable, setSelectedTable]     = useState(null);
   const [tableData, setTableData]             = useState(null);
   const [dataPage, setDataPage]               = useState(1);
@@ -37,6 +36,12 @@ export default function TableCatalogConnection({ tables, connId, password, value
 
   const handleSelectTable = async (qualified, page = 1) => {
     if (!connId) return;
+    if (page === 1 && selectedTable?.qualified === qualified) {
+      setSelectedTable(null);
+      setTableData(null);
+      setDataError("");
+      return;
+    }
     const { schema, table } = splitTable(qualified);
     setSelectedTable({ schema, table, qualified });
     setDataPage(page);
@@ -64,18 +69,6 @@ export default function TableCatalogConnection({ tables, connId, password, value
     setConfirmError("");
     try {
       const canonicalSchema = await getTableProfile(connId, qualified, password);
-      const pkSet = new Set(canonicalSchema.primary_key ?? []);
-      const fkSet = new Set(
-        (canonicalSchema.foreign_keys ?? []).flatMap(fk => fk.fields)
-      );
-
-      // schema_version-keyed map of tableName → { pk: Set<string>, fk: Set<string> }
-      // Used only for badge display; not stored in EtlContext.
-      setTableStructure(prev => ({
-        ...prev,
-        [qualified]: { pk: pkSet, fk: fkSet },
-      }));
-
       const columns = (canonicalSchema.fields ?? []).map(field => ({
         name:       field.name,
         dataType:   mapCanonicalType(field.type),
@@ -218,37 +211,6 @@ export default function TableCatalogConnection({ tables, connId, password, value
             </div>
           )}
         </TableConfirmPanel>
-      )}
-
-      {(value || []).some(t => tableStructure[tableKey(t)]) && (
-        <div className="conn-schema-summary">
-          <p className="conn-catalog-header" style={{ marginTop: "1rem" }}>
-            Esquema de tablas confirmadas
-          </p>
-          {(value || []).map(t => {
-            const struct = tableStructure[tableKey(t)];
-            if (!struct) return null;
-            return (
-              <div key={tableKey(t)} className="conn-schema-table">
-                <p className="conn-schema-table-name">{t.tableName}</p>
-                <div className="conn-schema-cols">
-                  {(t.columns || []).map(col => (
-                    <span key={col.name} className="conn-schema-col">
-                      {struct.pk.has(col.name) && (
-                        <span className="conn-badge conn-badge--pk" title="Primary Key">PK</span>
-                      )}
-                      {struct.fk.has(col.name) && (
-                        <span className="conn-badge conn-badge--fk" title="Foreign Key">FK</span>
-                      )}
-                      <span className="conn-schema-col-name">{col.name}</span>
-                      <span className="conn-schema-col-type">{col.dataType}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
       )}
     </div>
   );

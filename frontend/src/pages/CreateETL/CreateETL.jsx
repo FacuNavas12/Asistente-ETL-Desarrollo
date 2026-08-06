@@ -23,7 +23,7 @@ import { importEtlSkeleton, importModelResponse } from "@/utils/etlImport";
 import { stagesArrayToMap, mergeProgressLogs } from "./utils/progressLog";
 import { tryAutoDownloadRawSteps } from "./utils/tempAutoDownloadRawSteps"; // TEMPORAL — ver ese archivo
 import CreateETLOptions from "./components/CreateETLOptions";
-import { listConnections } from "@/api/connections";
+import { listConnections, listConnectionsCached } from "@/api/connections";
 import { getEtl } from "@/api/etls";
 import "./css/createETL.css";
 
@@ -35,6 +35,12 @@ const STEP = {
   REVIEW:     "review",
   PROCESSING: "processing",
 };
+
+// Acciones que llaman al modelo (Inferir / Confirmar y Generar) piden
+// confirmación antes de gastar tokens — mismo ConfirmModal que el aviso de
+// cambios sin guardar, la 2ª opción ejecuta la acción real (ver tokenWarning).
+const TOKEN_WARNING_MESSAGE =
+  "Esta acción consume tokens de IA y no se puede deshacer. ¿Continuar?";
 
 export default function CreateETL() {
   const navigate  = useNavigate();
@@ -99,6 +105,9 @@ export default function CreateETL() {
   // parcial (solo una etapa lista) a diferencia del rawLlmData de antes.
   const [modelStages,    setModelStages]    = useState({ origen_stg: null, stg_dwh: null });
   const [modelResponsesOpen, setModelResponsesOpen] = useState(false);
+  // Aviso de consumo de tokens antes de Inferir / Confirmar y Generar —
+  // { actionLabel, onProceed } | null. Ver TOKEN_WARNING_MESSAGE.
+  const [tokenWarning,   setTokenWarning]   = useState(null);
   // job_id del flujo async (generate-async): el modelo corre en background mientras
   // el usuario completa las conexiones destino en paralelo (ver handleConfirm).
   const [jobId,          setJobId]          = useState(null);
@@ -180,6 +189,16 @@ export default function CreateETL() {
       if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
       if (syncPollTimeoutRef.current) clearTimeout(syncPollTimeoutRef.current);
     };
+  }, []);
+
+  // Precarga las conexiones guardadas apenas se abre la pantalla — sin esto,
+  // SavedConnectionSelect (en ConnectionForm/DestinationConnections) dispara
+  // su propio fetch recién al montar (ej. al elegir "Conexiones" como modo de
+  // origen) y aparece perceptiblemente después del resto del formulario, que
+  // ya está en pantalla. Con la cache de listConnectionsCached tibia, ese
+  // select llega con los datos listos.
+  useEffect(() => {
+    listConnectionsCached().catch(() => {});
   }, []);
 
   // Block all route navigation (Back button, links, programmatic) while form is dirty
@@ -320,13 +339,15 @@ export default function CreateETL() {
   };
 
   const handleGuardarFromReview = async () => {
+    let values;
     try {
-      await _saveSnapshotSafe();
+      values = await _saveSnapshotSafe();
     } catch {
       // ya notificado por _saveSnapshotSafe
       return;
     }
     addToast("Guardado");
+    reset(values); // isDirty → false, sin navegar
   };
 
   const handleRetrySync = async () => {
@@ -808,9 +829,33 @@ export default function CreateETL() {
           title="Tenés cambios sin guardar"
           message="Si salís ahora, se descartarán todos los cambios no guardados."
           confirmLabel="Descartar y salir"
-          cancelLabel="Cancelar"
+          cancelLabel="Guardar"
+          cancelClassName="home-modal__save"
           onConfirm={() => blocker.proceed()}
-          onCancel={() => blocker.reset()}
+          onCancel={async () => {
+            try {
+              await _saveSnapshotSafe();
+            } catch {
+              return; // ya notificado por _saveSnapshotSafe, no navega
+            }
+            addToast("Guardado");
+            blocker.proceed();
+          }}
+        />
+      )}
+
+      {tokenWarning && (
+        <ConfirmModal
+          title="Vas a consumir tokens de IA"
+          message={TOKEN_WARNING_MESSAGE}
+          confirmLabel="Cancelar"
+          cancelLabel={tokenWarning.actionLabel}
+          onConfirm={() => setTokenWarning(null)}
+          onCancel={() => {
+            const { onProceed } = tokenWarning;
+            setTokenWarning(null);
+            onProceed();
+          }}
         />
       )}
 
@@ -893,7 +938,7 @@ export default function CreateETL() {
                 </span>
               </button>
               <button
-                className="infer-btn infer-btn--secondary"
+                className="infer-btn infer-btn--save"
                 onClick={handleGuardarFromReview}
                 disabled={isRefining}
               >
@@ -901,7 +946,7 @@ export default function CreateETL() {
               </button>
               <button
                 className="infer-btn infer-btn--primary"
-                onClick={() => handleConfirm()}
+                onClick={() => setTokenWarning({ actionLabel: "Confirmar y Generar", onProceed: () => handleConfirm() })}
                 disabled={isRefining}
               >
                 Confirmar y Generar
@@ -937,7 +982,7 @@ export default function CreateETL() {
               >
                 <button
                   className="etl-infer-header-btn"
-                  onClick={handleInfer}
+                  onClick={() => setTokenWarning({ actionLabel: "Inferir", onProceed: handleInfer })}
                   disabled={!canInfer}
                 >
                   Inferir

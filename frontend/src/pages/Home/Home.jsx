@@ -95,9 +95,11 @@ export default function Home() {
           </div>
 
           <div className="home-header__right">
+            {/* Botón de importar ETL
             <button className="home-import-btn" onClick={() => importInputRef.current?.click()}>
               Importar
             </button>
+            */}
             <input
               type="file"
               accept=".json,application/json"

@@ -37,13 +37,33 @@ export async function listConnections() {
   return parseResponse(res);
 }
 
+// Cache en memoria (dura la sesión de la SPA) de la promesa de listConnections
+// — varios selects (origen, staging/DWH, EtlDetail) piden la misma lista al
+// montar. Sin esto cada uno dispara su propio fetch y el que monta último
+// (ej. SavedConnectionSelect al elegir "Conexiones" como modo de origen)
+// aparece perceptiblemente después del resto del formulario que ya montó.
+// Invalidar tras createConnection para que una conexión recién creada
+// aparezca en el próximo select que se abra.
+let _connectionsCache = null;
+
+export function listConnectionsCached() {
+  if (!_connectionsCache) _connectionsCache = listConnections();
+  return _connectionsCache;
+}
+
+export function invalidateConnectionsCache() {
+  _connectionsCache = null;
+}
+
 export async function createConnection(payload) {
   const res = await fetch(`${BASE}/api/connections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return parseResponse(res);
+  const conn = await parseResponse(res);
+  invalidateConnectionsCache();
+  return conn;
 }
 
 // Nota: /test devuelve 200 OK incluso cuando la conexión falla.

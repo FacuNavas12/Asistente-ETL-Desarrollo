@@ -79,3 +79,10 @@
   opacity: 0.9;
   transform: translateY(-1px);
 }
+
+/* Mismo azul que .etl-save-btn / .infer-btn--save — todo botón "Guardar"
+   comparte color en todo el front. */
+.home-modal__save {
+  background: #3b82f6;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+}

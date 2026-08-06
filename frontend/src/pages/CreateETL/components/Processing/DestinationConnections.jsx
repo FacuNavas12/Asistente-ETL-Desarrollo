@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { listConnections } from "@/api/connections";
+import { listConnectionsCached } from "@/api/connections";
 import DestinationConnectionForm, {
   EMPTY_DESTINATION_CONNECTION,
   isDestinationConnectionComplete,
@@ -46,7 +46,7 @@ export default function DestinationConnections({ onFinalize, origenConnectionId 
 
   useEffect(() => {
     let alive = true;
-    listConnections()
+    listConnectionsCached()
       .then(list => { if (alive) setSavedConns(Array.isArray(list) ? list : []); })
       .catch(() => { /* sin conexiones guardadas o backend sin auth: se ignora */ });
     return () => { alive = false; };

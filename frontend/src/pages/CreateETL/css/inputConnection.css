@@ -10,6 +10,40 @@
   font-size: 14px;
 }
 
+.conn-password-wrap {
+  position: relative;
+  display: flex;
+}
+
+.conn-password-wrap input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.conn-password-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-2, var(--text));
+  opacity: 0.6;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.conn-password-toggle:hover {
+  opacity: 1;
+  background: var(--accent-bg);
+}
+
 .conn-reuse-hint {
   margin: -6px 0 16px;
   padding: 8px 12px;
